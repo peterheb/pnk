@@ -28,11 +28,13 @@ Rerun otorp alone later:
 
 from __future__ import annotations
 
-import os
+import hashlib
 import plistlib
+import re
 import shutil
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -148,6 +150,22 @@ def find_license(repo: Path) -> Path | None:
     return None
 
 
+def declared_license(repo: Path) -> str | None:
+    """SPDX id declared in pyproject.toml, for repos that ship no LICENSE file."""
+    pp = repo / "pyproject.toml"
+    if not pp.exists():
+        return None
+    m = re.search(r'license\s*=\s*\{\s*text\s*=\s*"([^"]+)"', pp.read_text(errors="replace"))
+    if not m:
+        return None
+    t = m.group(1)
+    if "MIT" in t.upper():
+        return "MIT"
+    if "APACHE" in t.upper():
+        return "Apache-2.0"
+    return None
+
+
 def fetch_repos() -> list[dict]:
     """Clone (shallow) each reference repo into .scratch/ and verify licenses."""
     SCRATCH.mkdir(parents=True, exist_ok=True)
@@ -161,7 +179,17 @@ def fetch_repos() -> list[dict]:
             sh(["git", "clone", "--depth", "1", spec["url"], str(dest)])
         sha = sh(["git", "rev-parse", "HEAD"], cwd=dest)
         lic_file = find_license(dest)
-        lic, note = classify_license(lic_file) if lic_file else ("UNKNOWN", "no LICENSE file")
+        if lic_file:
+            lic, note = classify_license(lic_file)
+        else:
+            declared = declared_license(dest)
+            if declared:
+                lic, note = declared, (
+                    "no LICENSE file; SPDX id declared in pyproject.toml "
+                    "(treated as the author's license statement; flagged in ATTRIBUTION.md)"
+                )
+            else:
+                lic, note = "UNKNOWN", "no LICENSE file and no declared license"
         ok = lic in COMPATIBLE
         print(f"[license] {spec['name']}: {lic} ({'compatible' if ok else 'INCOMPATIBLE/UNKNOWN'}) {note}")
         results.append({
@@ -195,6 +223,79 @@ def otorp_binaries(app_path: Path) -> list[Path]:
     return bins
 
 
+OTORP_RUNNER_JS = """\
+var fs = require("fs"), path = require("path");
+var otorp = require(path.join(__dirname, "otorp", "index.patched.js")).otorp;
+var outdir = process.argv[2];
+fs.mkdirSync(outdir, { recursive: true });
+process.argv.slice(3).forEach(function (bin) {
+  var buf = fs.readFileSync(bin);
+  var defs;
+  try { defs = otorp(buf); } catch (e) {
+    console.error("scan failed for " + bin + ": " + e.message);
+    return;
+  }
+  defs.forEach(function (def) {
+    fs.writeFileSync(path.join(outdir, def.name.replace(/[/]/g, "$")), def.proto);
+  });
+  console.error(bin + ": " + defs.length + " defs");
+});
+"""
+
+
+def build_patched_otorp() -> Path:
+    """Set up a local otorp 0.0.1 copy with the arm64-hostile reference check relaxed.
+
+    otorp's `is_referenced` heuristic looks for x86_64 LEA-style references and
+    classic absolute pointers. Apple's 15.3.1 binaries (both slices) use
+    LC_DYLD_CHAINED_FIXUPS, so every descriptor is rejected ("Reference to X
+    not found") and extraction yields nothing. We run otorp's own scanner and
+    renderer with that check removed and instead rely on strict
+    FileDescriptorProto wire parsing to reject false positives — the same
+    validation strategy arkadiyt/protodump uses on modern Apple binaries.
+    """
+    tool = SCRATCH / "otorp-tool"
+    patched = tool / "otorp" / "index.patched.js"
+    if patched.exists():
+        return tool
+    tool.mkdir(parents=True, exist_ok=True)
+    print("[otorp-fallback] preparing patched otorp 0.0.1 engine in .scratch/otorp-tool")
+    sh(["npm", "pack", "otorp@0.0.1", "--pack-destination", str(tool)])
+    tgz = next(tool.glob("otorp-0.0.1.tgz"))
+    (tool / "otorp-0.0.1.tgz.sha256").write_text(
+        hashlib.sha256(tgz.read_bytes()).hexdigest() + "  otorp-0.0.1.tgz\n"
+    )
+    with tarfile.open(tgz) as t:
+        try:
+            t.extractall(tool, filter="data")
+        except TypeError:  # python < 3.12
+            t.extractall(tool)
+    if (tool / "otorp").exists():
+        shutil.rmtree(tool / "otorp")
+    (tool / "package").rename(tool / "otorp")
+    src = (tool / "otorp" / "index.node.js").read_text()
+    ref_check = (
+        "      if (!is_referenced(buf, pos)) {\n"
+        "        console.error(`Reference to ${name} not found`);\n"
+        "        continue;\n"
+        "      }\n"
+    )
+    unsafe_parse = (
+        "    var b = buf.slice(r[0], i < res.length - 1 ? res[i + 1][0] : buf.length);\n"
+        "    var pb = parse_FileDescriptorProto(b);\n"
+    )
+    safe_parse = (
+        "    var b = buf.slice(r[0], i < res.length - 1 ? res[i + 1][0] : buf.length);\n"
+        "    var pb;\n"
+        "    try { pb = parse_FileDescriptorProto(b); } catch (e) { return; }\n"
+    )
+    if src.count(ref_check) != 1 or src.count(unsafe_parse) != 1:
+        raise RuntimeError("otorp bundle content changed; re-derive the patch in build_patched_otorp()")
+    src = src.replace(ref_check, "").replace(unsafe_parse, safe_parse)
+    (tool / "otorp" / "index.patched.js").write_text(src)
+    (tool / "dump_patched.js").write_text(OTORP_RUNNER_JS)
+    return tool
+
 def run_otorp() -> bool:
     """Extract current protos from locally installed apps via npx otorp."""
     out_root = SCRATCH / "otorp"
@@ -227,21 +328,31 @@ def run_otorp() -> bool:
             print(f"[otorp]   no Mach-O binaries found in {app_path}")
             all_ok = False
             continue
-        ok_count = 0
+        # Pass 1 (required by the research plan): plain `npx otorp`.
+        before = set(out_dir.glob("*.proto"))
         for b in bins:
-            r = subprocess.run(
-                [npx, "-y", "otorp", str(b), str(out_dir)],
-                capture_output=True, text=True,
-            )
-            if r.returncode != 0:
-                # Frameworks without embedded protos are expected; continue.
-                print(f"[otorp]   (no defs) {b.parent.parent.name if '.framework' in str(b) else b.name}")
-            else:
-                ok_count += 1
-                print(f"[otorp]   ok: {b.parent.parent.name if '.framework' in str(b) else b.name}")
+            subprocess.run([npx, "-y", "otorp", str(b), str(out_dir)],
+                           capture_output=True, text=True)
+        wrote = set(out_dir.glob("*.proto")) - before
+        if wrote:
+            print(f"[otorp]   plain otorp wrote {len(wrote)} new .proto files")
+            continue
+        # Pass 2: 15.3.1 binaries use LC_DYLD_CHAINED_FIXUPS, which defeats
+        # otorp's reference heuristic — fall back to the patched engine.
+        tool = build_patched_otorp()
+        r = subprocess.run(
+            ["node", str(tool / "dump_patched.js"), str(out_dir)] + [str(b) for b in bins],
+            capture_output=True, text=True,
+        )
         n = len(list(out_dir.glob("*.proto")))
-        print(f"[otorp]   {ok_count}/{len(bins)} binaries yielded defs; {n} .proto files in {out_dir}")
+        print(f"[otorp]   patched otorp engine extracted {n} .proto files "
+              f"(plain otorp: 0 — 15.3.1 uses chained fixups, see ATTRIBUTION.md)")
+        if n == 0:
+            print(r.stderr[-2000:])
+            all_ok = False
     return all_ok
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -270,13 +381,25 @@ code from any of them.
 ## Local app extraction (npx otorp)
 
 The CURRENT `.proto` definitions were extracted from the locally installed
-Apple apps with [`otorp`](https://github.com/ptomulik/otorp), which dumps
-protobuf definitions embedded in Mach-O binaries. Output:
-`.scratch/otorp/<AppName>/`. Apps scanned: main executable plus every
-`Contents/Frameworks/*.framework` binary. Bundle identity verified via
-`Contents/Info.plist`:
+Apple apps with [`otorp`](https://www.npmjs.com/package/otorp) v0.0.1
+(SheetJS, Apache-2.0), which dumps protobuf `FileDescriptorProto` definitions
+embedded in Mach-O binaries. Output: `.scratch/otorp/<AppName>/`. Apps
+scanned: main executable plus every `Contents/Frameworks/*.framework` binary.
+Bundle identity verified via `Contents/Info.plist`:
 
 {app_table}
+
+**Tooling note (otorp fallback).** Plain `npx otorp` extracts nothing from the
+15.3.1 binaries: both the x86_64 and arm64 slices link with
+`LC_DYLD_CHAINED_FIXUPS`, and otorp 0.0.1's reference heuristic (x86_64 `LEA`
+scan + classic absolute-pointer scan) rejects every embedded descriptor with
+`Reference to <name>.proto not found`. The fetch script therefore sets up a
+patched copy of otorp's own engine in `.scratch/otorp-tool/` (npm tarball
+`otorp-0.0.1.tgz`, sha256 recorded next to it) that removes the reference
+check and instead validates each candidate by strict `FileDescriptorProto`
+wire parsing — the same strategy as arkadiyt/protodump. The descriptors
+themselves are Apple's; the patched engine is derived from otorp
+(Apache-2.0), and is a gitignored local tool, not shipped code.
 
 **Drift risk.** `.proto` files recovered by otorp contain message/field
 structure but carry **no TSP object-id registry** (the numeric type ids that
