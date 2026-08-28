@@ -32,6 +32,10 @@ pub enum ContainerForm {
     LegacyRaw,
 }
 
+/// `OperationStorage.iwa` magic ("bvxn"): newer-iWork collaboration operation
+/// log, not an IWA snappy stream. Observed in 10 of the 968 modern fixtures.
+const OPERATION_STORAGE_MAGIC: &[u8] = b"bvxn";
+
 /// One entry of the container's member listing. Names are UTF-8: the zip crate
 /// re-decodes cp437 names when the ZIP UTF-8 flag is absent (the cp437 hazard
 /// in docs/format/container.md), so display names are safe to print.
@@ -61,9 +65,21 @@ pub struct Container {
     pub members: Vec<Member>,
     /// IWA stream members in stream order: (member name, raw bytes).
     pub iwas: Vec<(String, Vec<u8>)>,
+    /// `.iwa`-named members skipped as non-IWA (OperationStorage `bvxn`):
+    /// (member name, size). Shown in dumps, never decoded.
+    pub non_iwa: Vec<(String, u64)>,
     /// When the early-'13 nested `Index.zip` variant supplied the streams, the
     /// nested zip's own member listing.
     pub nested_members: Option<Vec<Member>>,
+}
+
+/// Result of walking one ZIP: member listing, decodable IWA streams, and any
+/// non-IWA members skipped by magic.
+struct ScanOutcome {
+    members: Vec<Member>,
+    iwas: Vec<(String, Vec<u8>)>,
+    non_iwa: Vec<(String, u64)>,
+    nested_members: Option<Vec<Member>>,
 }
 
 /// Member base names that mark a pre-'13 legacy document
@@ -81,10 +97,6 @@ const LEGACY_MARKERS: [&str; 5] = [
 /// directory entries (trailing `/`).
 fn is_iwa(name: &str) -> bool {
     !name.ends_with('/') && name.to_ascii_lowercase().ends_with(".iwa")
-}
-
-fn is_iwph(name: &str) -> bool {
-    !name.ends_with('/') && name.to_lowercase().ends_with(".iwph")
 }
 
 fn is_legacy_marker(name: &str) -> bool {
@@ -125,10 +137,7 @@ fn not_a_zip(label: &str, e: impl std::fmt::Display) -> Error {
 /// `.iwa` members; if there are none, recurse into a nested member named
 /// `Index.zip` (any directory prefix), mirroring numbers-parser iwork.py:216-218.
 /// Returns (member listing, iwa streams, nested listing when used).
-fn scan_zip(
-    bytes: Vec<u8>,
-    label: &str,
-) -> Result<(Vec<Member>, Vec<(String, Vec<u8>)>, Option<Vec<Member>>), Error> {
+fn scan_zip(bytes: Vec<u8>, label: &str) -> Result<ScanOutcome, Error> {
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
         .map_err(|e| not_a_zip(label, e))?;
     let members: Vec<Member> = (0..archive.len())
@@ -142,17 +151,25 @@ fn scan_zip(
         })
         .collect();
 
-    // Encrypted documents: a `.iwph` member marks password protection; reject
-    // before anything else (numbers-parser iwork.py:205-212 does the same, and
-    // real fixtures carry `.iwph` alongside otherwise-readable members).
-    if let Some(name) = members.iter().map(|m| m.name.as_str()).find(|n| is_iwph(n)) {
-        return Err(Error::new(
-            Kind::Encrypted,
-            Layer::Container,
-            format!(
-                "{label}: encrypted iWork document (member `{name}`) — password-protected files are not supported"
-            ),
-        ));
+    // Encrypted documents: `.iwph` is the classic password-protection marker
+    // (numbers-parser iwork.py:205-212 rejects it the same way; real fixtures
+    // carry `.iwph` alongside otherwise-readable members). `.iwpv2` marks the
+    // newer iWork encryption — fixture 2dccc804 has it with every stream but
+    // DocumentStylesheet high-entropy ciphertext and no `.iwph` present.
+    for marker in [".iwph", ".iwpv2"] {
+        if let Some(name) = members
+            .iter()
+            .map(|m| m.name.as_str())
+            .find(|n| n.to_lowercase().ends_with(marker) && !n.ends_with('/'))
+        {
+            return Err(Error::new(
+                Kind::Encrypted,
+                Layer::Container,
+                format!(
+                    "{label}: encrypted iWork document (member `{name}`) — password-protected files are not supported"
+                ),
+            ));
+        }
     }
 
     // Legacy pre-'13 signals: legacy zips unzip fine but carry an XML/apxl/
@@ -168,14 +185,23 @@ fn scan_zip(
     }
 
     let mut iwas = Vec::new();
+    let mut non_iwa = Vec::new();
     for (i, m) in members.iter().enumerate() {
         if is_iwa(&m.name) {
-            iwas.push((m.name.clone(), read_zip_member(&mut archive, i)?));
+            let bytes = read_zip_member(&mut archive, i)?;
+            // `OperationStorage.iwa` (newer iWork) is NOT an IWA snappy
+            // stream: it carries the collaboration operation log behind an
+            // LZFSE-style `bvxn` magic, and postdates all four reference
+            // parsers. Skip it by magic, visibly, never decode it as IWA.
+            if bytes.starts_with(OPERATION_STORAGE_MAGIC) {
+                non_iwa.push((m.name.clone(), m.size));
+            } else {
+                iwas.push((m.name.clone(), bytes));
+            }
         }
     }
 
     if iwas.is_empty() {
-        // Early-'13 flat variant: a member (any directory prefix) literally
         // named `Index.zip` that is itself a zip of the `.iwa` members —
         // gotcha #5, "a zip inside a zip".
         let nested = (0..archive.len()).find(|&i| {
@@ -190,13 +216,17 @@ fn scan_zip(
         if let Some(idx) = nested {
             let nested_name = archive.name_for_index(idx).unwrap_or("Index.zip").to_string();
             let nested_bytes = read_zip_member(&mut archive, idx)?;
-            let (n_members, n_iwas, _) =
-                scan_zip(nested_bytes, &format!("{label} → {nested_name}"))?;
-            return Ok((members, n_iwas, Some(n_members)));
+            let inner = scan_zip(nested_bytes, &format!("{label} → {nested_name}"))?;
+            return Ok(ScanOutcome {
+                members,
+                iwas: inner.iwas,
+                non_iwa: inner.non_iwa,
+                nested_members: Some(inner.members),
+            });
         }
     }
 
-    Ok((members, iwas, None))
+    Ok(ScanOutcome { members, iwas, non_iwa, nested_members: None })
 }
 
 impl Container {
@@ -230,10 +260,17 @@ impl Container {
         }
 
         match scan_zip(bytes, &label) {
-            Ok((members, iwas, nested)) if !iwas.is_empty() => {
-                let has_direct = members.iter().any(|m| is_iwa(&m.name));
-                let form = if has_direct { ContainerForm::FlatZip } else { ContainerForm::FlatZipNested };
-                Ok(Container { form, members, iwas, nested_members: nested })
+            Ok(outcome) if !outcome.iwas.is_empty() => {
+                let has_direct = outcome.members.iter().any(|m| is_iwa(&m.name));
+                let form =
+                    if has_direct { ContainerForm::FlatZip } else { ContainerForm::FlatZipNested };
+                Ok(Container {
+                    form,
+                    members: outcome.members,
+                    iwas: outcome.iwas,
+                    non_iwa: outcome.non_iwa,
+                    nested_members: outcome.nested_members,
+                })
             }
             Ok(_) => Err(Error::new(
                 Kind::Unsupported,
@@ -268,6 +305,7 @@ impl Container {
             form: ContainerForm::LegacyRaw,
             members,
             iwas: Vec::new(),
+            non_iwa: Vec::new(),
             nested_members: None,
         })
     }
@@ -300,8 +338,8 @@ impl Container {
         let bytes = fs::read(&index_zip).map_err(|e| {
             Error::new(Kind::Io, Layer::Container, format!("cannot read {}: {e}", index_zip.display()))
         })?;
-        let (members, iwas, nested) = scan_zip(bytes, &index_zip.display().to_string())?;
-        if iwas.is_empty() {
+        let outcome = scan_zip(bytes, &index_zip.display().to_string())?;
+        if outcome.iwas.is_empty() {
             return Err(Error::new(
                 Kind::Unsupported,
                 Layer::Container,
@@ -310,9 +348,10 @@ impl Container {
         }
         Ok(Container {
             form: ContainerForm::PackageDir,
-            members,
-            iwas,
-            nested_members: nested,
+            members: outcome.members,
+            iwas: outcome.iwas,
+            non_iwa: outcome.non_iwa,
+            nested_members: outcome.nested_members,
         })
     }
 }

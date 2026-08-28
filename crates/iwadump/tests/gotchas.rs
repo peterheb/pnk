@@ -510,3 +510,45 @@ fn build_zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
     let buf = w.finish().unwrap();
     buf.into_inner()
 }
+
+// ------------------------------------------ OperationStorage.iwa (bvxn magic)
+
+#[test]
+fn operation_storage_streams_are_skipped_by_magic() {
+    // Newer iWork writes `OperationStorage.iwa` with the LZFSE-style `bvxn`
+    // magic — a collaboration operation log, NOT an IWA snappy stream (no
+    // reference parser predates it; all 10 real fixtures that carry one have
+    // the magic). It must be skipped visibly, never decoded as IWA.
+    let mut opstorage = b"bvxn".to_vec();
+    opstorage.extend_from_slice(&[0u8; 40]);
+    let zip = build_zip(&[
+        ("Index/Document.iwa", &tiny_document_iwa()),
+        ("Index/OperationStorage.iwa", &opstorage),
+    ]);
+    let tmp = std::env::temp_dir().join(format!("iwadump-bvxn-{}", std::process::id()));
+    std::fs::create_dir_all(&tmp).unwrap();
+    let path = tmp.join("ops.key");
+    std::fs::write(&path, &zip).unwrap();
+    let container = Container::open(&path, false).unwrap();
+    assert_eq!(container.iwas.len(), 1);
+    assert_eq!(container.iwas[0].0, "Index/Document.iwa");
+    assert_eq!(container.non_iwa.len(), 1);
+    assert_eq!(container.non_iwa[0].0, "Index/OperationStorage.iwa");
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn iwpv2_member_rejects_as_encrypted() {
+    // Newer iWork encryption marker: fixture 2dccc804 carries `.iwpv2` with
+    // every stream but DocumentStylesheet.iwa being high-entropy ciphertext
+    // and no `.iwph`. Treat as the same encrypted class as `.iwph`.
+    let zip = build_zip(&[(".iwpv2", &[0u8; 8]), ("Index/Document.iwa", &tiny_document_iwa())]);
+    let tmp = std::env::temp_dir().join(format!("iwadump-iwpv2-{}", std::process::id()));
+    std::fs::create_dir_all(&tmp).unwrap();
+    let path = tmp.join("locked2.key");
+    std::fs::write(&path, &zip).unwrap();
+    let e = Container::open(&path, false).unwrap_err();
+    assert_eq!(e.kind, Kind::Encrypted);
+    assert!(e.message.contains("encrypted"), "{}", e.message);
+    std::fs::remove_file(&path).ok();
+}

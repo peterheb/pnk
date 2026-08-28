@@ -174,10 +174,13 @@ impl Document {
                 out.push_str(&format!("    … {} more (use --limit)\n", msgs.len() - shown));
             }
         }
+        for (name, size) in &self.container.non_iwa {
+            out.push_str(&format!(
+                "  {name} — operation storage (bvxn), not an IWA snappy stream; skipped ({size} B)\n"
+            ));
+        }
         out
     }
-
-
     /// Machine-readable JSON dump.
     pub fn render_json(&self, limit: Option<usize>) -> String {
         let mut j = Json::new();
@@ -245,6 +248,16 @@ impl Document {
             if shown < msgs.len() {
                 j.field_num("messages_omitted", (msgs.len() - shown) as u64);
             }
+            j.obj_end();
+        }
+        j.arr_end();
+        j.key("skipped_non_iwa");
+        j.arr_start();
+        for (name, size) in &self.container.non_iwa {
+            j.obj_start();
+            j.field_str("name", name);
+            j.field_num("size", *size);
+            j.field_str("reason", "operation storage (bvxn magic)");
             j.obj_end();
         }
         j.arr_end();
