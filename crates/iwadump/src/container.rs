@@ -42,7 +42,18 @@ pub struct Member {
     pub compressed_size: u64,
 }
 
-/// An opened iWork '13+ container: IWA streams ready for decode, plus the raw
+impl std::fmt::Debug for Container {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Container")
+            .field("form", &self.form)
+            .field("members", &self.members.len())
+            .field("iwas", &self.iwas.iter().map(|(n, b)| (n, b.len())).collect::<Vec<_>>())
+            .field("nested", &self.nested_members.is_some())
+            .finish()
+    }
+}
+
+ /// An opened iWork '13+ container: IWA streams ready for decode, plus the raw
 #[derive(Clone)]
 pub struct Container {
     pub form: ContainerForm,
@@ -96,7 +107,7 @@ fn read_zip_member<R: Read + std::io::Seek>(
     archive: &mut zip::ZipArchive<R>,
     index: usize,
 ) -> Result<Vec<u8>, Error> {
-    let mut f = archive.by_index_raw(index).map_err(|e| {
+    let mut f = archive.by_index(index).map_err(|e| {
         Error::new(Kind::Corrupt, Layer::Container, format!("cannot open container member: {e}"))
     })?;
     let mut buf = Vec::with_capacity(f.size() as usize);
