@@ -19,8 +19,8 @@ dist/
 !/fixtures/provenance.json
 !/fixtures/crawl.jsonl
 !/fixtures/success.tsv
-!/fixtures/ccrawl_gone.txt
 !/fixtures/README.md
+!/fixtures/golden/
 
 # Test output
 /test-results/
