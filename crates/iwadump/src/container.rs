@@ -43,7 +43,7 @@ pub struct Member {
 }
 
 /// An opened iWork '13+ container: IWA streams ready for decode, plus the raw
-/// member listing for `--list` / `--legacy-ok`.
+#[derive(Clone)]
 pub struct Container {
     pub form: ContainerForm,
     /// Member listing shown for `--list` (outer zip, or package `Index.zip`).
