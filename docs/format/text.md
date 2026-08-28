@@ -199,3 +199,61 @@ plain-text fallback only.
 Cross-reference: style objects and inheritance are covered in
 [styles.md](styles.md); snappy framing of the `.iwa` streams that carry storages in
 [iwa.md](iwa.md); known format traps in [gotchas.md](gotchas.md).
+
+## Style payload field shapes (added for the JSON model)
+
+### Alignment — the opaque TATvalue enum, mapped [parser: masaccio/numbers-parser@32387958]
+
+`TSWP.ParagraphStylePropertiesArchive.TextAlignmentType` is named TATvalue0..4
+with no semantic names in the proto. numbers-parser pins the mapping
+(src/numbers_parser/cell.py:145-149): **TATvalue0 = LEFT, TATvalue1 = RIGHT,
+TATvalue2 = CENTER, TATvalue3 = JUSTIFIED, TATvalue4 = AUTO**. Note the
+surprising 1=right / 2=center order — do not "fix" it by intuition.
+
+Vertical alignment uses `TSWP.ShapeStylePropertiesArchive.VerticalAlignmentType`
+(TSWPArchives.proto:496-503): kFrameAlignTop=0 / Middle=1 / Bottom=2 /
+Justify=3. `TST.CellStylePropertiesArchive.vertical_alignment` is an int32
+with the same 0..3 order [inferred: same enum family, no fixture check yet].
+
+### Character style payload [proto] TSWPArchives.proto:140-201 → TSWP.CharacterStylePropertiesArchive
+
+bold(1), italic(2), font_size(3), font_name(5) with `font_name_null`(4),
+font_color(7) with null flag(6), language(9), superscript(10), underline(11:
+none/single/double/wavy), strikethru(12: none/single/double/triple),
+capitalization(13: none/all-caps/small-caps/title), baseline_shift(14),
+kerning(15), ligatures(16), outline(19)+outline_color(18), shadow(21),
+strikethru_color(23)/width(24), background_color(26), tracking(27),
+underline_color(29)/width(30), word_strikethru(31), word_underline(32),
+font_features(34, repeated FontFeatureArchive), writing_direction(35),
+emphasis_marks(37), compatibility_font_name(39), tate_chu_yoko(42),
+tsd_stroke(44), tsd_fill(46). Most fields pair with an explicit `*_null`
+boolean — the TSS null-flag pattern of [styles.md](styles.md) applies
+throughout.
+
+### Paragraph style payload [proto] TSWPArchives.proto:227-298 → TSWP.ParagraphStylePropertiesArchive
+
+alignment(1), decimal_tab(3), default_tab_stops(4), fill(6 — paragraph
+background), first_line_indent(7), hyphenate(8), keep_lines_together(9),
+keep_with_next(10), left_indent(11), line_spacing(13), page_break_before(14),
+deprecated_borders(15), right_indent(19), space_after(20), space_before(21),
+tabs(25, TSWP.TabsArchive), widow_control(26), outline_level(27, uint32 —
+heading depth per the iwork2html heading detection), outline_style(28),
+following_style_id(30), stroke(32, paragraph border), show_in_toc(33),
+writing_direction(38), list_style(40, TSP.Reference), border_positions(45).
+
+- `TSWP.LineSpacingArchive` (448-460): `mode`
+  kRelativeLineSpacing=0/kMinimum=1/kExact=2/kMaximum=3/kSpaceBetween=4 +
+  `amount` (float; relative mode = multiple of line height [inferred]).
+- `TSWP.TabArchive` (411-420): position(float), alignment
+  left=0/center=1/right=2/decimal=3, `leader` (string — the fill characters).
+
+### List styles [proto] TSWPArchives.proto → TSWP.ListStyleArchive
+
+`label_types` (LabelType: none=0/image=1/string=2/number=3) per level,
+`number_types` — a ~65-value NumberType enum covering decimal, roman
+(upper/lower, 3 bracket styles each), alpha (upper/lower, 3 styles), and ~40
+locale-specific kinds (hiragana, katakana, iroha, ideographic JP/SC/TC,
+Korean, circled, Arabian, Hebrew), plus `strings` (literal marker text),
+`indents`/`text_indents`, and image labels (DataReference). A converter can
+map the latin/roman/alpha kinds by name and should degrade exotic locale
+kinds to a generic numbered marker rather than fail [inferred: policy].
