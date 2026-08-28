@@ -188,3 +188,81 @@ modeled in this proto]. [proto]
 `infos = 1` + `non_interactive_infos = 3` for multi-select. Chart selection
 adds `TSCH.ChartSelectionArchive` with a `super = 3` back-reference — see
 [charts.md](charts.md). [proto]
+
+## Visual property payloads — verified field shapes (added for the JSON model)
+
+The sections below record the exact proto shapes a converter needs to emit
+resolved styles. All claims are from the 15.3.1 otorp extraction unless noted.
+
+### TSP.Color [proto] .scratch/otorp/Keynote/TSPMessages.proto → TSP.Color
+
+- `model = 1`: `rgb = 1` / `cmyk = 2` / `white = 3`; `rgbspace = 12`:
+  `srgb = 1` / `p3 = 2` (wide gamut exists in the format).
+- rgb form: `r/g/b` floats 0..1 (fields 3-5); `a` float default **1** (field 6).
+- `headroom` float default **1** (field 13) — HDR headroom on top of the
+  rgb channels.
+- cmyk form: `c/m/y/k` (7-10); white form: `w` (11).
+- Not documented anywhere else in this doc set before this addition; a
+  converter must handle all three models plus p3/headroom (or degrade with a
+  warning) [inferred: conversion policy is ours].
+
+### TSP.Path — the universal curve form [proto] TSPMessages.proto → TSP.Path
+
+`Element { type = 1, points = 2 (repeated TSP.Point) }` with
+`ElementType { moveTo = 1, lineTo = 2, quadCurveTo = 3, curveTo = 4,
+closeSubpath = 5 }`. This is what `bezier_path_source.path` carries and what
+`LineEndArchive.path` uses — the natural target for "shapes as curves".
+
+### Fills [proto] TSDArchives.proto
+
+- `TSD.GradientArchive` (121-137): `type` Linear=0/Radial=1, repeated stops
+  `{ color = TSP.Color, fraction = float, inflection = float }`, `opacity`,
+  `advancedGradient`, plus `anglegradient = 5` → `TSD.AngleGradientArchive
+  { gradientangle = 2 (float) }` and `transformgradient = 6` →
+  `TSD.TransformGradientArchive { start = TSP.Point, end = TSP.Point,
+  baseNaturalSize = TSP.Size }` (111-119). The angle/transform sub-messages
+  are how a linear gradient's direction is stored.
+- `TSD.ImageFillArchive` (139-156): `technique` enum NaturalSize=0 (default),
+  Stretch=1, Tile=2, ScaleToFill=3, ScaleToFit=4; `tint` (TSP.Color),
+  `fillsize` (TSP.Size), `imagedata` (TSP.DataReference).
+
+### Strokes [proto] TSDArchives.proto
+
+- `TSD.StrokeArchive` (177-192): `color`, `width` (float), `cap` enum
+  ButtCap=0/RoundCap=1/SquareCap=2, `join` (`TSD.LineJoin` MiterJoin=0/
+  RoundJoin=1/BevelJoin=2, lines 8-12), `miter_limit`, `pattern`
+  (`TSD.StrokePatternArchive`: type TSDSolidPattern=1/TSDEmptyPattern=2,
+  `phase`, `count`, repeated float `pattern` = the dash array),
+  `smart_stroke` (named texture stroke with a parameter dictionary), `frame`,
+  `patterned_stroke`.
+- `TSD.LineEndArchive` (210-216): `path` (TSP.Path), `line_join` (default
+  MiterJoin), `end_point`, `is_filled`, `identifier` (string) — preset
+  arrowhead identity + optional explicit outline.
+
+### Shadows [proto] TSDArchives.proto 218-246
+
+`TSD.ShadowArchive`: `color`, `angle` float default **315**, `offset` float
+default **5**, `radius` **int32** default 1, `opacity` default 1,
+`is_enabled` default true, `type`: TSDDropShadow=0/TSDContactShadow=1/
+TSDCurvedShadow=2, plus per-type payloads: `TSD.DropShadowArchive` (empty),
+`TSD.ContactShadowArchive { height = 2 default 0.2, offset = 4 default 0 }`,
+`TSD.CurvedShadowArchive { curve = 1 default 0.6 }`.
+
+### Other style payloads [proto] TSDArchives.proto
+
+- `TSD.EdgeInsetsArchive` (14-19): required `top/left/bottom/right` floats.
+- `TSD.ReflectionArchive` (248-250): `opacity` default **0.5**.
+- `TSD.ShapeStylePropertiesArchive` (269-277): `fill`, `stroke`, `opacity`,
+  `shadow`, `reflection`, `head_line_end`, `tail_line_end` — the complete
+  shape style payload (fields 4/5 on ShapeArchive are deprecated duplicates
+  of the line ends).
+- `TSD.MediaStylePropertiesArchive` (285-290): same minus fill/line ends.
+
+### Blur — a negative result [inferred: grep over .scratch/otorp, 2026-08-28]
+
+There is **no static blur property** on any TSD/TSS style payload. The only
+blur in the format is the motion-blur parameter of Keynote build/transition
+effects (`KN.TransitionAttributesArchive.custom_motion_blur` +
+`custom_blur_amount`, KNArchives.proto:54-57,174-184; `KNArchives.sos.proto`
+carries `blur`/`color_blur_sigma` SOS spec values). Converters must not
+invent a static blur; the pnk model carries motion blur only on builds.
