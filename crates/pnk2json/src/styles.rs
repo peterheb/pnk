@@ -270,7 +270,10 @@ pub fn para_style_from(ctx: &mut Ctx, msgs: &[Msg]) -> ParaStyle {
         }
     }
     if let Some(m) = take(msgs, 27, None) {
-        s.outline_level = m.varint(27).map(|v| v as u32);
+        // Some writers store -1 (int32 sentinel) for "no outline level";
+        // that arrives as u32::MAX and must be treated as unset
+        // (contract: 0 = body, 1..5 = heading depth).
+        s.outline_level = m.varint(27).map(|v| v as u32).filter(|v| *v != u32::MAX);
     }
     if let Some(m) = take(msgs, 9, None) {
         s.keep_lines_together = m.boolean(9);
