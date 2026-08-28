@@ -15,7 +15,7 @@
 
 use std::fs;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::error::{Error, Kind, Layer};
 
@@ -55,8 +55,20 @@ impl std::fmt::Debug for Container {
             .field("members", &self.members.len())
             .field("iwas", &self.iwas.iter().map(|(n, b)| (n, b.len())).collect::<Vec<_>>())
             .field("nested", &self.nested_members.is_some())
+            .field("source", &self.source.is_some())
             .finish()
     }
+}
+
+/// Retained container source for non-IWA member reads (`Metadata/`, `Data/`):
+/// the flat file's raw bytes or the package directory root. Package-form
+/// members are real files beside `Index.zip` (docs/format/container.md).
+#[derive(Clone, Debug)]
+pub enum Source {
+    /// Full bytes of the flat-file ZIP (outer zip; also the FlatZipNested case).
+    Flat(Vec<u8>),
+    /// Package directory root.
+    Dir(PathBuf),
 }
 
  /// An opened iWork '13+ container: IWA streams ready for decode, plus the raw
@@ -73,6 +85,8 @@ pub struct Container {
     /// When the early-'13 nested `Index.zip` variant supplied the streams, the
     /// nested zip's own member listing.
     pub nested_members: Option<Vec<Member>>,
+    /// Retained source for `read_member`. `None` only for `LegacyRaw` listings.
+    pub source: Option<Source>,
 }
 
 /// Result of walking one ZIP: member listing, decodable IWA streams, and any
@@ -261,6 +275,9 @@ impl Container {
             }
         }
 
+        // Retained so `read_member` can fetch non-IWA members (Metadata/, Data/)
+        // without re-reading the file; scan_zip consumes the bytes.
+        let keep = bytes.clone();
         match scan_zip(bytes, &label) {
             Ok(outcome) if !outcome.iwas.is_empty() => {
                 let has_direct = outcome.members.iter().any(|m| is_iwa(&m.name));
@@ -272,6 +289,7 @@ impl Container {
                     iwas: outcome.iwas,
                     non_iwa: outcome.non_iwa,
                     nested_members: outcome.nested_members,
+                    source: Some(Source::Flat(keep)),
                 })
             }
             Ok(_) => Err(Error::new(
@@ -309,6 +327,7 @@ impl Container {
             iwas: Vec::new(),
             non_iwa: Vec::new(),
             nested_members: None,
+            source: None,
         })
     }
 
@@ -354,6 +373,109 @@ impl Container {
             iwas: outcome.iwas,
             non_iwa: outcome.non_iwa,
             nested_members: outcome.nested_members,
+            source: Some(Source::Dir(dir.to_path_buf())),
         })
+    }
+
+    /// Read one non-IWA member by name (e.g. `Metadata/Properties.plist`,
+    /// `Data/photo.jpg`). Flat forms read the outer ZIP; under the early-'13
+    /// nested `Index.zip` variant a member the outer zip hides is looked up in
+    /// the nested zip. Package dirs read the real file beside `Index.zip`.
+    pub fn read_member(&self, name: &str) -> Result<Vec<u8>, Error> {
+        match &self.source {
+            Some(Source::Flat(bytes)) => {
+                match Self::member_from_zip(bytes, name) {
+                    Ok(bytes) => Ok(bytes),
+                    Err(first) if self.form == ContainerForm::FlatZipNested => {
+                        let Some(nested_name) = self
+                            .members
+                            .iter()
+                            .find(|m| m.name.ends_with("Index.zip"))
+                            .map(|m| m.name.clone())
+                        else {
+                            return Err(first);
+                        };
+                        let nested = Self::member_from_zip(bytes, &nested_name)?;
+                        Self::member_from_zip(&nested, name).map_err(|_| first)
+                    }
+                    Err(e) => Err(e),
+                }
+            }
+            Some(Source::Dir(root)) => fs::read(root.join(name)).map_err(|e| {
+                Error::new(Kind::Io, Layer::Container, format!("member {name}: {e}"))
+            }),
+            None => Err(Error::new(
+                Kind::Io,
+                Layer::Container,
+                "no retained source (legacy raw listing only)".to_string(),
+            )),
+        }
+    }
+
+    /// Read one member from in-memory ZIP bytes: exact name first, then a
+    /// directory-prefix-insensitive suffix match (`Data/x.jpg` vs `x.jpg`).
+    fn member_from_zip(bytes: &[u8], name: &str) -> Result<Vec<u8>, Error> {
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
+            .map_err(|e| not_a_zip("member source", e))?;
+        let mut exact = None;
+        let mut suffix = None;
+        for i in 0..archive.len() {
+            let Ok(f) = archive.by_index_raw(i) else { continue };
+            let fname = f.name().to_string();
+            if fname == name {
+                exact = Some(i);
+                break;
+            }
+            if suffix.is_none() && fname.ends_with(&format!("/{name}")) {
+                suffix = Some(i);
+            }
+        }
+        let index = exact.or(suffix).ok_or_else(|| {
+            Error::new(Kind::Io, Layer::Container, format!("member not found: {name}"))
+        })?;
+        read_zip_member(&mut archive, index)
+    }
+}
+
+#[cfg(test)]
+mod member_tests {
+    use super::*;
+    use std::io::Write as _;
+
+    /// Hermetic early-'13 nested fixture: outer zip = `Index.zip` (one fake
+    /// .iwa inside) + `Metadata/Properties.plist`. Streams must come from the
+    /// nested member; `read_member` must fetch the plist from the outer zip.
+    fn nested_fixture_bytes() -> Vec<u8> {
+        let mut inner = Vec::new();
+        {
+            let mut w = zip::ZipWriter::new(std::io::Cursor::new(&mut inner));
+            w.start_file("Index/Document.iwa", zip::write::SimpleFileOptions::default()).unwrap();
+            w.write_all(b"not-really-snappy").unwrap();
+            w.finish().unwrap();
+        }
+        let mut outer = Vec::new();
+        {
+            let mut w = zip::ZipWriter::new(std::io::Cursor::new(&mut outer));
+            w.start_file("Index.zip", zip::write::SimpleFileOptions::default()).unwrap();
+            w.write_all(&inner).unwrap();
+            w.start_file("Metadata/Properties.plist", zip::write::SimpleFileOptions::default())
+                .unwrap();
+            w.write_all(b"<plist/>").unwrap();
+            w.finish().unwrap();
+        }
+        outer
+    }
+
+    #[test]
+    fn read_member_reads_outer_zip_in_nested_variant() {
+        let dir = std::env::temp_dir().join(format!("iwadump-member-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("t.key");
+        std::fs::write(&path, nested_fixture_bytes()).unwrap();
+        let c = Container::open(&path, false).unwrap();
+        assert_eq!(c.form, ContainerForm::FlatZipNested);
+        assert_eq!(c.read_member("Metadata/Properties.plist").unwrap(), b"<plist/>");
+        assert!(c.read_member("Data/missing.jpg").is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }
