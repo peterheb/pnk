@@ -1,0 +1,614 @@
+/**
+ * pnk JSON document models — shared structures.
+ *
+ * Text (TSWP), drawables (TSD), tables (TST), charts (TSCH) and the calc
+ * engine (TSCE) placeholder — used by all three document models.
+ *
+ * Conventions (see primitives.ts header + docs/model-design.md):
+ *  - units: pt / degrees / #rrggbb / ISO 8601
+ *  - `field?: T` = not specified; `field: T | null` = explicitly unset
+ *  - no object ids, no TSP.References, no attribute-table offsets:
+ *    styles are resolved and inlined, references are embedded objects
+ *  - tagged unions with a `type`/`kind` string discriminant (serde-friendly)
+ */
+
+
+import type {
+  CharStyle,
+  CurvePath,
+  Fill,
+  HexColor,
+  IsoDateString,
+  LineEnd,
+  MediaRef,
+  ParaStyle,
+  Point,
+  Reflection,
+  Shadow,
+  Size,
+  Stroke,
+  VerticalAlignment,
+} from "./primitives";
+import type { KeynoteDocument } from "./keynote";
+import type { NumbersDocument } from "./numbers";
+import type { PagesDocument } from "./pages";
+
+// Everything in primitives is part of the public model surface.
+export * from "./primitives";
+// ---------------------------------------------------------------------------
+// Root envelope
+// ---------------------------------------------------------------------------
+export interface Warning {
+  /** Stable machine code, e.g. "unknown-object-type". */
+  code: WarningCode;
+  /** Human-readable explanation, self-contained. */
+  message: string;
+  /**
+   * Where the warning applies: a model path like `sheets[0].drawables[3]`
+   * (converter-defined, best effort).
+   */
+  path?: string;
+  /** Original object type id / registry name, when the warning is about one. */
+  detail?: string;
+}
+
+/** Which app produced the document. */
+export type AppKind = "pages" | "numbers" | "keynote";
+
+export type WarningCode =
+  /** A TSP.MessageInfo.type id had no trusted registry entry. */
+  | "unknown-object-type"
+  /** Known object type whose payload did not decode. */
+  | "undecodable-object"
+  /** A TSP.Reference / DataReference pointed nowhere. */
+  | "unresolved-reference"
+  /** Content exists but the viewer model cannot represent it faithfully. */
+  | "unsupported-feature"
+  /** Media bytes missing from Data/ or the registry. */
+  | "media-missing"
+  /** Color fell outside sRGB or HDR headroom was clamped. */
+  | "color-degraded"
+  /** Pre-UFF / legacy structures best-effort decoded. */
+  | "legacy-variant"
+  /** Table with pre-BNC storage or other degraded decode. */
+  | "table-degraded"
+  /** Formula AST present but not converted to text. */
+  | "formula-unparsed";
+
+/** Page/canvas orientation. [proto: orientation flag; numbers in_portrait_page_orientation] */
+export type PageLayoutOrientation = "portrait" | "landscape";
+
+/** One embedded media asset from the container's `Data/` store. */
+export interface MediaAsset {
+  /** DataInfo identifier (uint64 as decimal string). */
+  dataId: string;
+  /** Member name under `Data/` (or in the package directory). */
+  fileName?: string;
+  /** User-facing original file name. */
+  preferredFileName?: string;
+  kind: "image" | "movie" | "audio" | "pdf" | "other";
+  /** Byte length when materialized. */
+  byteLength?: number;
+  /** Pixel dimensions for images. */
+  pixelSize?: Size;
+}
+
+/**
+ * Document-level metadata, resolved from `Metadata/Properties.plist`,
+ * `Metadata/BuildVersionHistory.plist`, `Metadata/DocumentIdentifier` and
+ * `TSP.PackageMetadata` (object id 2). See docs/format/container.md.
+ */
+export interface DocumentMeta {
+  app: AppKind;
+  /** App that last saved the file, e.g. "Pages" [proto/Properties.plist Application]. */
+  application?: string;
+  /** fileFormatVersion string from Properties.plist. */
+  fileFormatVersion?: string;
+  /**
+   * Build version history: last entries of BuildVersionHistory.plist,
+   * oldest → newest. Useful for feature gating.
+   */
+  buildVersionHistory?: string[];
+  /** Document UUID (Metadata/DocumentIdentifier or PackageMetadata.revision). */
+  documentId?: string;
+  createdAt?: IsoDateString;
+  modifiedAt?: IsoDateString;
+  /** Author string if the source carries one. */
+  author?: string;
+  /** Locale identifier from TSK.DocumentArchive. [proto] */
+  locale?: string;
+}
+
+/** Text-entry gate for viewers: deduped font names used in the document. */
+export type FontList = string[];
+
+/**
+ * The root shape every converter emits — exactly one of the three flavors,
+ * each carrying the same envelope fields.
+ */
+export type PnkDocument = PagesDocument | NumbersDocument | KeynoteDocument;
+
+// Envelope field block shared by the three document roots (structurally;
+// each concrete root redeclares these to stay JSON-flat).
+export interface DocumentEnvelope {
+  meta: DocumentMeta;
+  /** Anything dropped/unknown/degraded — machine-readable, never silent. */
+  warnings: Warning[];
+  /** Deduped, sorted font names referenced anywhere in the document. */
+  fonts: FontList;
+  /** All embedded media assets (the `Data/` inventory), for one-pass fetching. */
+  media: MediaAsset[];
+}
+
+// ---------------------------------------------------------------------------
+// Text model (TSWP) — styled paragraphs/runs, fully resolved, no offsets
+// ---------------------------------------------------------------------------
+
+/**
+ * A block of rich text. Source is a `TSWP.StorageArchive`: one character
+ * buffer + attribute tables mapping UTF-16 offsets to styles/attachments.
+ * The converter SPLITS the buffer at paragraph boundaries (newlines) and at
+ * character-style entry offsets, inlining the resolved style on each run
+ * — no character indexes survive (docs/model-design.md §Flattening).
+ * [proto: .scratch/otorp/Keynote/TSWPArchives.proto → TSWP.StorageArchive;
+ *  splitting verified in docs/format/text.md]
+ */
+export interface StyledText {
+  paragraphs: Paragraph[];
+}
+
+export interface Paragraph {
+  style: ParaStyle;
+  /** Content items in visual order. */
+  items: ParagraphItem[];
+}
+
+export type ParagraphItem = TextRun | InlineObjectRun | FieldRun;
+
+export interface TextRun {
+  type: "text";
+  text: string;
+  /** Resolved character style; all-optional fields. */
+  style: CharStyle;
+  /** Hyperlink target when the run is a link. [proto: HyperlinkFieldArchive] */
+  hyperlink?: string;
+  /** Language override for this run (rare; usually on style). */
+  language?: string;
+}
+
+/**
+ * An inline attachment — the U+FFFC OBJECT REPLACEMENT CHARACTER position in
+ * the source text [proto + parser: docs/format/text.md §Attachments]. The
+ * drawable itself (image/shape/table/…) is embedded right here.
+ */
+export interface InlineObjectRun {
+  type: "inline-object";
+  /** The attached drawable, fully resolved. */
+  drawable: Drawable;
+  /** Anchor offsets in points. [proto: TSWP.DrawableAttachmentArchive h/v_offset] */
+  offset?: { hPt?: number; vPt?: number };
+}
+
+/**
+ * A smart field that renders as text (page number, page count, footnote mark,
+ * date). Source: TSWP smart-field archives
+ * [proto: docs/format/text.md §Fields].
+ */
+export interface FieldRun {
+  type: "field";
+  style: CharStyle;
+  /** Current rendered value as stored, when present. */
+  value?: string;
+  field:
+    | { kind: "page-number" }
+    | { kind: "page-count" }
+    | { kind: "footnote-mark" }
+    | { kind: "date"; updatePlan: "never" | "auto" | "once" }
+    | { kind: "other"; detail?: string };
+}
+
+// ---------------------------------------------------------------------------
+// Drawables (TSD) — everything placeable on a canvas
+// ---------------------------------------------------------------------------
+
+/**
+ * Common geometry + styling of every drawable. Source: `TSD.DrawableArchive`
+ * [proto: .scratch/otorp/Keynote/TSDArchives.proto:321-335] — position/size
+ * from `TSD.GeometryArchive` (angle in RADIANS there, degrees here),
+ * plus link/lock/wrap attributes.
+ */
+export interface DrawableCommon {
+  /** Bounding position in canvas coordinates (points). */
+  position?: Point;
+  /** Natural size in points. */
+  size?: Size;
+  /** Rotation in degrees (converted from proto radians), counterclockwise. */
+  angleDeg?: number;
+  /** Horizontal/vertical mirroring of the shape source. [proto: PathSourceArchive flips] */
+  flipped?: { horizontal?: boolean; vertical?: boolean };
+  hyperlink?: string;
+  locked?: boolean;
+  accessibilityDescription?: string;
+  /** Wrap text around this object's outline. [proto: TSD.ExteriorTextWrapArchive] */
+  textWrap?: {
+    kind: "none" | "around" | "above-below" | "left" | "right" | "largest";
+    marginPt?: number;
+  };
+  /** Visual styling (resolved; undefined = no styling specified). */
+  style?: DrawableStyle;
+  /** Opacity 0..1. [proto: ShapeStylePropertiesArchive.opacity] */
+  opacity?: number;
+  shadow?: Shadow;
+  reflection?: Reflection;
+}
+
+/** Resolved drawable styling (TSD.ShapeStylePropertiesArchive / MediaStylePropertiesArchive). */
+export interface DrawableStyle {
+  fill?: Fill;
+  stroke?: Stroke;
+  lineEnds?: { head?: LineEnd; tail?: LineEnd };
+}
+
+/**
+ * The drawable union. `unknown` carries payloads the converter could not
+ * decode — never silently dropped (see docs/model-design.md §Dropped).
+ */
+export type Drawable =
+  | ShapeDrawable
+  | TextboxDrawable
+  | ImageDrawable
+  | MovieDrawable
+  | GroupDrawable
+  | ConnectionLineDrawable
+  | TableDrawable
+  | ChartDrawable
+  | UnknownDrawable;
+
+export interface ShapeDrawable {
+  type: "shape";
+  common: DrawableCommon;
+  /** Geometry as explicit curves / preset parameters — see ShapeGeometry. */
+  geometry: ShapeGeometry;
+  /** Text typed inside the shape, if any (resolved from the owned storage). */
+  text?: StyledText;
+  /** Vertical alignment of the shape's text. [proto: TSWP.ShapeStylePropertiesArchive] */
+  verticalAlignment?: VerticalAlignment;
+  /** Text insets. [proto: TSWP text insets] */
+  textInsets?: { top?: number; left?: number; bottom?: number; right?: number };
+}
+
+export interface TextboxDrawable {
+  type: "textbox";
+  common: DrawableCommon;
+  text: StyledText;
+  verticalAlignment?: VerticalAlignment;
+  textInsets?: { top?: number; left?: number; bottom?: number; right?: number };
+}
+
+/**
+ * Shape geometry, flattened from the six `TSD.PathSourceArchive` variants
+ * [proto: .scratch/otorp/Keynote/TSDArchives.proto:98-119 + 28-96].
+ * Priority: explicit `path` (bezier/editable bezier) wins; otherwise a preset
+ * shape is named and the viewer renders it; `naturalSize` is the preset's
+ * design size (scale to the drawable's size).
+ */
+export interface ShapeGeometry {
+  /** Preset shape identifier, e.g. "star", "plus", "left-arrow", "rounded-rect", "chevron", "callout". */
+  preset?: string;
+  /**
+   * Preset parameter: corner radius for rounded-rect, pointiness for star
+   * (source `ScalarPathSourceArchive.scalar`) [inferred: semantic per docs/format/drawables.md].
+   */
+  scalar?: number;
+  /** Design size of the preset/path source. */
+  naturalSize?: Size;
+  /**
+   * Explicit path when the source carried bezier data (converted to curves).
+   * Coordinates are in `naturalSize` space (or drawable space when no
+   * naturalSize was given).
+   */
+  path?: CurvePath;
+  /** Callout tail parameters. [proto: TSD.CalloutPathSourceArchive] */
+  callout?: {
+    tailPosition: Point;
+    tailSize: Size;
+    cornerRadius?: number;
+    centerTail?: boolean;
+  };
+}
+
+export interface ImageDrawable {
+  type: "image";
+  common: DrawableCommon;
+  /** Primary image bytes (resolved DataReference). */
+  image: MediaRef;
+  /** Original (pre-adjustment) image when stored separately. */
+  original?: MediaRef;
+  /** Thumbnail when stored separately. */
+  thumbnail?: MediaRef;
+  /** SVG source when the "image" was imported from SVG. */
+  svg?: MediaRef;
+  /** Natural (untransformed) size in points. */
+  naturalSize?: Size;
+  /** Clipping mask as a drawable-shaped path. [proto: TSD.ImageArchive.mask] */
+  mask?: { geometry: ShapeGeometry; common: DrawableCommon };
+  /** Non-destructive image adjustments. [proto: TSD.ImageAdjustmentsArchive] */
+  adjustments?: {
+    exposure?: number;
+    saturation?: number;
+    contrast?: number;
+    highlights?: number;
+    shadows?: number;
+    brightness?: number;
+    [key: string]: number | undefined;
+  };
+}
+
+export interface MovieDrawable {
+  type: "movie";
+  common: DrawableCommon;
+  /** Movie bytes (resolved DataReference), when embedded. */
+  movie?: MediaRef;
+  /** Remote URL for linked/streaming movies. [proto: movieRemoteURL] */
+  remoteUrl?: string;
+  /** Poster frame image. */
+  poster?: MediaRef;
+  /** Audio-only movies keep a poster image. [proto: audioOnly] */
+  audioOnly?: boolean;
+  /** Trim range in seconds. [proto: startTime/endTime/posterTime] */
+  trim?: { start?: number; end?: number; posterTime?: number };
+  loop?: "none" | "repeat" | "back-and-forth";
+  /** Playback volume 0..1. */
+  volume?: number;
+}
+
+export interface GroupDrawable {
+  type: "group";
+  common: DrawableCommon;
+  /**
+   * Children with coordinates in the GROUP's coordinate space
+   * (proto children carry absolute geometry; the converter re-bases them so
+   * a group can be moved as one — docs/model-design.md §Flattening).
+   */
+  children: Drawable[];
+  /** Freehand drawing metadata when this group is one. [proto: TSD.FreehandDrawingArchive ext 100] */
+  freehand?: { opacity?: number; animation?: { duration?: number; loop?: boolean } };
+}
+
+/** A connector line between two drawables. [proto: TSD.ConnectionLineArchive] */
+export interface ConnectionLineDrawable {
+  type: "connection-line";
+  common: DrawableCommon;
+  /**
+   * Routing as explicit curves (quadratic or orthogonal), in canvas space.
+   * The proto stores the two endpoints as object references; the converter
+   * resolves both anchors and bakes their positions into the path.
+   */
+  path: CurvePath;
+  /** The shape this connector was attached to, as an embedded copy when the
+   * target resolved; its `common.position/size` are the anchor facts. */
+  from?: Pick<DrawableCommon, "position" | "size">;
+  to?: Pick<DrawableCommon, "position" | "size">;
+}
+
+/** Table on a canvas — the wrapper (TST.TableInfoArchive) around a TableModel. */
+export interface TableDrawable {
+  type: "table";
+  common: DrawableCommon;
+  table: TableModel;
+}
+
+/** Chart on a canvas — TSCH.ChartDrawableArchive with its model resolved. */
+export interface ChartDrawable {
+  type: "chart";
+  common: DrawableCommon;
+  chart: ChartModel;
+}
+
+/** A drawable the converter recognized but could not model. */
+export interface UnknownDrawable {
+  type: "unknown";
+  common?: DrawableCommon;
+  /** Registry type id, hex string (e.g. "0x1a2b") — never guessed names. */
+  typeId: string;
+  /** Registry message name when a trusted table had one. */
+  typeName?: string;
+  reason: string;
+}
+
+// ---------------------------------------------------------------------------
+// Tables (TST) — data resolved, styles inlined
+// ---------------------------------------------------------------------------
+
+/**
+ * A table, resolved from TST.TableModelArchive + DataStore + tiles
+ * (docs/format/tables.md). Dimensions and header counts are explicit; cells
+ * are addressed by [row, column]; values are the LAST CALCULATED results —
+ * the model never re-evaluates formulas (docs/format/calcengine.md).
+ */
+export interface TableModel {
+  /** Display name. [proto: TableModelArchive.table_name] */
+  name?: string;
+  rowCount: number;
+  columnCount: number;
+  headerRowCount: number;
+  headerColumnCount: number;
+  footerRowCount: number;
+  /** Frozen header rows/cols (scroll behavior). */
+  headerRowsFrozen?: boolean;
+  headerColumnsFrozen?: boolean;
+  /** Per-row sizes/hidden flags, length = rowCount (absent entries = default). */
+  rows?: RowColInfo[];
+  /** Per-column widths/hidden flags, length = columnCount. */
+  columns?: RowColInfo[];
+  /** Default row height / column width in points. [proto: fields 16/17] */
+  defaultRowHeightPt?: number;
+  defaultColumnWidthPt?: number;
+  /**
+   * Present cells, sparse: only non-empty cells are listed, row-major.
+   * Cell values are the stored last-calculated results.
+   */
+  cells: TableCell[];
+  /** Merged regions; only the anchor cell carries content in `cells`. */
+  merges: TableMerge[];
+  /** Resolved table-level look. */
+  style?: TableStyle;
+}
+
+export interface RowColInfo {
+  /** Size in points. */
+  sizePt?: number;
+  hidden?: boolean;
+}
+
+export interface TableCell {
+  row: number;
+  column: number;
+  /** The cell value, tagged. `empty` cells are omitted from `cells`. */
+  value: CellValue;
+  /** Resolved look of this cell (fill, per-side borders, padding, wrap). */
+  style?: CellStyle;
+  /** Number/format hint applied to the raw value. */
+  format?: CellFormat;
+  /** Formula placeholder when the cell computes its value. */
+  formula?: TsceFormulaRef;
+}
+
+/** Tagged cell value. Dates/durations are pre-converted (ISO / seconds). */
+export type CellValue =
+  | { type: "empty" }
+  | { type: "number"; value: number }
+  | { type: "text"; value: string }
+  | { type: "bool"; value: boolean }
+  | { type: "date"; value: IsoDateString }
+  | { type: "duration"; value: number }
+  | { type: "currency"; value: number; currencyCode?: string }
+  /** Rich text inside a cell. */
+  | { type: "richtext"; text: StyledText }
+  /** Stored formula error. */
+  | { type: "error"; value: string };
+
+/** Resolved per-cell look (TST.CellStylePropertiesArchive + text style). */
+export interface CellStyle {
+  fill?: Fill;
+  /** Per-side borders; undefined side = no explicit border. */
+  borders?: {
+    top?: Stroke;
+    right?: Stroke;
+    bottom?: Stroke;
+    left?: Stroke;
+  };
+  verticalAlignment?: VerticalAlignment;
+  text?: CharStyle;
+  paragraph?: ParaStyle;
+  textWrap?: boolean;
+  padding?: { top?: number; left?: number; bottom?: number; right?: number };
+}
+
+/** Number format descriptor (kept simple; custom formats degrade to a hint). */
+export interface CellFormat {
+  kind: "number" | "currency" | "percent" | "date" | "duration" | "text" | "custom" | "automatic";
+  /** Decimal places for number-like kinds. */
+  decimals?: number;
+  /** Currency code for currency (e.g. "USD") when known. */
+  currencyCode?: string;
+  /** Raw custom format string when kind = "custom". */
+  formatString?: string;
+}
+
+/** Merged region: anchor (top-left) + span. [proto: TST.MergeRegionMapArchive CellRange] */
+export interface TableMerge {
+  anchorRow: number;
+  anchorColumn: number;
+  rowSpan: number;
+  columnSpan: number;
+}
+
+/** Resolved table-level styling (TST.TableStylePropertiesArchive subset a viewer needs). */
+export interface TableStyle {
+  bandedRows?: boolean;
+  bandedFill?: Fill;
+  /** Default look for body cells (per-cell style overrides this). */
+  bodyCellStyle?: CellStyle;
+  /** Default look for header-row / header-column cells. */
+  headerRowCellStyle?: CellStyle;
+  headerColumnCellStyle?: CellStyle;
+  footerRowCellStyle?: CellStyle;
+}
+
+// ---------------------------------------------------------------------------
+// Charts (TSCH) — type + inline data, rendering deferred
+// ---------------------------------------------------------------------------
+
+/**
+ * A chart, resolved from TSCH.ChartArchive. Data is INLINED: when the chart
+ * carries a private grid (`TSCH.ChartGridArchive`) the series values are
+ * right here; when the chart is bound to a table (Numbers mediator), the
+ * binding is recorded as a `dataBinding` placeholder and `dataStatus`
+ * explains what the viewer can expect. Rendering (axes, ticks, legends) is
+ * the viewer's job — the model carries type + data + minimal style hints.
+ * [proto: docs/format/charts.md]
+ */
+export interface ChartModel {
+  /** Chart type, normalized from the ~27-value TSCH.ChartType enum. */
+  type: ChartType;
+  /** True when the type is a 3D variant. */
+  threeD: boolean;
+  /** Series values are present inline / referenced from a table / unavailable. */
+  dataStatus: "inline" | "table-bound" | "unavailable";
+  /** Category labels (x axis), after applying `seriesDirection`. */
+  categories: string[];
+  /** Series, values aligned with `categories` (same length when inline). */
+  series: ChartSeries[];
+  /** Legend frame in canvas points, when stored. */
+  legendFrame?: { x: number; y: number; width: number; height: number };
+  legendVisible?: boolean;
+  /** Series colors as stored in per-series styles, best effort. */
+  seriesColors?: HexColor[];
+  /** Numbers-only: the table this chart reads from, as a placeholder. */
+  dataBinding?: TsceFormulaRef;
+  /** Scatter layout. [proto: TSCH.ScatterFormat] */
+  scatterFormat?: "separate-x" | "shared-x";
+}
+
+export interface ChartSeries {
+  /** Series (legend) label. */
+  name?: string;
+  /** Values aligned with ChartModel.categories; holes are `null`. */
+  values: (number | IsoDateString | null)[];
+}
+
+/** Normalized chart types (from TSCH.ChartType, 2D and 3D variants collapsed). */
+export type ChartType =
+  | "column"
+  | "stacked-column"
+  | "bar"
+  | "stacked-bar"
+  | "line"
+  | "area"
+  | "stacked-area"
+  | "pie"
+  | "donut"
+  | "scatter"
+  | "bubble"
+  | "radar"
+  | "other";
+
+// ---------------------------------------------------------------------------
+// TSCE placeholder — formulas stay opaque
+// ---------------------------------------------------------------------------
+
+/**
+ * A formula reference, deliberately OPAQUE (pnk does not decompile TSCE ASTs
+ * — docs/format/calcengine.md). The last-calculated VALUE is already in the
+ * cell/chart data; this placeholder only records that a formula existed.
+ */
+export interface TsceFormulaRef {
+  /** Identity of the formula in the source (e.g. the TableDataList key). */
+  id: string;
+  status: "unparsed";
+  /** Formula text when trivially recoverable; usually absent. */
+  sourceText?: string;
+  /** Always set: what the viewer should surface instead of a live formula. */
+  warning: Warning;
+}
