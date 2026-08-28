@@ -1,0 +1,23 @@
+# Rust
+/target
+
+# Node
+node_modules/
+dist/
+
+# macOS
+.DS_Store
+
+# Local harness config
+/.omp/
+
+# Reference checkouts / scratch
+/.scratch/
+
+# Downloaded iWork fixtures (large binaries) — provenance stays tracked
+/fixtures/*
+!/fixtures/provenance.json
+
+# Test output
+/test-results/
+/playwright-report/
