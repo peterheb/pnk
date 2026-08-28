@@ -32,9 +32,11 @@ pub enum ContainerForm {
     LegacyRaw,
 }
 
-/// `OperationStorage.iwa` magic ("bvxn"): newer-iWork collaboration operation
-/// log, not an IWA snappy stream. Observed in 10 of the 968 modern fixtures.
-const OPERATION_STORAGE_MAGIC: &[u8] = b"bvxn";
+/// LZFSE block magic prefix ("bvx…"): newer-iWork `OperationStorage.iwa`
+/// streams start with one of `bvx-` (uncompressed block) / `bvx1` / `bvx2` /
+/// `bvxn` (end marker) — a collaboration operation log, not an IWA snappy
+/// stream. Observed in 10 of the 968 modern fixtures (8× `bvx-`, 2× `bvxn`).
+const OPERATION_STORAGE_MAGIC: &[u8] = b"bvx";
 
 /// One entry of the container's member listing. Names are UTF-8: the zip crate
 /// re-decodes cp437 names when the ZIP UTF-8 flag is absent (the cp437 hazard
