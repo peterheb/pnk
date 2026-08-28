@@ -8,6 +8,7 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
+snap = "1"
 
 [lib]
 name = "iwadump"
