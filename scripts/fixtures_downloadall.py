@@ -59,10 +59,13 @@ def log(msg: str) -> None:
     print(msg, flush=True)
 
 
-def http_get(url: str, range_: tuple[int, int] | None = None, tries: int = 4,
+def http_get(url: str, range_: tuple[int, int] | None = None, tries: int = 6,
              timeout: int = 60) -> bytes:
     """GET with exponential backoff + jitter. Raises urllib.error.HTTPError on
-    404/410 immediately (origin genuinely gone); retries transient failures."""
+    404/410 immediately (origin genuinely gone). Transient failures retry with
+    short backoff; CDN rate-limit signals (403/429/503 — data.commoncrawl.org
+    WAF-blocks IPs that burst, verified from EC2) get a long escalating
+    cool-down instead."""
     headers = {"User-Agent": UA}
     if range_ is not None:
         headers["Range"] = f"bytes={range_[0]}-{range_[1]}"
@@ -76,6 +79,9 @@ def http_get(url: str, range_: tuple[int, int] | None = None, tries: int = 4,
             if e.code in (404, 410):
                 raise
             last = e
+            if e.code in (403, 429, 503):
+                time.sleep(min(120.0, 10.0 * 2 ** attempt) + random.uniform(1.0, 5.0))
+                continue
         except Exception as e:  # noqa: BLE001
             last = e
         if attempt + 1 < tries:
@@ -352,10 +358,13 @@ def classify(payload: bytes, rec: dict) -> tuple[str, str, str, bytes]:
 # --------------------------------------------------------------------- worker
 
 def fetch_record(rec: dict, cc_slot: threading.Semaphore,
-                 origin_slot: threading.Semaphore) -> dict:
+                 origin_slot: threading.Semaphore,
+                 cc_delay: float = 0.0) -> dict:
     """Download + verify + classify one capture; returns the result dict
     including payload bytes. cc_slot gates Common Crawl range fetches
-    (moderate), origin_slot gates origin-server refetches (gentle <=3)."""
+    (moderate), origin_slot gates origin-server refetches (gentle <=3).
+    cc_delay adds a random pre-request pause (seconds) to smooth bursts —
+    CloudFront rate-blocks AWS IPs that hammer it."""
     local_id = rec["local_id"]
     warc_url = f"{CC_BASE}/{rec['warc_file']}"
     range_ = (rec["warc_offset"], rec["warc_offset"] + rec["warc_length"] - 1)
@@ -375,6 +384,8 @@ def fetch_record(rec: dict, cc_slot: threading.Semaphore,
             result["evidence"] += f"origin gone ({reason}): {type(e).__name__}"
 
     try:
+        if cc_delay > 0:
+            time.sleep(random.uniform(0, cc_delay))
         with cc_slot:
             ranged = http_get(warc_url, range_)
         payload, _uri = extract_warc_payload(ranged)
@@ -420,6 +431,9 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=0, help="max downloads this run (0 = all)")
     ap.add_argument("--cc-concurrency", type=int, default=8,
                     help="parallel Common Crawl range fetches")
+    ap.add_argument("--cc-delay", type=float, default=0.0,
+                    help="random pre-request pause in seconds (0-arg range) to "
+                         "smooth bursts; use ~1.0 when CloudFront rate-blocks")
     ap.add_argument("--origin-concurrency", type=int, default=3,
                     help="max parallel origin refetches (be gentle)")
     args = ap.parse_args()
@@ -464,10 +478,10 @@ def main() -> int:
     origin_slot = threading.Semaphore(args.origin_concurrency)
 
     counts = {"ok": 0, "gone": 0, "error": 0}
-    fmt_counts: dict[str, int] = {}
     legacy = 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.cc_concurrency) as pool:
-        futures = {pool.submit(fetch_record, rec, cc_slot, origin_slot): rec
+        futures = {pool.submit(fetch_record, rec, cc_slot, origin_slot,
+                               args.cc_delay): rec
                    for rec in todo}
         for i, fut in enumerate(concurrent.futures.as_completed(futures)):
             res = fut.result()
