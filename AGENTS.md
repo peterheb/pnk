@@ -31,14 +31,16 @@ email, no upload.
 
 ## Format primer (iWork '13+)
 
-- The file is a ZIP archive: `Index.zip` containing `Index/*.iwa` streams, QuickLook
-  previews (`preview.jpg`/`png`/`pdf`), `Metadata.plist`, `buildVersionHistory.plist`, media.
-- Each `.iwa` is a sequence of Snappy-compressed blocks with a 4-byte header:
-  u16 LE compressed size, u16 *big-endian* uncompressed size (historical quirk), then a raw
-  Snappy payload (NOT the Snappy "framing format").
-- Each block is a stream of protobuf messages wrapped in a TSP envelope:
-  varint length + `TSP.PrefixedMessage { 1: identifier, 2: length, 3: payload }`.
-  The first message is `TSP.ArchiveInfo`, mapping local ids → global registry type ids.
+- The document is a ZIP (flat file) or a package directory. Object database: `Index.zip`
+  (a flat file may instead nest a member literally named `Index.zip` — early '13 variant,
+  handle both), IWA members under `Index/`, metadata in `Metadata/Properties.plist` +
+  `Metadata/BuildVersionHistory.plist` (there is NO `Metadata.plist`), media in `Data/`,
+  QuickLook previews at root (`preview.jpg`/`png`/`pdf`). `.iwph` member = encrypted doc → reject.
+- Each `.iwa` is a sequence of Snappy-compressed blocks. Header is 4 bytes: one zero
+  chunk-type byte + u24 **LE** compressed length; NO uncompressed size in the header
+  (that is the leading varint of the raw Snappy block). Raw Snappy, NOT the framing format.
+- A block decompresses to `[varint length][TSP.ArchiveInfo]` followed by the payloads its
+  `MessageInfo`s declare — length-delimited, decodable or not. There is NO `TSP.PrefixedMessage`.
 - Namespaces: TSWP (text), TST (tables), TSD (drawables), TSCH (charts), TSCE (formulas),
   KN (Keynote), TSP (shared storage).
 - Legacy iWork (pre-13) is out of scope: detect and reject with a clear error.
@@ -48,7 +50,7 @@ email, no upload.
 ## Phases — each independently verifiable
 
 0. **Env & repo** ✅ — toolchain validated/installed, repo linked to github.com/peterheb/pnk.
-1. **Format docs** — `docs/format/*` from primary sources; every claim provenance-tagged.
+1. **Format docs** ✅ — 19 provenance-tagged docs in `docs/format/`; start at `INDEX.md`,
    Gate: INDEX.md covers all topics; sources recorded with SHAs and licenses.
 1b. **Fixtures** (parallel with 1) — real `.pages`/`.numbers`/`.key` from Common Crawl into
    `fixtures/` + `provenance.json` (URL, capture id, sha256). Gate: ≥5 files per format.
@@ -68,7 +70,7 @@ email, no upload.
 Real Keynote / Numbers / Pages as ground truth, installed locally. On disk they are the 2026
 "Creator Studio"-era bundles (`/Applications/Keynote Creator Studio.app`, `Numbers Creator Studio.app`,
 `Pages Creator Studio.app`; display names unchanged; bundle IDs moved from `com.apple.iWork.*`
-to `com.apple.*` per Daring Fireball 2026-04-14 — verify in Info.plist). Open fixtures in the
+to `com.apple.*` — verified in Info.plist: com.apple.Keynote / com.apple.Numbers / com.apple.Pages, all v15.3.1). Open fixtures in the
 apps with the `computer` tool and compare against our render, plus each file's embedded
 QuickLook `preview.pdf` as an offline reference. Playwright drives viewer screenshots.
 
