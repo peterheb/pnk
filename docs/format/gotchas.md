@@ -91,3 +91,20 @@ The 15.3.1 extraction contains parallel `*.sos.proto` files (e.g.
 Apple's internal "SOS"/sync-related schema variants. They are additive reading
 material, not a different on-disk format `[inferred: presence pattern only;
 not yet fixture-verified]`.
+
+## 11. `OperationStorage.iwa` is a collaboration log, not an IWA stream
+
+Newer iWork (15.x-era) documents carry `Index/OperationStorage.iwa` whose payload
+begins with LZFSE magic bytes — `bvx-` observed in 8 fixtures, `bvxn` in 2
+(variants `bvx1`/`bvx2` also exist). It is Apple's collaborative-editing
+operation log, NOT a Snappy-compressed TSP archive: block-framing parsers must
+detect the magic and skip/report it. iwadump treats it as container metadata.
+`[inferred: fixture-verified on 10 files via the iwadump dataset gate, 2026-08-28]`
+
+## 12. `.iwpv2` is a second, newer encryption marker
+
+Besides `.iwph` (the marker numbers-parser documents), fixture `2dccc804…`
+carries `Index/*.iwpv2` members with every stream ciphertext except
+`DocumentStylesheet`. Same class as `.iwph`: reject cleanly as
+password-protected. `[inferred: single fixture so far, 2026-08-28 — treat the
+`.iwp*` family as the encrypted class pending more samples]`

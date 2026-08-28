@@ -13,6 +13,7 @@ dist/
 
 # Reference checkouts / scratch
 /.scratch/
+/templates/
 
 /fixtures/*
 !/fixtures/provenance.json

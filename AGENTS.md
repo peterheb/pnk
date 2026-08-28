@@ -52,11 +52,11 @@ email, no upload.
 0. **Env & repo** ✅ — toolchain validated/installed, repo linked to github.com/peterheb/pnk.
 1. **Format docs** ✅ — 19 provenance-tagged docs in `docs/format/`; start at `INDEX.md`,
    Gate: INDEX.md covers all topics; sources recorded with SHAs and licenses.
-1b. **Fixtures** (parallel with 1) — real `.pages`/`.numbers`/`.key` from Common Crawl into
+1b. **Fixtures** ✅ — CC-MAIN-2026-34: 1,248 accepted (485 keynote / 325 pages / 158 numbers modern + 280 legacy), 18 GB at `~/Development/pnk-fixtures` (repo `fixtures/crawl*` symlinked). Gate exceeded 30–90×.
    `fixtures/` + `provenance.json` (URL, capture id, sha256). Gate: ≥5 files per format.
-2. **JSON models** — `docs/MODEL.md` + TS types: document → sheets/sections → objects/tiles,
+2. **JSON models** ✅ — `model/src/*.ts` + `docs/model-design.md` (strict-TSC clean); root envelope w/ metadata/warnings/fonts.
    incl. shared subobjects (picture/chart/table). Gate: iwadump output maps onto it cleanly.
-3. **iwadump (Rust CLI)** — zip → snappy → protobuf → readable dump. Gate: dumps every
+3. **iwadump (Rust CLI)** ✅ — `crates/iwadump` lib+bin, 22 tests; gate: 964/968 modern dump exit-0 (4 encrypted clean-reject), 280/280 legacy clean-reject, 0 panics, 7.5s wall.
    fixture without panicking.
 4. **pnk2json (Rust, wasm-friendly)** — typed JSON model; builds natively AND for
    `wasm32-unknown-unknown`. Gate: `cargo test` green + wasm build emits JSON for fixtures.
