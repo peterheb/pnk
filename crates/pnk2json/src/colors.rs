@@ -126,7 +126,7 @@ mod tests {
 
     #[test]
     fn unix_epoch_minus_30_years() {
-        // 1971-01-01T00:00:00Z = -946_944_800 apple seconds
-        assert_eq!(iso_from_apple_seconds(-946_944_800.0), "1971-01-01T00:00:00Z");
+        // 1971-01-01T00:00:00Z = -946_771_200 apple seconds
+        assert_eq!(iso_from_apple_seconds(-946_771_200.0), "1971-01-01T00:00:00Z");
     }
 }

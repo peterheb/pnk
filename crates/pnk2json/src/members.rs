@@ -1,25 +1,36 @@
 //! Access to non-IWA container members (`Metadata/*.plist`, `Data/*`).
 //!
-//! Delegates to `iwadump::Container::read_member` (added for pnk2json):
-//! exact-name lookup with directory-prefix-insensitive suffix fallback;
-//! flat/nested forms read the outer zip and fall back into the nested
-//! `Index.zip`; package directories read real files beside `Index.zip`.
+//! Two sources: a path-opened iwadump `Container` (delegates to
+//! `Container::read_member`), or a prebuilt map for the bytes-based wasm path.
+
+use std::collections::HashMap;
 
 pub struct Members {
-    container: iwadump::Container,
+    inner: MembersInner,
+}
+
+enum MembersInner {
+    Container(Box<iwadump::Container>),
+    Map(HashMap<String, Vec<u8>>),
 }
 
 impl Members {
-    pub fn new(container: iwadump::Container) -> Members {
-        Members { container }
+    pub fn from_container(container: iwadump::Container) -> Members {
+        Members { inner: MembersInner::Container(Box::new(container)) }
     }
 
-    /// Bytes of a named member; `None` when absent (Kind::Io).
+    pub fn from_map(map: HashMap<String, Vec<u8>>) -> Members {
+        Members { inner: MembersInner::Map(map) }
+    }
+
+    /// Bytes of a named member; `None` when absent.
     pub fn get(&self, name: &str) -> Option<Vec<u8>> {
-        match self.container.read_member(name) {
-            Ok(b) => Some(b),
-            Err(e) if e.kind == iwadump::Kind::Io => None,
-            Err(_) => None,
+        match &self.inner {
+            MembersInner::Container(c) => match c.read_member(name) {
+                Ok(b) => Some(b),
+                Err(_) => None,
+            },
+            MembersInner::Map(m) => m.get(name).cloned(),
         }
     }
 

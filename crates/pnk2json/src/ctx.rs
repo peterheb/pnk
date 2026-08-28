@@ -41,7 +41,7 @@ pub struct DataInfoEntry {
 impl Ctx {
     pub fn open(path: &Path) -> Result<Ctx, iwadump::Error> {
         let (doc, loaded) = loader::open_document(path)?;
-        let members = Members::new(doc.container.clone());
+        let members = Members::from_container(doc.container.clone());
         let app = doc.app;
         let app_kind = match app {
             App::Keynote => AppKind::Keynote,
@@ -269,6 +269,7 @@ impl Ctx {
             let byte_length = entry.materialized_length;
             let remote = entry.remote_url.clone();
             let preferred = entry.preferred_file_name.clone();
+            let pixel = entry.pixel_size;
             // Materialized bytes absent → media-missing (docs/format/media.md
             // resolution chain step 3).
             if let Some(name) = &file_name {
@@ -362,5 +363,55 @@ impl Counter {
     }
     pub fn drain(self) -> Vec<(String, u64)> {
         self.counts.into_iter().collect()
+    }
+}
+
+impl Ctx {
+    /// Build a context from raw document bytes (wasm path): no filesystem.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Ctx, iwadump::Error> {
+        use iwadump::error::{Error, Kind, Layer};
+        let streams = loader::streams_from_bytes(bytes)?;
+        // Collect non-IWA members (metadata plists, Data/) for the envelope.
+        let mut map: HashMap<String, Vec<u8>> = HashMap::new();
+        if let Ok(mut zip) = zip::ZipArchive::new(std::io::Cursor::new(bytes)) {
+            for i in 0..zip.len() {
+                let Ok(mut f) = zip.by_index(i) else { continue };
+                if f.is_dir() || f.name().to_ascii_lowercase().ends_with(".iwa") {
+                    continue;
+                }
+                let name = f.name().to_string();
+                let mut buf = Vec::new();
+                if std::io::Read::read_to_end(&mut f, &mut buf).is_ok() {
+                    map.insert(name, buf);
+                }
+            }
+        }
+        let registry = Registry::embedded()?;
+        let app = iwadump::dump::detect_app(&streams);
+        let app_kind = match app {
+            App::Keynote => AppKind::Keynote,
+            App::Numbers => AppKind::Numbers,
+            _ => AppKind::Pages,
+        };
+        let loaded = loader::load(&streams, &registry, app);
+        let mut ctx = Ctx {
+            app,
+            app_kind,
+            registry,
+            loaded,
+            members: Members::from_map(map),
+            warnings: Vec::new(),
+            fonts: std::collections::BTreeSet::new(),
+            meta: DocumentMeta { app: app_kind, ..Default::default() },
+            datas: HashMap::new(),
+            referenced_datas: std::collections::BTreeSet::new(),
+        };
+        ctx.refine_app();
+        ctx.load_metadata_plists();
+        ctx.load_package_metadata();
+        if !ctx.loaded.unknown_ids.is_empty() || !ctx.loaded.undecodable_ids.is_empty() {
+            let _ = Error::new(Kind::Corrupt, Layer::Message, ""); // types kept imported
+        }
+        Ok(ctx)
     }
 }

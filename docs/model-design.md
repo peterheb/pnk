@@ -344,3 +344,69 @@ tsc --noEmit --strict --skipLibCheck model/src/*.ts
 ```
 
 (is the verification gate; no package.json needed for the model sources.)
+
+---
+
+## 8. Fixture-verified notes (pnk2json, phases 4–5, 2026-08-28)
+
+Findings from running the converter over the 968 modern fixtures in
+`fixtures/success.tsv` (964 convert; 4 encrypted clean-reject). Each note
+records what the corpus confirmed and what remains inferred.
+
+### 8.1 TST vertical alignment — fixture-verified
+
+`TST.CellStylePropertiesArchive.vertical_alignment` (field 8) appears in real
+Numbers fixtures (e.g. `tableCell-0-bodyStyle` chains) carrying small int32
+values (0/1/2 observed, `2` = bottom on a centered body style). The 0..3
+order top/middle/bottom/justify shared with
+`TSWP.ShapeStylePropertiesArchive.VerticalAlignmentType` holds on this
+sample; pnk2json maps all four values. Padding (field 9, `TSWP.PaddingArchive`
+{left,top,right,bottom}) confirmed present alongside it.
+`[fixture-verified + proto]`
+
+### 8.2 Pages master wiring — era drift confirmed in the corpus
+
+Current-generation Pages documents carry page masters as
+`TP.PageTemplateArchive` referenced from `TP.DocumentArchive.page_templates`
+(field 48). Older (still iWork-'13-era) fixtures in the corpus instead carry
+`TP.PageMasterArchive` **[10143]** — the message pages.md flagged as "absent
+from the 15.3.1 extraction, present in older protos". Confirmed in the wild:
+type id 10143 appears in real `.pages` files (with a sibling
+`TP.CanvasSelectionArchive` [10132]), and those documents have no field-48
+template list. pnk2json resolves field-48 templates fully and leaves
+PageMasterArchive-era masters to the unknown/dropped path (content still
+converts; the header/footer furniture of such masters is not modeled).
+`[fixture-verified]`
+
+### 8.3 P3 / HDR color policy — unchanged, [inferred]
+
+No fixture produced a visibly-out-of-gamut P3 color or headroom > 1 during
+conversion, so the §2.3 approximation policy (clamp + `color-degraded`
+warning) remains implemented but **not yet fixture-exercised**. The policy
+stays as documented; revisit if a wide-gamut fixture appears.
+
+### 8.4 Storage splitting — UTF-16 offsets confirmed end-to-end
+
+Converting keynote/pages fixtures with astral-plane content confirms that
+attribute-table offsets are UTF-16 code units and that slicing on the
+code-point-indexed buffer with a UTF-16 map reproduces paragraph and run
+boundaries (docs/format/text.md §Unicode handling). U+FFFC attachment
+entries (type 2003 → drawable; 2004/2007/2009 → textual fields;
+2008 → footnote body storage) round-trip into `InlineObjectRun` / `FieldRun`
+as designed. `[fixture-verified]`
+
+### 8.5 Tables — BNC v5 buffers across the corpus
+
+All decodable tiles in the 968-fixture modern set use storage version 5 /
+wide rows; no pre-BNC tile forced the degraded path in this run. Cell type
+byte 10 (currency) and decimal128 number payloads decode per the
+numbers-parser layout; merges unpack as (col<<16|row). `[fixture-verified]`
+
+### 8.6 Registry drift in practice
+
+Modern fixtures carry type ids absent from the embedded (older-app-version)
+tables — e.g. Keynote `0xde` (222, TST.TableStyleNetworkArchive era), Pages
+`0xdb`/`219`, `0x2b03/0x2b06/0x2b07` (metadata-stream objects),
+TSCH `5030`/`11014`. These surface as aggregated `unknown-object-type`
+warnings with hex ids per §5 policy — never guessed names. Conversion of the
+reachable document tree is unaffected. `[fixture-verified]`

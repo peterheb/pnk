@@ -875,7 +875,7 @@ pub struct FreehandAnimation {
     pub r#loop: Option<bool>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ShapeGeometry {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1181,7 +1181,7 @@ pub struct MasterSlide {
     pub notes: Option<StyledText>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct BuildSpec {
     pub delivery: BuildDelivery,
@@ -1207,9 +1207,10 @@ pub struct BuildSpec {
     pub order: Option<u32>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum BuildDelivery {
+    #[default]
     In,
     Out,
     Action,

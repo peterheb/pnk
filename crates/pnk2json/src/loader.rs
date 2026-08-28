@@ -112,3 +112,124 @@ pub fn load(streams: &[StreamView], registry: &Registry, app: App) -> Loaded {
 fn is_command_name(name: &str) -> bool {
     name.contains("Command") || name.ends_with("History") || name.contains("Selection")
 }
+
+// ---------------------------------------------------------------------------
+// Bytes-based loading (used by the wasm binding, where there is no filesystem)
+// ---------------------------------------------------------------------------
+
+/// Container-level decode from raw document bytes: reject encrypted/legacy,
+/// collect `.iwa` members (recursing into a nested `Index.zip`), frame and
+/// envelope-parse each stream. Mirrors iwadump's container semantics.
+pub fn streams_from_bytes(
+    bytes: &[u8],
+) -> Result<Vec<StreamView>, iwadump::Error> {
+    use iwadump::error::{Error, Kind, Layer};
+
+    let layer = Layer::Container;
+    let label = "document";
+    let cursor = std::io::Cursor::new(bytes);
+    let mut zip = zip::ZipArchive::new(cursor).map_err(|e| {
+        Error::new(Kind::Unsupported, layer, format!("{label}: not a readable ZIP container: {e}"))
+    })?;
+
+    let mut names: Vec<String> = Vec::new();
+    for i in 0..zip.len() {
+        if let Ok(f) = zip.by_index_raw(i) {
+            names.push(f.name().to_string());
+        }
+    }
+
+    // Encrypted: .iwph / .iwp* members (gotchas #12).
+    for n in &names {
+        let base = n.rsplit('/').next().unwrap_or(n);
+        if base.starts_with(".iwph") || base.starts_with(".iwpv") {
+            return Err(Error::new(
+                Kind::Encrypted,
+                layer,
+                format!("{label}: encrypted iWork document (member `{base}`) — password-protected files are not supported"),
+            ));
+        }
+    }
+    // Legacy markers (docs/format/legacy.md).
+    const LEGACY_MARKERS: [&str; 5] =
+        ["index.xml", "index.xml.gz", "index.apxl", "index.numbers", "index.db"];
+    for n in &names {
+        let base = n.rsplit('/').next().unwrap_or(n).to_lowercase();
+        if LEGACY_MARKERS.contains(&base.as_str()) {
+            return Err(Error::new(
+                Kind::Legacy,
+                layer,
+                format!("{label}: legacy iWork document (bundle marker `{base}`) — re-save with a current version of Pages, Numbers, or Keynote"),
+            ));
+        }
+    }
+
+    // Collect .iwa members; if none at top level, recurse into a nested
+    // Index.zip (gotcha #5).
+    let mut read_member = |name: &str| -> Option<Vec<u8>> {
+        let mut z = zip::ZipArchive::new(std::io::Cursor::new(bytes)).ok()?;
+        let mut f = z.by_name(name).ok()?;
+        let mut buf = Vec::new();
+        std::io::Read::read_to_end(&mut f, &mut buf).ok()?;
+        Some(buf)
+    };
+
+    let mut collect = |names: &[String], read: &mut dyn FnMut(&str) -> Option<Vec<u8>>| -> Vec<(String, Vec<u8>)> {
+        let mut out = Vec::new();
+        for n in names {
+            if !n.ends_with('/') && n.to_ascii_lowercase().ends_with(".iwa") {
+                if let Some(b) = read(n) {
+                    // OperationStorage.iwa is an LZFSE collaboration log, not a
+                    // snappy IWA stream (gotcha #11): skip by magic.
+                    if b.starts_with(b"bvx") {
+                        continue;
+                    }
+                    out.push((n.clone(), b));
+                }
+            }
+        }
+        out
+    };
+
+    let mut iwas = collect(&names, &mut read_member);
+    if iwas.is_empty() {
+        // Nested Index.zip variant.
+        let nested_name = names.iter().find(|n| n.ends_with("Index.zip") && !n.ends_with('/')).cloned();
+        if let Some(nname) = nested_name {
+            if let Some(nested_bytes) = read_member(&nname) {
+                if let Ok(mut inner) = zip::ZipArchive::new(std::io::Cursor::new(&nested_bytes)) {
+                    let mut inner_names = Vec::new();
+                    for i in 0..inner.len() {
+                        if let Ok(f) = inner.by_index_raw(i) {
+                            inner_names.push(f.name().to_string());
+                        }
+                    }
+                    let mut inner_read = |name: &str| -> Option<Vec<u8>> {
+                        let mut z = zip::ZipArchive::new(std::io::Cursor::new(&nested_bytes)).ok()?;
+                        let mut f = z.by_name(name).ok()?;
+                        let mut buf = Vec::new();
+                        std::io::Read::read_to_end(&mut f, &mut buf).ok()?;
+                        Some(buf)
+                    };
+                    iwas = collect(&inner_names, &mut inner_read);
+                }
+            }
+        }
+    }
+    if iwas.is_empty() {
+        return Err(Error::new(
+            Kind::Unsupported,
+            layer,
+            format!("{label}: no iWork '13+ data found (missing Index.zip / *.iwa members)"),
+        ));
+    }
+
+    let registry = Registry::embedded()?;
+    let mut streams = Vec::with_capacity(iwas.len());
+    for (name, raw) in &iwas {
+        let iwa = iwadump::IwaStream::parse(name, raw)?;
+        let archives = iwadump::envelope::parse_stream(&iwa.decoded)?;
+        streams.push(StreamView { name: name.clone(), iwa, archives });
+    }
+    Ok(streams)
+}
