@@ -230,10 +230,13 @@ def read_varint_stream(buf: bytes, pos: int) -> tuple[int, int]:
 
 def pb_fields(buf: bytes) -> list[tuple[int, int, bytes]]:
     """Return (field_number, wire_type, value) for every field of a protobuf
-    message. Enough for the TSP envelope + ArchiveInfo preamble."""
+    message. Enough for the TSP envelope + ArchiveInfo preamble. Group wire
+    types (3/4) DO occur in TSP archives; their content is skipped wholesale
+    (we only ever need flat scalar/length-delimited fields near the head)."""
     fields = []
     pos = 0
-    while pos < len(buf):
+    n = len(buf)
+    while pos < n:
         key, pos = read_varint_stream(buf, pos)
         fn, wt = key >> 3, key & 7
         if wt == 0:
@@ -246,8 +249,27 @@ def pb_fields(buf: bytes) -> list[tuple[int, int, bytes]]:
             v, pos = buf[pos:pos + 4], pos + 4
         elif wt == 1:
             v, pos = buf[pos:pos + 8], pos + 8
-        else:
-            raise ValueError(f"unsupported wire type {wt}")
+        elif wt == 3:  # start group: skip to the matching end-group
+            depth = 1
+            v = b""
+            while pos < n and depth:
+                k2, pos = read_varint_stream(buf, pos)
+                w2 = k2 & 7
+                if w2 == 0:
+                    _, pos = read_varint_stream(buf, pos)
+                elif w2 == 2:
+                    ln, pos = read_varint_stream(buf, pos)
+                    pos += ln
+                elif w2 == 5:
+                    pos += 4
+                elif w2 == 1:
+                    pos += 8
+                elif w2 == 3:
+                    depth += 1
+                elif w2 == 4:
+                    depth -= 1
+        else:  # wt == 4 outside a group: corrupt stream
+            break
         fields.append((fn, wt, v))
     return fields
 
@@ -260,7 +282,11 @@ def first_archive_type(iwa_bytes: bytes) -> int | None:
     pos = 0
     decoded = bytearray()
     while pos + 4 <= len(iwa_bytes) and len(decoded) < 65536:
-        csize, _usize = struct.unpack_from("<HH", iwa_bytes, pos)
+        # 4-byte block header: zero chunk-type byte + u24 LE compressed
+        # length (bytes 1..3) — docs/format/INDEX.md. A struct "<HH" read
+        # here swaps byte order and only works on single-block files.
+        csize = (iwa_bytes[pos + 1] | (iwa_bytes[pos + 2] << 8)
+                 | (iwa_bytes[pos + 3] << 16))
         block = iwa_bytes[pos + 4: pos + 4 + csize]
         pos += 4 + csize
         try:
@@ -268,23 +294,24 @@ def first_archive_type(iwa_bytes: bytes) -> int | None:
         except Exception:  # noqa: BLE001 - we only need the leading blocks
             break
     data = bytes(decoded)
+    # Decompressed stream: repeated [varint len][TSP.ArchiveInfo envelope] +
+    # declared payloads. Envelope schema (docs/format/objects.md, verified in
+    # dunhamsteve/iwork + keynote-parser): ArchiveInfo{identifier=1,
+    # message_infos=2 (repeated)}, MessageInfo{type=1, length=3}. The first
+    # MessageInfo.type of the first envelope is the root document archive.
     p = 0
     while p < len(data):
         try:
             msg_len, p = read_varint_stream(data, p)
-        except IndexError:
-            return None
-        envelope = data[p:p + msg_len]
-        p += msg_len
-        payload = next((v for fn, wt, v in pb_fields(envelope)
-                        if fn == 3 and wt == 2), None)
-        if payload is None:
-            continue
-        for fn, wt, v in pb_fields(payload):
-            if fn == 2 and wt == 2:  # ArchiveInfo.MessageInfos — first entry
-                for fn2, wt2, v2 in pb_fields(v):
-                    if fn2 == 1 and wt2 == 0:  # MessageInfo.type
-                        return v2
+            envelope = data[p:p + msg_len]
+            p += msg_len
+            for fn, wt, v in pb_fields(envelope):
+                if fn == 2 and wt == 2:  # ArchiveInfo.message_infos
+                    for fn2, wt2, v2 in pb_fields(v):
+                        if fn2 == 1 and wt2 == 0:  # MessageInfo.type
+                            return v2
+        except (IndexError, ValueError, struct.error):
+            return None  # corrupt/truncated head: caller falls back to mime
     return None
 
 
@@ -324,7 +351,8 @@ def classify(payload: bytes, rec: dict) -> tuple[str, str, str, bytes]:
 
     if not iwas:
         legacy = [n for n in names
-                  if n.lower().endswith((".apxl", ".apxl.gz", ".lsdw", ".lswp"))]
+                  if n.lower().endswith((".apxl", ".apxl.gz", ".lsdw", ".lswp"))
+                  or n.lower() in ("index.xml", "index.xml.gz")]
         if legacy:
             fmt = f"legacy-{hint or 'unknown'}"
             return "legacy", fmt, f"legacy bundle: members={legacy[:3]} (pre-iWork-13); mime={hint}", bundle
@@ -478,6 +506,7 @@ def main() -> int:
     origin_slot = threading.Semaphore(args.origin_concurrency)
 
     counts = {"ok": 0, "gone": 0, "error": 0}
+    fmt_counts: dict[str, int] = {}
     legacy = 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.cc_concurrency) as pool:
         futures = {pool.submit(fetch_record, rec, cc_slot, origin_slot,
