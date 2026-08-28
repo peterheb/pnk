@@ -86,7 +86,7 @@ QuickLook `preview.pdf` as an offline reference. Playwright drives viewer screen
 | awscli 2.36.33 | ok — credentials NOT configured (run `aws login` or provide keys/SSO) |
 | mas 7.0.0 | ok — real Keynote/Numbers/Pages 15.3.1 installed via `sudo mas install --force`; on-disk bundles are `Keynote Creator Studio.app` etc. (2026 "Creator Studio" rebrand — these ARE Apple's apps) |
 | Playwright + chromium 151 | ok — smoke: `/tmp/pw-smoke/example.png` sha256 `8294b47e1b936d08f4743c826fcff63e20f943298d96d41ba2ac94e76ba406e4` |
-| `computer` tool | enabled via project `.omp/config.yml`; needs `/computer on` (or new session) + Screen Recording & Accessibility grants |
+| `computer` tool | ok — fully granted (capture + input + AX, via iTerm); verified: Keynote/Numbers/Pages AX probes + input delivery |
 
 ## Harness notes for agents
 
