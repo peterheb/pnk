@@ -71,3 +71,40 @@ KN.PlaceholderArchive [7]/[12]   (.scratch/otorp/Keynote/KNArchives.proto → KN
 - **Decoding** — the Go index maps ids 1-25 (content) and 100-148 (commands) [parser: dunhamsteve/iwork@02c26ebf] index/keynote.go:9-354. The Go HTML converter takes a different route to the same slides: it reads TSP.PackageMetadata (object 2, id 11006), filters components whose `PreferredLocator == "Slide"`, sorts by identifier, and renders each KN.SlideArchive's bodyPlaceholder + drawables [parser: dunhamsteve/iwork@02c26ebf] iwork2html/iwork2html.go:563-608.
 
 Cross-references: object-envelope mechanics and TSP.Reference resolution in [objects.md](objects.md); drawable geometry/styles in [drawables.md](drawables.md); TSWP.StorageArchive text layout in [pages.md](pages.md); stylesheets/themes in [styles.md](styles.md); chart drawables in [charts.md](charts.md). For comparison with the other apps, see [pages.md](pages.md) and [numbers.md](numbers.md).
+
+## Builds & transitions — payload shapes (added for the JSON model)
+
+### Build chain [proto] KNArchives.proto
+
+- `KN.BuildArchive` (194-200): `drawable` (TSP.Reference), `delivery`
+  (**required string**, e.g. "build-in"/"build-out"/"action" — free text, not
+  an enum), deprecated `duration` (3), `attributes` (4, required), and a
+  chunk id seed.
+- `KN.BuildAttributesArchive` (112+): carries the effect parameters as
+  typed attributes (`BuildAttributeValueArchive` union of int/double/bool/
+  string values) plus enums for acceleration (none/ease-in/ease-out/
+  ease-both/custom), rotation direction (clockwise=31/counterclockwise=32),
+  curve style (straight/curved), text delivery (by-object/by-word/
+  by-character/by-line) and delivery option (forward/backward/from-center/
+  from-edges/random).
+- `KN.BuildChunkArchive` (71-80): staged timing per chunk — `delay`,
+  `duration`, `automatic`, `referent`, identity via UUID build ids; chunks
+  reference their build (`build = 1`) and slides reference chunks via
+  `buildChunks` (43).
+
+### Transition chain [proto] KNArchives.proto
+
+`KN.TransitionArchive` (67-69) → required `attributes` (2) =
+`KN.TransitionAttributesArchive` (32-65), which wraps
+`animationAttributes` (8) = `KN.AnimationAttributesArchive` (13-30):
+`animation_type` (string), `effect` (string — the display name), `duration`
+(double seconds), `direction` (uint32, app-defined meaning), `delay`
+(double), `is_automatic` (bool), `color` (TSP.Color), custom timing curves as
+PathSourceArchives (8-10), and detail knobs (`custom_detail`, twist, mosaic,
+bounce, motion blur + blur amount, travel distance, angle, text delivery,
+timing curve type). Fields 1-7 (`database_*`) are deprecated duplicates.
+
+Effect/direction vocabularies are strings/app enums that vary across app
+versions — a converter should keep the stored `effect` string verbatim and
+match prefixes it knows, rather than enumerate [inferred: drift risk per
+registry.md].
