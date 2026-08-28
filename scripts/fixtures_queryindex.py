@@ -20,7 +20,8 @@ Index layout (verified against CC-MAIN-2026-34):
   https://data.commoncrawl.org/cc-index/collections/<vintage>/indexes/cluster.idx
       one line per surt-prefix run: "<surt><ts>\\tcdx-NNNNN.gz\\toffset\\tlength\\tn"
   https://data.commoncrawl.org/cc-index/collections/<vintage>/indexes/cdx-NNNNN.gz
-      one line per capture: "<surt>\\t<timestamp>\\t{json}"
+      one line per capture: "<surt> <timestamp> {json}" (SPACE-separated; the
+      JSON blob itself contains spaces)
       json keys: url, mime, mime-detected, status, digest, length, offset,
                  filename, redirect, recordid [, truncated]
 
@@ -99,8 +100,18 @@ def scan_part(con, vintage: str, base: str, part: str, parts_dir: str | None = N
     captures with their row numbers."""
     url = os.path.join(parts_dir, part) if parts_dir \
         else f"{base}/cc-index/collections/{vintage}/indexes/{part}"
-    # CDX lines are: surt \t timestamp \t json-blob. No quoting anywhere.
+    # CDX lines are: "surt timestamp json-blob", SPACE-separated — and the JSON
+    # itself contains spaces, so the file is read as one column per line and
+    # split here: field 1 = surt (no spaces), field 2 = 14-digit timestamp,
+    # rest = the JSON blob. No CSV quoting anywhere.
     con.execute(f"""
+        CREATE OR REPLACE TABLE part_raw AS
+        SELECT line FROM read_csv('{url}',
+                      delim='\x07', header=false, auto_detect=false, quote='', escape='',
+                      compression='gzip',
+                      columns={{'line': 'VARCHAR'}})
+    """)
+    con.execute("""
         CREATE OR REPLACE TABLE part_scan AS
         SELECT row_number() OVER () AS rownum,
                json_extract_string(meta, '$.url')              AS url,
@@ -108,24 +119,27 @@ def scan_part(con, vintage: str, base: str, part: str, parts_dir: str | None = N
                json_extract_string(meta, '$."mime-detected"')  AS mime_detected,
                json_extract_string(meta, '$.status')           AS status,
                json_extract_string(meta, '$.digest')           AS digest,
-               json_extract_string(meta, '$.length')           AS length,
-               json_extract_string(meta, '$.offset')           AS offset,
+               json_extract_string(meta, '$.length')           AS clen,
+               json_extract_string(meta, '$.offset')           AS woff,
                json_extract_string(meta, '$.filename')         AS filename,
                json_extract_string(meta, '$.recordid')         AS recordid,
                json_extract_string(meta, '$.truncated')        AS truncated
-        FROM read_csv('{url}',
-                      delim='\t', header=false, auto_detect=false,
-                      compression='gzip',
-                      columns={{'surt': 'VARCHAR', 'ts': 'VARCHAR', 'meta': 'VARCHAR'}})
+        FROM (
+            SELECT substr(line,
+                          length(split_part(line, ' ', 1))
+                          + length(split_part(line, ' ', 2)) + 3) AS meta
+            FROM part_raw
+        )
     """)
     rows = con.execute("""
         SELECT rownum, url, mime, mime_detected, status, digest,
-               length, offset, filename, recordid, truncated
+               clen, woff, filename, recordid, truncated
         FROM part_scan
         WHERE status = '200'
-          AND (mime LIKE 'application/x-iwork%' OR mime_detected LIKE 'application/x-iwork%')
-          AND filename NOT LIKE '%/robotstxt/%'
-          AND filename NOT LIKE '%/crawldiagnostics/%'
+          AND (mime LIKE 'application/x-iwork%'
+               OR mime LIKE 'application/vnd.apple.%'
+               OR mime_detected LIKE 'application/x-iwork%'
+               OR mime_detected LIKE 'application/vnd.apple.%')
         ORDER BY rownum
     """).fetchall()
     out = []
@@ -177,6 +191,10 @@ def main() -> int:
 
     os.makedirs(args.out_dir, exist_ok=True)
     parts = list_parts(args.vintage, args.base)
+    if args.parts_start:
+        parts = parts[args.parts_start:]
+    if args.max_parts:
+        parts = parts[: args.max_parts]
     shard_i = shard_n = 0
     if args.shard:
         shard_i, shard_n = (int(x) for x in args.shard.split("/"))
@@ -199,6 +217,7 @@ def main() -> int:
         except Exception as e:  # noqa: BLE001 - anonymous s3 reads may still work
             print(f"note: aws credential chain unavailable ({e}); trying anonymous s3",
                   flush=True)
+    selected: dict[str, dict] = {}          # digest -> record (dedup)
     mime_counts: dict[str, int] = {}
     scanned = 0
     hit_limit = False
@@ -214,7 +233,8 @@ def main() -> int:
                     print(f"  part {part} failed ({e}); backoff {delay:.1f}s", flush=True)
                     time.sleep(delay)
                     try:
-                        matches = scan_part(con, args.vintage, data_base, part)
+                        matches = scan_part(con, args.vintage, data_base, part,
+                                            parts_dir=args.parts_dir)
                         break
                     except Exception as e2:  # noqa: BLE001
                         e = e2
