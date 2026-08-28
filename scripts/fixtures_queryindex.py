@@ -12,6 +12,7 @@ every capture whose MIME (declared or detected) is an iWork document MIME:
     application/x-iwork-pages-sffpages
     application/x-iwork-numbers-sffnumbers
     (plus any other application/x-iwork* variant the index contains)
+    application/vnd.apple.keynote / .pages / .numbers  (legacy MIME variants)
 
 Selection is by MIME, not by file extension -- many .key URLs are not Keynote
 documents and vice versa.
@@ -100,46 +101,54 @@ def scan_part(con, vintage: str, base: str, part: str, parts_dir: str | None = N
     captures with their row numbers."""
     url = os.path.join(parts_dir, part) if parts_dir \
         else f"{base}/cc-index/collections/{vintage}/indexes/{part}"
-    # CDX lines are: "surt timestamp json-blob", SPACE-separated — and the JSON
-    # itself contains spaces, so the file is read as one column per line and
-    # split here: field 1 = surt (no spaces), field 2 = 14-digit timestamp,
-    # rest = the JSON blob. No CSV quoting anywhere.
-    con.execute(f"""
-        CREATE OR REPLACE TABLE part_raw AS
-        SELECT line FROM read_csv('{url}',
-                      delim='\x07', header=false, auto_detect=false, quote='', escape='',
-                      compression='gzip',
-                      columns={{'line': 'VARCHAR'}})
-    """)
-    con.execute("""
-        CREATE OR REPLACE TABLE part_scan AS
-        SELECT row_number() OVER () AS rownum,
-               json_extract_string(meta, '$.url')              AS url,
-               json_extract_string(meta, '$.mime')             AS mime,
-               json_extract_string(meta, '$."mime-detected"')  AS mime_detected,
-               json_extract_string(meta, '$.status')           AS status,
-               json_extract_string(meta, '$.digest')           AS digest,
-               json_extract_string(meta, '$.length')           AS clen,
-               json_extract_string(meta, '$.offset')           AS woff,
-               json_extract_string(meta, '$.filename')         AS filename,
-               json_extract_string(meta, '$.recordid')         AS recordid,
-               json_extract_string(meta, '$.truncated')        AS truncated
-        FROM (
-            SELECT substr(line,
-                          length(split_part(line, ' ', 1))
-                          + length(split_part(line, ' ', 2)) + 3) AS meta
-            FROM part_raw
-        )
-    """)
-    rows = con.execute("""
+    # One STREAMING query: read_csv streams line by line (constant memory — a
+    # cdx part is hundreds of MB compressed and we must not materialize it),
+    # a cheap contains() prefilter on the raw line drops non-iWork rows before
+    # any JSON parsing, and rownum is the line position in the part.
+    #
+    # Exact iWork MIME strings, verified against the index: the modern
+    # 'application/x-iwork-{keynote,pages,numbers}-sff*' family, plus the
+    # legacy 'application/vnd.apple.{keynote,pages,numbers}' variants Apple
+    # documents for iWork files. NOT 'application/vnd.apple.%' — that also
+    # matches HLS playlists (vnd.apple.mpegurl), pkpass, etc.
+    rows = con.execute(f"""
         SELECT rownum, url, mime, mime_detected, status, digest,
                clen, woff, filename, recordid, truncated
-        FROM part_scan
+        FROM (
+            SELECT row_number() OVER ()                       AS rownum,
+                   json_extract_string(meta, '$.url')              AS url,
+                   json_extract_string(meta, '$.mime')             AS mime,
+                   json_extract_string(meta, '$."mime-detected"')  AS mime_detected,
+                   json_extract_string(meta, '$.status')           AS status,
+                   json_extract_string(meta, '$.digest')           AS digest,
+                   json_extract_string(meta, '$.length')           AS clen,
+                   json_extract_string(meta, '$.offset')           AS woff,
+                   json_extract_string(meta, '$.filename')         AS filename,
+                   json_extract_string(meta, '$.recordid')         AS recordid,
+                   json_extract_string(meta, '$.truncated')        AS truncated
+            FROM (
+                SELECT substr(line,
+                              length(split_part(line, ' ', 1))
+                              + length(split_part(line, ' ', 2)) + 3) AS meta
+                FROM read_csv('{url}',
+                              delim='\x07', header=false, auto_detect=false,
+                              quote='', escape='', compression='gzip',
+                              columns={{'line': 'VARCHAR'}})
+                WHERE contains(line, 'x-iwork')
+                   OR contains(line, 'vnd.apple.keynote')
+                   OR contains(line, 'vnd.apple.pages')
+                   OR contains(line, 'vnd.apple.numbers')
+            )
+        )
         WHERE status = '200'
           AND (mime LIKE 'application/x-iwork%'
-               OR mime LIKE 'application/vnd.apple.%'
+               OR mime IN ('application/vnd.apple.keynote',
+                           'application/vnd.apple.pages',
+                           'application/vnd.apple.numbers')
                OR mime_detected LIKE 'application/x-iwork%'
-               OR mime_detected LIKE 'application/vnd.apple.%')
+               OR mime_detected IN ('application/vnd.apple.keynote',
+                                    'application/vnd.apple.pages',
+                                    'application/vnd.apple.numbers'))
         ORDER BY rownum
     """).fetchall()
     out = []
