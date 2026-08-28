@@ -192,3 +192,31 @@ Cell buffers reference formulas by int32 id into the `FORMULA`-type
 entries carry inline `TSCE.FormulaArchive` values. See [calcengine.md](calcengine.md)
 for the TSCE side. The style/format tables are analogous `TableDataList`s of
 type STYLE/FORMAT/CUSTOM_FORMAT. [proto]
+## Cell/table style payloads (added for the JSON model)
+
+### Per-cell look [proto] TSTStylePropertyArchiving.proto:17-30 → TST.CellStylePropertiesArchive
+
+`cell_fill` (TSD.FillArchive, 1), `text_wrap` (3), deprecated per-side
+table strokes (4-7), `vertical_alignment` (8, int32 — 0..3 order per
+[text.md](text.md) §Alignment), `padding` (9, TSWP.PaddingArchive
+{ left/top/right/bottom floats, TSWPArchives.proto:461-466 }), and modern
+per-side strokes `top_stroke/right_stroke/bottom_stroke/left_stroke`
+(10-13, each a `TSD.StrokeArchive`).
+
+### Table-level look [proto] TSTStylePropertyArchiving.proto:52+ → TST.TableStylePropertiesArchive
+
+`banded_rows` (1), `banded_fill` (2, TSD.FillArchive), `behaves_like_spreadsheet`
+(21), `auto_resize` (22), plus deprecated header separator/border strokes and
+stroke-preset lists: `TST.StrokePresetDataArchive { horizontal_stroke,
+vertical_stroke, exterior_stroke, visible_mask }` (39-44) — the gridline
+defaults a viewer falls back to when a cell has no explicit border.
+
+### Style network roles [proto] TSTArchives.proto:347-380 → TST.TableStyleNetworkArchive
+
+The nine required slots map a table's roles to style objects: body/header-row/
+header-column/footer text styles (1-4), body/header-row/header-column/footer
+cell styles (5-8), and `table_style` (9, the table-level
+TST.TableStylePropertiesArchive carrier). Optional extras: table-name styles
+(10-11), category/label level styles (13-30+, for category tables). Per-cell
+overrides live in the DataStore buckets' `cell_style`/`text_style` and win
+over these defaults [inferred: override direction; fixture-verify].
