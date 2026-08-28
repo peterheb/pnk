@@ -34,8 +34,21 @@ impl Members {
         }
     }
 
-    /// Bytes of a media asset stored at `Data/<file_name>`.
+    /// Bytes of a media asset stored at `Data/<file_name>`. Falls back to a
+    /// suffix match for zipped-package layouts where members carry the bundle
+    /// directory prefix (e.g. `MyDoc.key/Data/pic.jpeg`).
     pub fn data_file(&self, file_name: &str) -> Option<Vec<u8>> {
-        self.get(&format!("Data/{file_name}"))
+        let exact = format!("Data/{file_name}");
+        if let Some(b) = self.get(&exact) {
+            return Some(b);
+        }
+        let suffix = format!("/Data/{file_name}");
+        match &self.inner {
+            MembersInner::Container(_) => self.get(&exact),
+            MembersInner::Map(map) => map
+                .iter()
+                .find(|(k, _)| k.ends_with(&suffix))
+                .map(|(_, v)| v.clone()),
+        }
     }
 }
