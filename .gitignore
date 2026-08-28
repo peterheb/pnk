@@ -14,9 +14,12 @@ dist/
 # Reference checkouts / scratch
 /.scratch/
 
-# Downloaded iWork fixtures (large binaries) — provenance stays tracked
 /fixtures/*
 !/fixtures/provenance.json
+!/fixtures/crawl.jsonl
+!/fixtures/success.tsv
+!/fixtures/ccrawl_gone.txt
+!/fixtures/README.md
 
 # Test output
 /test-results/
