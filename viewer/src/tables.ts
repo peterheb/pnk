@@ -13,13 +13,17 @@ import type {
 } from "../../model/src/shared";
 import { applyCharStyle } from "./text";
 
-// Document locale, set from meta.locale after parse: comma-decimal locales
-// render "5,48" the way the source app would; others keep ".".
-const COMMA_DECIMAL = /^(de|fr|it|es|pt|nl|da|fi|nb|sv|el|pl|ru|tr)(-|$)/i;
+// Document locale, set from meta.locale after parse. Comma-decimal
+// separators follow the CLDR region when one is present (Apple renders
+// "5,48" for en_EE documents — the region, not the language, decides);
+// language-only locales fall back to the language's usual convention.
+const COMMA_DECIMAL_LANG = /^(de|fr|it|es|pt|nl|da|fi|nb|sv|el|pl|ru|tr)$/i;
+const COMMA_DECIMAL_REGION = /^(ee|de|fr|it|es|pt|nl|dk|fi|no|gr|pl|ru|tr|br)$/i;
 let decimalComma = false;
 
 export function setTableLocale(locale: string | undefined): void {
-  decimalComma = !!locale && COMMA_DECIMAL.test(locale);
+  const [lang, region] = (locale ?? "").split(/[-_]/);
+  decimalComma = COMMA_DECIMAL_LANG.test(lang) || COMMA_DECIMAL_REGION.test(region);
 }
 
 const cellKey = (r: number, c: number) => `${r}:${c}`;
