@@ -1,0 +1,266 @@
+{
+  "kind": "pages",
+  "flavor": "word-processing",
+  "meta": {
+    "app": "pages",
+    "fileFormatVersion": "26.3.1",
+    "buildVersionHistory": [
+      "Template: Blank (dev/15.3)",
+      "M15.3.1-7050.1.1-2"
+    ],
+    "documentId": "5DDB465D-FA8D-4FDB-9525-573E8DAE92CE",
+    "locale": "en_US"
+  },
+  "warnings": [
+    {
+      "code": "unknown-object-type",
+      "message": "2 object(s) with type id 219 (0xdb) have no trusted registry entry; payloads skipped",
+      "detail": "0xdb"
+    },
+    {
+      "code": "unknown-object-type",
+      "message": "1 object(s) with type id 222 (0xde) have no trusted registry entry; payloads skipped",
+      "detail": "0xde"
+    },
+    {
+      "code": "unknown-object-type",
+      "message": "1 object(s) with type id 258 (0x102) have no trusted registry entry; payloads skipped",
+      "detail": "0x102"
+    },
+    {
+      "code": "unknown-object-type",
+      "message": "1 object(s) with type id 2411 (0x96b) have no trusted registry entry; payloads skipped",
+      "detail": "0x96b"
+    },
+    {
+      "code": "unknown-object-type",
+      "message": "1 object(s) with type id 3091 (0xc13) have no trusted registry entry; payloads skipped",
+      "detail": "0xc13"
+    },
+    {
+      "code": "unknown-object-type",
+      "message": "2 object(s) with type id 4008 (0xfa8) have no trusted registry entry; payloads skipped",
+      "detail": "0xfa8"
+    },
+    {
+      "code": "unknown-object-type",
+      "message": "1 object(s) with type id 4009 (0xfa9) have no trusted registry entry; payloads skipped",
+      "detail": "0xfa9"
+    },
+    {
+      "code": "unknown-object-type",
+      "message": "1 object(s) with type id 4011 (0xfab) have no trusted registry entry; payloads skipped",
+      "detail": "0xfab"
+    },
+    {
+      "code": "unknown-object-type",
+      "message": "6 object(s) with type id 5030 (0x13a6) have no trusted registry entry; payloads skipped",
+      "detail": "0x13a6"
+    },
+    {
+      "code": "unknown-object-type",
+      "message": "1 object(s) with type id 6366 (0x18de) have no trusted registry entry; payloads skipped",
+      "detail": "0x18de"
+    },
+    {
+      "code": "unknown-object-type",
+      "message": "7 object(s) with type id 10024 (0x2728) have no trusted registry entry; payloads skipped",
+      "detail": "0x2728"
+    },
+    {
+      "code": "unknown-object-type",
+      "message": "1 object(s) with type id 11011 (0x2b03) have no trusted registry entry; payloads skipped",
+      "detail": "0x2b03"
+    },
+    {
+      "code": "unknown-object-type",
+      "message": "4 object(s) with type id 11014 (0x2b06) have no trusted registry entry; payloads skipped",
+      "detail": "0x2b06"
+    },
+    {
+      "code": "unknown-object-type",
+      "message": "1 object(s) with type id 11015 (0x2b07) have no trusted registry entry; payloads skipped",
+      "detail": "0x2b07"
+    }
+  ],
+  "fonts": [],
+  "media": [],
+  "styles": {
+    "para": [
+      {
+        "horizontalAlignment": "auto",
+        "leftIndentPt": 0.0,
+        "rightIndentPt": 0.0,
+        "firstLineIndentPt": 0.0,
+        "spaceBeforePt": 0.0,
+        "spaceAfterPt": 0.0,
+        "defaultTabStopPt": 36.0,
+        "list": {
+          "level": 0,
+          "markerKind": "none",
+          "markerIndentPt": 0.0
+        },
+        "keepLinesTogether": false,
+        "keepWithNext": false,
+        "hyphenate": true,
+        "pageBreakBefore": false
+      }
+    ],
+    "char": [
+      {
+        "bold": true
+      },
+      {
+        "italic": true
+      },
+      {
+        "fontColor": "#1db100"
+      },
+      {
+        "fontSizePt": 20.0
+      }
+    ]
+  },
+  "pageSize": {
+    "width": 612.0,
+    "height": 792.0
+  },
+  "pageMargins": {
+    "top": 72.0,
+    "bottom": 72.0,
+    "left": 72.0,
+    "right": 72.0,
+    "header": 36.0,
+    "footer": 43.20000076293945
+  },
+  "orientation": "portrait",
+  "pageScale": 1.0,
+  "body": {
+    "paragraphs": [
+      {
+        "paraStyleIndex": 0,
+        "items": [
+          {
+            "type": "text",
+            "text": "Plain opening paragraph."
+          }
+        ]
+      },
+      {
+        "items": [
+          {
+            "type": "text",
+            "text": "   a\tb  c d"
+          }
+        ]
+      },
+      {
+        "items": [
+          {
+            "type": "text",
+            "text": "café ﬁle 日本語テキスト مرحبا 👨‍👩‍👧 “quotes” …"
+          }
+        ]
+      },
+      {
+        "items": [
+          {
+            "type": "text",
+            "text": "trailing spaces.   "
+          }
+        ]
+      },
+      {
+        "items": [
+          {
+            "type": "text",
+            "text": "normal "
+          },
+          {
+            "type": "text",
+            "text": "bold",
+            "charStyleIndex": 0
+          },
+          {
+            "type": "text",
+            "text": " normal "
+          },
+          {
+            "type": "text",
+            "text": "italic",
+            "charStyleIndex": 1
+          },
+          {
+            "type": "text",
+            "text": " normal "
+          },
+          {
+            "type": "text",
+            "text": "green",
+            "charStyleIndex": 2
+          },
+          {
+            "type": "text",
+            "text": " "
+          },
+          {
+            "type": "text",
+            "text": "large",
+            "charStyleIndex": 3
+          }
+        ]
+      },
+      {
+        "items": [
+          {
+            "type": "text",
+            "text": "One"
+          }
+        ]
+      },
+      {
+        "items": [
+          {
+            "type": "text",
+            "text": "Two"
+          }
+        ]
+      },
+      {
+        "items": [
+          {
+            "type": "text",
+            "text": "Three"
+          }
+        ]
+      },
+      {
+        "items": [
+          {
+            "type": "text",
+            "text": "Bullet Level 1"
+          }
+        ]
+      },
+      {
+        "items": [
+          {
+            "type": "text",
+            "text": "Bullet Level 2"
+          }
+        ]
+      },
+      {
+        "items": [
+          {
+            "type": "text",
+            "text": "Soft line break"
+          }
+        ]
+      }
+    ]
+  },
+  "floating": [],
+  "pageTemplates": [],
+  "sections": []
+}
