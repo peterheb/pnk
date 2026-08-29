@@ -367,18 +367,22 @@ fn convert_tile(
     buffer_ordinal: &mut usize,
 ) {
     for ri in tile.msgs(5) {
-        // TST.TileRowInfo: tile_row_index = 1, cell_storage_buffer = 6,
-        // cell_offsets = 7, has_wide_offsets = 8; *_pre_bnc = 3/4 are stale
-        // legacy copies in modern files.
-        let Some(buffer) = ri.bytes(6).map(|b| b.to_vec()) else {
-            if ri.bytes(3).is_some() {
-                *saw_pre_bnc = true;
-            }
+        // TST.TileRowInfo: modern BNC fields are cell_storage_buffer = 6 /
+        // cell_offsets = 7; pre-BNC tiles (storage_version 4, seen in
+        // Numbers 11.x-era documents) keep the data in the *_pre_bnc fields
+        // 3/4 with the same offset mechanics but a different cell layout.
+        let buffer = ri
+            .bytes(6)
+            .or_else(|| ri.bytes(3))
+            .map(|b| b.to_vec());
+        let Some(buffer) = buffer else {
+            *saw_pre_bnc = true;
             continue;
         };
         if buffer.is_empty() {
             continue;
         }
+        let is_pre_bnc = ri.bytes(6).is_none() && ri.bytes(3).is_some();
 
         // The k-th rowInfo across all tiles is storage-buffer ordinal k
         // (docs/format/tables.md §Tiles); fall back to tile arithmetic.
@@ -391,8 +395,15 @@ fn convert_tile(
         };
         *buffer_ordinal += 1;
 
-        let offsets_raw = ri.bytes(7).map(|b| b.to_vec()).unwrap_or_default();
+        let offsets_raw = ri
+            .bytes(7)
+            .or_else(|| ri.bytes(4))
+            .map(|b| b.to_vec())
+            .unwrap_or_default();
         let wide = ri.boolean(8).unwrap_or(false);
+        if is_pre_bnc {
+            *saw_pre_bnc = true;
+        }
         // Packed little-endian signed 16-bit offsets; wide offsets are
         // quarter-offsets (multiply by 4). Negative = absent cell.
         let mut offsets: Vec<i32> = offsets_raw
@@ -425,19 +436,32 @@ fn convert_tile(
             if cell_buf.len() < 12 {
                 continue;
             }
-            if let Some(t) = decode_cell(
-                ctx,
-                model_row,
-                slot as u32,
-                cell_buf,
-                string_table,
-                style_table,
-                formula_table,
-                formula_error_table,
-                format_table,
-                custom_format_table,
-                rich_text_table,
-            ) {
+            let decoded = if cell_buf[0] == 4 {
+                decode_cell_v4(
+                    ctx,
+                    model_row,
+                    slot as u32,
+                    cell_buf,
+                    string_table,
+                    style_table,
+                    format_table,
+                )
+            } else {
+                decode_cell(
+                    ctx,
+                    model_row,
+                    slot as u32,
+                    cell_buf,
+                    string_table,
+                    style_table,
+                    formula_table,
+                    formula_error_table,
+                    format_table,
+                    custom_format_table,
+                    rich_text_table,
+                )
+            };
+            if let Some(t) = decoded {
                 out.push(t);
             }
         }
@@ -707,4 +731,130 @@ fn pick_format(
             format_string: cf.string(3).or_else(|| cf.string(18)),
         });
     (custom, false)
+}
+
+/// Pre-BNC (storage_version 4) cell block decoder — fixture-verified against
+/// Numbers 11.x-era documents (docs/format/gotchas.md #13). Layout differs
+/// from BNC v5: the block reads as 32-bit slots
+/// `[version|type][?][flags][cell style id][text style id]…` with the value
+/// at fixed positions: string keys for text cells at slot 6, f64 seconds
+/// (durations/dates/numbers) in the 8 bytes before the trailing slot.
+#[allow(clippy::too_many_arguments)]
+fn decode_cell_v4(
+    ctx: &mut Ctx,
+    row: u32,
+    col: u32,
+    buf: &[u8],
+    string_table: &DataList,
+    style_table: &DataList,
+    format_table: &DataList,
+) -> Option<(u32, u32, TableCell, Option<CellFormat>)> {
+    if buf.len() < 28 {
+        return None;
+    }
+    let cell_type = buf[1];
+    let u32s: Vec<u32> = buf
+        .chunks_exact(4)
+        .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+        .collect();
+
+    // Style ids (fixture-verified positions: u32[3] varies per cell type =
+    // cell style; u32[4] varies per column = text style).
+    let cell_style_id = u32s.get(3).copied().map(|v| v as i32);
+    let text_style_id = u32s.get(4).copied().map(|v| v as i32);
+
+    // Value at fixed slots: text key = slot 6; numeric value = f64 at
+    // [len-12..len-4] (the 8 bytes before the trailing slot).
+    let f64_at = |i: usize| -> Option<f64> {
+        let b = buf.get(i * 8..i * 8 + 8)?;
+        Some(f64::from_le_bytes(b.try_into().unwrap()))
+    };
+
+    let value = match cell_type {
+        3 => {
+            let sid = u32s.get(6).map(|v| *v as i32)?;
+            match string_table.entries.get(&sid).and_then(|e| e.string.clone()) {
+                Some(s) => CellValue::Text { value: s },
+                None => {
+                    ctx.warn_detail(
+                        WarningCode::TableDegraded,
+                        format!("v4 string key {sid} not resolvable in the string table; cell r{row}c{col} dropped"),
+                        format!("r{row}c{col}"),
+                    );
+                    return None;
+                }
+            }
+        }
+        7 => CellValue::Duration { value: f64_at(3)? },
+        5 => CellValue::Date { value: crate::colors::iso_from_apple_seconds(f64_at(3)?) },
+        2 => CellValue::Number { value: f64_at(3)? },
+        9 => {
+            // Rich-text slot unverified for v4; resolve via the string table
+            // fallback, else drop with a warning.
+            let sid = u32s.get(6).map(|v| *v as i32)?;
+            match string_table.entries.get(&sid).and_then(|e| e.string.clone()) {
+                Some(s) => CellValue::Text { value: s },
+                None => {
+                    ctx.warn_detail(
+                        WarningCode::TableDegraded,
+                        format!("v4 rich-text cell r{row}c{col} not resolvable; dropped"),
+                        format!("r{row}c{col}"),
+                    );
+                    return None;
+                }
+            }
+        }
+        0 | 1 => return None,
+        _ => {
+            ctx.warn_detail(
+                WarningCode::TableDegraded,
+                format!("unrecognized v4 cell type {cell_type}; cell skipped"),
+                format!("r{row}c{col}"),
+            );
+            return None;
+        }
+    };
+
+    // Style via the shared STYLE table; per-cell text style on top.
+    let mut style = cell_style_id.and_then(|id| {
+        style_table
+            .entries
+            .get(&id)
+            .and_then(|e| e.reference)
+            .and_then(|cid| styles::resolve_cell_style(ctx, cid))
+    });
+    if let Some(s) = style.as_mut() {
+        if let Some(tid) = text_style_id {
+            if let Some(e) = style_table.entries.get(&tid) {
+                if let Some(tref) = e.reference {
+                    s.text = Some(styles::resolve_char_style(ctx, tref));
+                }
+            }
+        }
+    }
+
+    // Format id (fixture-verified: duration/date cells carry it at slot 5;
+    // the FORMAT list holds those keys).
+    let format = match cell_type {
+        2 | 5 | 7 => u32s.get(5).map(|v| *v as i32).and_then(|id| {
+            format_table.entries.get(&id).and_then(|e| {
+                e.format.clone().map(|f| CellFormat {
+                    kind: match f.varint(1).unwrap_or(0) {
+                        257 => CellFormatKind::Currency,
+                        258 => CellFormatKind::Percent,
+                        261 => CellFormatKind::Date,
+                        268 => CellFormatKind::Duration,
+                        260 => CellFormatKind::Text,
+                        _ => CellFormatKind::Number,
+                    },
+                    decimals: f.varint(2).filter(|v| *v <= 20).map(|v| v as u32),
+                    currency_code: f.string(3),
+                    format_string: f.string(18),
+                })
+            })
+        }),
+        _ => None,
+    };
+
+    Some((row, col, TableCell { value, style, format_index: None, formula: None }, format))
 }

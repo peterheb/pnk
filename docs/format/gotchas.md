@@ -108,3 +108,42 @@ carries `Index/*.iwpv2` members with every stream ciphertext except
 `DocumentStylesheet`. Same class as `.iwph`: reject cleanly as
 password-protected. `[inferred: single fixture so far, 2026-08-28 — treat the
 `.iwp*` family as the encrypted class pending more samples]`
+## 13. Pre-BNC (storage_version 4) table cells are a separate cell layout
+
+Modern Numbers writes BNC tiles (`TST.Tile.storage_version = 5`,
+`last_saved_in_BNC = true`, cell layout documented in tables.md). But
+Numbers 11.x-era documents in the corpus write **pre-BNC tiles**:
+`storage_version = 4`, no `last_saved_in_BNC`, and the row data in the
+`*_pre_bnc` fields (`cell_storage_buffer_pre_bnc = 3` /
+`cell_offsets_pre_bnc = 4`) — which the modern proto names "pre-BNC" but
+which are the ONLY storage in these files. numbers-parser rejects these
+(`UnsupportedError: Pre-BNC storage is unsupported`), so there is no
+reference decode; the layout below is fixture-verified against
+`CC-MAIN-2026-34-cdx-00006-5` and cross-checked against the file's embedded
+QuickLook preview.
+
+Layout mechanics (offsets, wide-offset scaling) match the v5 description.
+The per-cell blocks differ:
+
+- The block starts with `version = 4` (byte 0) + `TST.CellType` (byte 1),
+  then 32-bit slots: `[version|type][?][flags][cell style id][text style id]…`.
+- **Text cells (type 3, flags `0x10`):** the string-table key is the u32 at
+  **slot 6** (byte offset 24); when flag bit `0x40000` is set one extra u32
+  follows the key. Keys resolve through the table's `TableDataList`
+  (STRING type, including its *segmented* entries — segment lists are
+  required, not optional: inline entries cover only part of the key space).
+- **Duration (type 7) / date (type 5) / number (type 2) cells:** the value
+  is an f64 in the 8 bytes before the trailing slot (fixture cells show
+  seconds for durations; 51.5 / 970 / 2408 for a "Start time" column), with
+  the number-format id at slot 5 (resolvable in the FORMAT-type
+  `TableDataList`).
+- **Empty stubs:** 12-byte v4 blocks with type 0 (genericCellType) and a
+  zero payload — explicitly-stored empty cells; skip them.
+
+Blast radius across the corpus: 45 of 358 tables were fully empty under the
+v5-only walker; after v4 support, 11 remain — all genuinely blank
+(explicit v4 empty stubs, no value payload).
+
+`[fixture-verified: layout against cdx-00006-5 + QuickLook; parser side
+unverified — numbers-parser refuses the variant and libetonyek was not
+checked]`

@@ -377,20 +377,19 @@ fn table_markdown(t: &TableModel, out: &mut String) {
     out.push_str(&format!("**{name}** ({} rows × {} columns)\n\n", t.row_count, t.column_count));
 
     let hr = t.header_row_count as usize;
-    let mut lookup: std::collections::HashMap<(u32, u32), &TableCell> =
-        std::collections::HashMap::new();
-
+    let grid_cell = |r: usize, c: usize| -> Option<&TableCell> {
+        t.grid.get(r).and_then(|row| row.get(c)).and_then(|slot| slot.as_ref())
+    };
 
     let nrows = t.row_count.min(200) as usize; // cap dump size per table
     let ncols = t.column_count.min(40) as usize;
 
     let cell_text = |r: usize, c: usize| -> String {
-        match lookup.get(&(r as u32, c as u32)) {
+        match grid_cell(r, c) {
             Some(cell) => {
                 // Formula cells: prefer the formula string when the source
                 // carried a recoverable one, else the calculated value.
-                if let (Some(f), Some(src)) = (&cell.formula, cell.formula.as_ref().and_then(|f| f.source_text.as_ref())) {
-                    let _ = f;
+                if let Some(src) = cell.formula.as_ref().and_then(|f| f.source_text.as_ref()) {
                     return format!("`={src}`");
                 }
                 escape_md(&cell_value_plain(&cell.value))
