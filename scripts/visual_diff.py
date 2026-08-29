@@ -220,6 +220,24 @@ const { chromium } = require(process.env.PW_MODULE);
   await page.waitForSelector("#pages-view, #numbers-view, #keynote-view", { timeout: 30000 });
   // tables/images settle after first paint
   await page.waitForTimeout(1500);
+
+  // Deck mode (.key): click through thumbnails and screenshot the STAGE only,
+  // one PNG per slide, so composites align 1:1 with Apple's per-page rasters.
+  let slideCount = 0;
+  const items = page.locator(".slide-list-item");
+  if ((await items.count()) > 0) {
+    slideCount = await items.count();
+    const shotDir = shotPath.replace(/\/[^/]+$/, "/");
+    fs.mkdirSync(shotDir, { recursive: true });
+    for (let i = 0; i < slideCount; i++) {
+      await items.nth(i).click();
+      const stage = page.locator(".slide-stage").first();
+      await stage.waitFor({ state: "visible", timeout: 10000 });
+      await page.waitForTimeout(250);
+      await stage.screenshot({ path: `${shotDir}slide-${i + 1}.png` });
+    }
+  }
+
   await page.screenshot({ path: shotPath, fullPage: true });
 
   const bboxes = await page.evaluate(() => {
@@ -248,6 +266,7 @@ const { chromium } = require(process.env.PW_MODULE);
     }
     return out;
   });
+  bboxes.slideCount = slideCount;
   fs.writeFileSync(bboxPath, JSON.stringify(bboxes, null, 2));
   await browser.close();
 })().catch((e) => { console.error(e); process.exit(1); });
@@ -313,29 +332,39 @@ def render_ours(fixture: Path, work: Path, base_url: str, log) -> tuple[Path, di
 # ---------------------------------------------------------------- comparisons
 
 def composite_rows(shot: Path, work: Path, log) -> list[Path]:
-    """Per-Apple-page side-by-side composites: Apple page | proportional slice
-    of our continuous-flow render. Proportional slicing is approximate (our
-    flow layout differs from Pages' pagination); useful for locating, not for
-    pixel verdicts."""
+    """Side-by-side composites, Apple page-N vs our render N.
+
+    Decks (.key): ours/slide-N.png (stage element screenshots) align 1:1 with
+    Apple's per-page rasters. Everything else: Apple page | proportional slice
+    of our continuous-flow render — approximate, for locating, not verdicts.
+    """
     from PIL import Image
 
     apple_pages = sorted((work / "apple").glob("page-*.png"))
     if not apple_pages:
         return []
+    out_dir = work / "composites"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Deck mode: per-slide stage screenshots
+    slide_shots = sorted((work / "ours").glob("slide-*.png"),
+                         key=lambda p: int(p.stem.split("-")[-1]))
+    if slide_shots:
+        return composite_deck(apple_pages, slide_shots, out_dir, log)
+
     ours = Image.open(shot)
     ap = Image.open(apple_pages[0])
     scale = ap.width / ours.width  # ours -> apple page width
     ours_scaled_h = int(ours.height * scale)
     ours_scaled = ours.resize((ap.width, ours_scaled_h), Image.LANCZOS)
 
-    out_dir = work / "composites"
-    out_dir.mkdir(parents=True, exist_ok=True)
     stack_h = ap.height * len(apple_pages)
+    ours_scaled_h2 = ours_scaled_h
     written = []
     for i in range(len(apple_pages)):
-        y0 = int(i * ap.height / stack_h * ours_scaled_h)
-        y1 = int((i + 1) * ap.height / stack_h * ours_scaled_h)
-        ours_slice = ours_scaled.crop((0, y0, ap.width, min(y1, ours_scaled_h)))
+        y0 = int(i * ap.height / stack_h * ours_scaled_h2)
+        y1 = int((i + 1) * ap.height / stack_h * ours_scaled_h2)
+        ours_slice = ours_scaled.crop((0, y0, ap.width, min(y1, ours_scaled_h2)))
         canvas = Image.new("RGB", (ap.width * 2 + 12, ap.height), "#d0d0d8")
         canvas.paste(Image.open(apple_pages[i]).convert("RGB"), (0, 0))
         canvas.paste(ours_slice, (ap.width + 12, 0))
@@ -343,6 +372,33 @@ def composite_rows(shot: Path, work: Path, log) -> list[Path]:
         canvas.save(out)
         written.append(out)
     log(f"wrote {len(written)} per-page composites")
+    return written
+
+
+def composite_deck(apple_pages, slide_shots, out_dir: Path, log) -> list[Path]:
+    """Apple page-N | our slide-N, each scaled to a common height."""
+    from PIL import Image
+
+    written = []
+    n = max(len(apple_pages), len(slide_shots))
+    for i in range(n):
+        canvas_h = 480
+        a_img = o_img = None
+        if i < len(apple_pages):
+            a_img = Image.open(apple_pages[i]).convert("RGB")
+            a_img = a_img.resize((int(a_img.width * canvas_h / a_img.height), canvas_h), Image.LANCZOS)
+        if i < len(slide_shots):
+            o_img = Image.open(slide_shots[i]).convert("RGB")
+            o_img = o_img.resize((int(o_img.width * canvas_h / o_img.height), canvas_h), Image.LANCZOS)
+        a_img = a_img or _blank()
+        o_img = o_img or _blank()
+        canvas = Image.new("RGB", (a_img.width + o_img.width + 12, canvas_h + 22), "#d0d0d8")
+        canvas.paste(a_img, (0, 22))
+        canvas.paste(o_img, (a_img.width + 12, 22))
+        out = out_dir / f"composite-page-{i + 1}.png"
+        canvas.save(out)
+        written.append(out)
+    log(f"wrote {len(written)} per-slide deck composites")
     return written
 
 
