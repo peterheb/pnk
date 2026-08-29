@@ -97,28 +97,32 @@ impl Msg {
     }
 
     /// `TSP.Reference` / `TSP.DataReference` identifier (field 1 inside the
-    /// LEN bytes — TSPMessages.proto:26-34).
+    /// LEN bytes — TSPMessages.proto:26-34). Unwraps nested single-field
+    /// wrappers (e.g. a `DrawableEntry { drawable = 1 (Reference) }` rather
+    /// than a bare Reference).
     pub fn reference(&self, n: u32) -> Option<u64> {
-        match self.get(n)? {
+        Msg::deep_reference(self.get(n)?)
+    }
+
+    /// Unwraps nested single-field LEN wrappers until a varint appears.
+    pub fn deep_reference(v: &Value) -> Option<u64> {
+        match v {
             Value::Bytes(b) => {
                 let m = Msg::parse(b)?;
-                m.varint(1)
+                match m.varint(1) {
+                    Some(id) => Some(id),
+                    None => m.msg(1).as_ref().and_then(|inner| Msg::reference(&inner.clone(), 1)),
+                }
             }
-            Value::Varint(v) => Some(*v), // some writers inline the identifier
+            Value::Varint(v) => Some(*v),
             _ => None,
         }
     }
 
-    /// All occurrences of field `n` as reference ids.
+    /// All occurrences of field `n` as reference ids (deep-unwrapping nested
+    /// wrappers, see `reference`).
     pub fn references(&self, n: u32) -> Vec<u64> {
-        self.all(n)
-            .into_iter()
-            .filter_map(|v| match v {
-                Value::Bytes(b) => Msg::parse(b).and_then(|m| m.varint(1)),
-                Value::Varint(v) => Some(*v),
-                _ => None,
-            })
-            .collect()
+        self.all(n).into_iter().filter_map(|v| Msg::deep_reference(v)).collect()
     }
 
     /// Packed repeated varints (or single varint).
@@ -219,6 +223,11 @@ pub mod ids {
     pub const KN_THEME: u32 = 10;
     pub const KN_NOTE: u32 = 15;
     pub const KN_BUILD: u32 = 8;
+
+    /// Known non-content object types seen in the corpus (empty payloads, no
+    /// DataReferences): fixture-verified — silently skipped so
+    /// unknown-object-type warnings stay meaningful.
+    pub const IGNORED: &[u32] = &[608, 10016];
 
     // TN (Numbers)
     pub const TN_DOCUMENT: u32 = 1;

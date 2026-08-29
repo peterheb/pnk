@@ -10,14 +10,7 @@ use crate::model::*;
 use crate::pb::{ids, Msg};
 
 pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
-    // Locale via the TSA super chain (super = 15 → TSA.DocumentArchive
-    // super = 1 → TSK.DocumentArchive.locale_identifier = 4).
-    let locale = root
-        .reference(15)
-        .and_then(|tsa| ctx.loaded.msg(tsa))
-        .and_then(|tsa| tsa.reference(1))
-        .and_then(|tsk| ctx.loaded.msg(tsk))
-        .and_then(|tsk| tsk.string(4));
+    let locale = ctx.resolve_locale(root);
 
     let flavor = if root.has(4) {
         PagesFlavor::WordProcessing

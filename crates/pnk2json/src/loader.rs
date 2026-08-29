@@ -67,6 +67,13 @@ pub fn load(streams: &[StreamView], registry: &Registry, app: App) -> Loaded {
                 if message.type_id == 0 && archive.should_merge {
                     continue;
                 }
+                // Object types verified non-content in the corpus (Numbers/
+                // Pages annotation caches and guide indexes): decoded but
+                // never warned about (model-design.md §6 spirit — they carry
+                // no DataReferences that feed the media inventory).
+                if crate::pb::ids::IGNORED.contains(&message.type_id) {
+                    continue;
+                }
                 let name = registry.name_for(app, message.type_id);
                 // Command/undo archives are dropped per docs/model-design.md §6
                 // — decoded but never warned about.

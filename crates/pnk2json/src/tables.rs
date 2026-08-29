@@ -657,7 +657,6 @@ fn decode_cell(
             format!("r{row}c{col}"),
         );
     }
-
     Some((row, col, TableCell { value, style, format_index: None, formula }, format))
 }
 

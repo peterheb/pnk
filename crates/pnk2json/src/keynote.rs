@@ -20,6 +20,8 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> KeynoteDocument {
         return empty_keynote(ctx);
     };
 
+    let locale = ctx.resolve_locale(&root);
+
     // Slide size (required field 4).
     let slide_size = show
         .size(4)
@@ -142,7 +144,7 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> KeynoteDocument {
         .and_then(|rid| ctx.loaded.msg(rid))
         .map(|r| RecordingInfo { duration_sec: r.f64v(3) });
 
-    KeynoteDocument {
+    let mut doc = KeynoteDocument {
         kind: "keynote".to_string(),
         meta: ctx.meta.clone(),
         warnings: Vec::new(),
@@ -155,11 +157,15 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> KeynoteDocument {
         playback,
         soundtrack,
         recording,
+    };
+    if doc.meta.locale.is_none() {
+        doc.meta.locale = locale;
     }
+    doc
 }
 
 fn empty_keynote(ctx: &mut Ctx) -> KeynoteDocument {
-    KeynoteDocument {
+    let mut doc = KeynoteDocument {
         kind: "keynote".to_string(),
         meta: ctx.meta.clone(),
         warnings: Vec::new(),
@@ -172,7 +178,8 @@ fn empty_keynote(ctx: &mut Ctx) -> KeynoteDocument {
         playback: None,
         soundtrack: None,
         recording: None,
-    }
+    };
+    doc
 }
 
 fn media_asset_from_ref(ctx: &Ctx, r: &MediaRef) -> MediaAsset {

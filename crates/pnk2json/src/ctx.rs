@@ -415,3 +415,44 @@ impl Ctx {
         Ok(ctx)
     }
 }
+
+impl Ctx {
+    /// Document locale: TSK.DocumentArchive.locale_identifier (field 4) via
+    /// the TSA super chain (Pages root super = 15, KN/TN = 8), with the TSA's
+    /// own `document_language` (field 3) as fallback — both observed in the
+    /// corpus.
+    pub fn resolve_locale(&self, root: &Msg) -> Option<String> {
+        for f in [15u32, 8, 3] {
+            // The app root's `super` is the TSA.DocumentArchive payload —
+            // INLINE (the Apple-protobuf superclass idiom embeds the parent,
+            // it is not a TSP.Reference), with the TSK payload in turn
+            // inline at TSA field 1. Fall back to a referenced archive when
+            // a writer does use one.
+            let tsa = root
+                .msg(f)
+                .or_else(|| root.reference(f).and_then(|id| self.loaded.msg(id).cloned()));
+            let Some(tsa) = tsa else { continue };
+            // TSK.DocumentArchive.locale_identifier = 4 (inline at TSA.1 or
+            // referenced).
+            let tsk = tsa
+                .msg(1)
+                .or_else(|| tsa.reference(1).and_then(|id| self.loaded.msg(id).cloned()));
+            if let Some(loc) = tsk.as_ref().and_then(|m| m.string(4)) {
+                return Some(loc);
+            }
+            // TSA.document_language (3).
+            if let Some(loc) = tsa.string(3) {
+                if is_locale_token(&loc) {
+                    return Some(loc);
+                }
+            }
+        }
+        None
+    }
+}
+
+fn is_locale_token(s: &str) -> bool {
+    s.len() <= 8
+        && s.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+        && !s.chars().any(char::is_whitespace)
+}
