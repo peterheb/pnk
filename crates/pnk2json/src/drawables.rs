@@ -169,9 +169,15 @@ fn drawable_style(ctx: &mut Ctx, style_ref: Option<u64>, is_media: bool) -> (Opt
     let mut extras = DrawableCommon::default();
     let mut any = false;
     if let Some(sid) = style_ref {
-        if let Some(sm) = ctx.loaded.msg(sid) {
+        if let Some(sm) = ctx.loaded.msg(sid).cloned() {
+            // TSWP.ShapeStyleArchive (text shapes) wraps the TSD.ShapeStyleArchive
+            // as `super` (1); the fill/stroke/opacity properties live on the TSD
+            // level's field 11, while the wrapper's own field 11 holds text
+            // layout properties. Prefer the super's properties when present.
+            let tsd_super = sm.msg(1).filter(|s| s.has(11));
+            let props_msg = tsd_super.as_ref().unwrap_or(&sm);
             // shape_properties / media_properties = 11
-            if let Some(props) = sm.msg(11) {
+            if let Some(props) = props_msg.msg(11) {
                 if !is_media {
                     style.fill = props.msg(1).and_then(|f| crate::tsd::fill_of(ctx, &f));
                     style.stroke = props.msg(2).and_then(|st| crate::tsd::stroke_of(ctx, &st));

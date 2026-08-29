@@ -165,9 +165,30 @@
               "marginPt": 12.0
             },
             "style": {
+              "stroke": {
+                "color": "#000000",
+                "widthPt": 1.0,
+                "cap": "butt",
+                "join": "miter",
+                "miterLimit": 4.0,
+                "dashPhase": 0.0
+              },
               "lineEnds": {
-                "head": {}
+                "head": {},
+                "tail": {}
               }
+            },
+            "opacity": 1.0,
+            "shadow": {
+              "color": "#000000",
+              "angleDeg": 315.0,
+              "offsetPt": 5.0,
+              "radiusPt": 1.0,
+              "opacity": 1.0,
+              "kind": "drop"
+            },
+            "reflection": {
+              "opacity": 0.5
             }
           },
           "text": {
@@ -218,9 +239,26 @@
               "marginPt": 12.0
             },
             "style": {
+              "fill": {
+                "type": "solid",
+                "color": "#feae00"
+              },
+              "stroke": {
+                "color": "#000000",
+                "widthPt": 1.0,
+                "cap": "butt",
+                "join": "miter",
+                "miterLimit": 4.0,
+                "dashPhase": 0.0
+              },
               "lineEnds": {
-                "head": {}
+                "head": {},
+                "tail": {}
               }
+            },
+            "opacity": 1.0,
+            "reflection": {
+              "opacity": 0.5
             }
           },
           "geometry": {
@@ -258,9 +296,26 @@
               "marginPt": 12.0
             },
             "style": {
+              "fill": {
+                "type": "solid",
+                "color": "#000000"
+              },
+              "stroke": {
+                "color": "#000000",
+                "widthPt": 1.0,
+                "cap": "butt",
+                "join": "miter",
+                "miterLimit": 4.0,
+                "dashPhase": 0.0
+              },
               "lineEnds": {
-                "head": {}
+                "head": {},
+                "tail": {}
               }
+            },
+            "opacity": 1.0,
+            "reflection": {
+              "opacity": 0.5
             }
           },
           "geometry": {
@@ -389,9 +444,26 @@
               "marginPt": 12.0
             },
             "style": {
+              "fill": {
+                "type": "solid",
+                "color": "#000000"
+              },
+              "stroke": {
+                "color": "#000000",
+                "widthPt": 1.0,
+                "cap": "butt",
+                "join": "miter",
+                "miterLimit": 4.0,
+                "dashPhase": 0.0
+              },
               "lineEnds": {
-                "head": {}
+                "head": {},
+                "tail": {}
               }
+            },
+            "opacity": 1.0,
+            "reflection": {
+              "opacity": 0.5
             }
           },
           "geometry": {
@@ -468,6 +540,18 @@
             "textWrap": {
               "kind": "largest",
               "marginPt": 12.0
+            },
+            "style": {},
+            "shadow": {
+              "color": "#000000",
+              "angleDeg": 45.0,
+              "offsetPt": 5.0,
+              "radiusPt": 4.0,
+              "opacity": 0.5,
+              "kind": "drop"
+            },
+            "reflection": {
+              "opacity": 0.5
             }
           },
           "geometry": {
@@ -505,6 +589,35 @@
             "textWrap": {
               "kind": "largest",
               "marginPt": 12.0
+            },
+            "style": {
+              "stroke": {
+                "color": "#000000",
+                "widthPt": 6.0,
+                "cap": "round",
+                "join": "miter",
+                "miterLimit": 4.0,
+                "dash": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "dashPhase": 0.0
+              }
+            },
+            "shadow": {
+              "color": "#000000",
+              "angleDeg": 0.0,
+              "offsetPt": 9.0,
+              "radiusPt": 30.0,
+              "opacity": 0.75,
+              "kind": "contact",
+              "contact": {
+                "height": 0.25
+              }
             }
           },
           "geometry": {
@@ -592,9 +705,26 @@
               "marginPt": 12.0
             },
             "style": {
+              "fill": {
+                "type": "solid",
+                "color": "#000000"
+              },
+              "stroke": {
+                "color": "#000000",
+                "widthPt": 1.0,
+                "cap": "butt",
+                "join": "miter",
+                "miterLimit": 4.0,
+                "dashPhase": 0.0
+              },
               "lineEnds": {
-                "head": {}
+                "head": {},
+                "tail": {}
               }
+            },
+            "opacity": 1.0,
+            "reflection": {
+              "opacity": 0.5
             }
           },
           "geometry": {
@@ -680,7 +810,9 @@
             "textWrap": {
               "kind": "largest",
               "marginPt": 12.0
-            }
+            },
+            "style": {},
+            "opacity": 0.295684814453125
           },
           "geometry": {
             "naturalSize": {
@@ -824,6 +956,24 @@
             "textWrap": {
               "kind": "largest",
               "marginPt": 12.0
+            },
+            "style": {
+              "stroke": {
+                "color": "#000000",
+                "widthPt": 6.0,
+                "cap": "round",
+                "join": "miter",
+                "miterLimit": 4.0,
+                "dash": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "dashPhase": 0.0
+              }
             }
           },
           "geometry": {
@@ -1112,9 +1262,30 @@
               "marginPt": 12.0
             },
             "style": {
+              "stroke": {
+                "color": "#000000",
+                "widthPt": 1.0,
+                "cap": "butt",
+                "join": "miter",
+                "miterLimit": 4.0,
+                "dashPhase": 0.0
+              },
               "lineEnds": {
-                "head": {}
+                "head": {},
+                "tail": {}
               }
+            },
+            "opacity": 1.0,
+            "shadow": {
+              "color": "#000000",
+              "angleDeg": 315.0,
+              "offsetPt": 5.0,
+              "radiusPt": 1.0,
+              "opacity": 1.0,
+              "kind": "drop"
+            },
+            "reflection": {
+              "opacity": 0.5
             }
           },
           "text": {
@@ -1231,6 +1402,24 @@
                 "textWrap": {
                   "kind": "largest",
                   "marginPt": 12.0
+                },
+                "style": {
+                  "stroke": {
+                    "color": "#000000",
+                    "widthPt": 4.0,
+                    "cap": "butt",
+                    "join": "miter",
+                    "miterLimit": 4.0,
+                    "dash": [
+                      0.0,
+                      0.0,
+                      0.0,
+                      0.0,
+                      0.0,
+                      0.0
+                    ],
+                    "dashPhase": 0.0
+                  }
                 }
               },
               "geometry": {
@@ -1265,6 +1454,54 @@
                 "textWrap": {
                   "kind": "largest",
                   "marginPt": 12.0
+                },
+                "style": {
+                  "lineEnds": {
+                    "head": {
+                      "identifier": "simple arrow",
+                      "isFilled": true,
+                      "path": {
+                        "elements": [
+                          {
+                            "type": "move",
+                            "points": [
+                              {
+                                "x": 0.0,
+                                "y": 0.0
+                              }
+                            ]
+                          },
+                          {
+                            "type": "line",
+                            "points": [
+                              {
+                                "x": 3.0,
+                                "y": 6.0
+                              }
+                            ]
+                          },
+                          {
+                            "type": "line",
+                            "points": [
+                              {
+                                "x": 6.0,
+                                "y": 0.0
+                              }
+                            ]
+                          },
+                          {
+                            "type": "close"
+                          }
+                        ]
+                      }
+                    },
+                    "tail": {
+                      "identifier": "none",
+                      "path": {
+                        "elements": []
+                      }
+                    }
+                  }
                 }
               },
               "geometry": {
@@ -1358,9 +1595,30 @@
               "marginPt": 12.0
             },
             "style": {
+              "stroke": {
+                "color": "#000000",
+                "widthPt": 1.0,
+                "cap": "butt",
+                "join": "miter",
+                "miterLimit": 4.0,
+                "dashPhase": 0.0
+              },
               "lineEnds": {
-                "head": {}
+                "head": {},
+                "tail": {}
               }
+            },
+            "opacity": 1.0,
+            "shadow": {
+              "color": "#000000",
+              "angleDeg": 315.0,
+              "offsetPt": 5.0,
+              "radiusPt": 1.0,
+              "opacity": 1.0,
+              "kind": "drop"
+            },
+            "reflection": {
+              "opacity": 0.5
             }
           },
           "text": {
