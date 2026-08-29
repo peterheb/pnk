@@ -117,22 +117,33 @@ def tokens(s: str) -> set[str]:
 
 def table_census(doc: dict) -> list[dict]:
     census = []
+    # sheets (numbers/keynote) drawables
     for sh in doc.get("sheets", []):
         for d in sh.get("drawables", []):
             tb = d.get("table")
-            if not isinstance(tb, dict):
-                continue
-            nonnull = sum(1 for row in tb["grid"] for c in row if c is not None)
-            census.append({
-                "sheet": sh.get("name"),
-                "table": tb.get("name"),
-                "dims": f'{tb["rowCount"]}x{tb["columnCount"]}',
-                "nonnull": nonnull,
-                "fill_pct": round(100 * nonnull / max(1, tb["rowCount"] * tb["columnCount"]), 1),
-                "formats": len(tb.get("formats", [])),
-                "merges": len(tb.get("merges", [])),
-            })
+            if isinstance(tb, dict):
+                census.append(_census_row(sh.get("name"), tb))
+    # pages word-processing flow: tables inline as drawable attachments
+    for p in doc.get("body", {}).get("paragraphs", []):
+        for it in p.get("items", []):
+            if isinstance(it, dict) and it.get("type") == "inline-object" and isinstance(it.get("drawable"), dict):
+                d = it["drawable"]
+                if isinstance(d.get("table"), dict):
+                    census.append(_census_row("body", d["table"]))
     return census
+
+
+def _census_row(sheet: str, tb: dict) -> dict:
+    nonnull = sum(1 for row in tb["grid"] for c in row if c is not None)
+    return {
+        "sheet": sheet,
+        "table": tb.get("name"),
+        "dims": f'{tb["rowCount"]}x{tb["columnCount"]}',
+        "nonnull": nonnull,
+        "fill_pct": round(100 * nonnull / max(1, tb["rowCount"] * tb["columnCount"]), 1),
+        "formats": len(tb.get("formats", [])),
+        "merges": len(tb.get("merges", [])),
+    }
 
 
 def main() -> int:
@@ -168,14 +179,24 @@ def main() -> int:
     print(f"{'fixture':44} {'fmt':8} {'preview':7} {'tables':6} verdict")
     failures = 0
     for lid in ids:
+        as_path = Path(lid)
+        src = None
+        if as_path.suffix in {".pages", ".numbers", ".key"}:
+            src = as_path if as_path.is_absolute() else REPO / as_path
         r = success.get(lid)
+        if src is not None:
+            r = {"format": "pages" if as_path.suffix == ".pages" else as_path.suffix.lstrip("."), "sha256": None, "ext": None}
+            src = str(src)
         if not r:
             print(f"{lid:44} MISSING from success.tsv")
             failures += 1
             continue
-        work = outdir / lid
+        work = outdir / as_path.stem
         work.mkdir(parents=True, exist_ok=True)
-        src = REPO / f"fixtures/crawl/{r['sha256']}.{r['ext']}"
+        if src is None:
+            src = REPO / f"fixtures/crawl/{r['sha256']}.{r['ext']}"
+        else:
+            src = Path(src)
 
         kind = extract_preview(src, work)
         pages: list[Path] = []
