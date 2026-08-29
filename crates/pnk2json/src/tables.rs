@@ -767,12 +767,12 @@ fn pick_format(
         (text, CellFormatKind::Text),
     ]
     .into_iter()
-    .find_map(|(id, kind)| {
+    .find_map(|(id, slot_kind)| {
         id.and_then(|id| format_table.entries.get(&id))
             .and_then(|e| e.format.clone())
-            .map(|f| (f, kind))
+            .map(|f| (f, slot_kind))
     });
-    if let Some((f, kind)) = found {
+    if let Some((f, slot_kind)) = found {
         // decimal_places > 20 is the app's AUTO sentinel (253 = -3 as i8 /
         // 4294967293 = -3 as u32, fixture-verified on G5: decimal/currency/
         // percent/scientific all carry it) — legit "auto decimals": emit the
@@ -781,12 +781,33 @@ fn pick_format(
             .varint(2)
             .filter(|v| *v <= 20)
             .map(|v| v as u32);
+        // Kind from the format's OWN format_type (TSK.FormatStructArchive f1,
+        // numbers-parser FormatType) — the referencing slot only says WHICH
+        // per-type table the id lives in, not the true kind (a "number
+        // format" id can resolve to base-16/fraction/scientific archives).
+        let ft = f.varint(1);
+        let kind = match ft {
+            Some(257) => CellFormatKind::Currency,
+            Some(258) => CellFormatKind::Percent,
+            Some(261) => CellFormatKind::Date,
+            Some(268) => CellFormatKind::Duration,
+            Some(260) => CellFormatKind::Text,
+            Some(270..=274) => CellFormatKind::Custom,
+            _ => slot_kind,
+        };
+        // Base (hex/binary/octal) formats: kind Number loses the base —
+        // surface it via formatString ("base-16") so a viewer can render
+        // 4D2-style output (fixture G5 key 9: base=16).
+        let format_string = f.string(18).or_else(|| match (ft, f.varint(8)) {
+            (Some(269), Some(base)) => Some(format!("base-{base}")),
+            _ => None,
+        });
         return (
             Some(CellFormat {
                 kind,
                 decimals,
                 currency_code: f.string(3),
-                format_string: f.string(18),
+                format_string,
             }),
             false,
         );
