@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 
 use crate::ctx::{Ctx, StylePool};
+use crate::model::{CellFormatKind, CellTypeTag, GridCell, GridPlain, GridValue};
 use crate::model::*;
 use crate::pb::Msg;
 use crate::styles;
@@ -276,7 +277,7 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
     // cells reference formats by index. Malformed formats (negative /
     // absurd decimals) were already warned about and dropped inside
     // decode_cell — the cell is emitted with `formatIndex` absent.
-    let mut grid: Vec<Vec<Option<TableCell>>> =
+    let mut grid: Vec<Vec<Option<GridCell>>> =
         vec![vec![None; column_count as usize]; row_count as usize];
     let mut formats: Vec<CellFormat> = Vec::new();
     for (row, col, mut cell, format) in cells {
@@ -288,10 +289,21 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
                     formats.len() - 1
                 }
             };
-            cell.format_index = Some(idx as u32);
+            cell.fmt = Some(idx as u32);
         }
+        let slot = match (&cell.v, cell.r#type, cell.fmt, cell.cell_style_index, &cell.formula) {
+            // Plain unformatted scalar: bare value, no object wrapper.
+            (GridValue::Scalar(s), None, None, None, None) => {
+                GridCell::Plain(GridPlain::Text(s.clone()))
+            }
+            (GridValue::Number(n), None, None, None, None) => {
+                GridCell::Plain(GridPlain::Number(number_from_f64(*n)))
+            }
+            (GridValue::Bool(b), None, None, None, None) => GridCell::Plain(GridPlain::Bool(*b)),
+            _ => GridCell::Cell(cell),
+        };
         if (row as usize) < grid.len() && (col as usize) < grid[row as usize].len() {
-            grid[row as usize][col as usize] = Some(cell);
+            grid[row as usize][col as usize] = Some(slot);
         }
     }
 
@@ -667,12 +679,32 @@ fn decode_cell(
             format!("r{row}c{col}"),
         );
     }
+    let (v, type_tag, cur) = value_into_parts(value);
     Some((
         row,
         col,
-        TableCell { value, cell_style_index, format_index: None, formula },
+        TableCell { v, r#type: type_tag, cur, fmt: None, cell_style_index, formula },
         format,
     ))
+}
+
+/// Map the internal decoded value onto the GridValue + type-tag contract:
+/// plain text/number/bool stay untagged; ISO dates, durations (seconds),
+/// currency (with code), rich text and formula errors carry short tags.
+fn value_into_parts(value: CellValue) -> (GridValue, Option<CellTypeTag>, Option<String>) {
+    match value {
+        CellValue::Empty => (GridValue::None, None, None),
+        CellValue::Number { value } => (GridValue::Number(value), None, None),
+        CellValue::Text { value } => (GridValue::Scalar(value), None, None),
+        CellValue::Bool { value } => (GridValue::Bool(value), None, None),
+        CellValue::Date { value } => (GridValue::Scalar(value), Some(CellTypeTag::Date), None),
+        CellValue::Duration { value } => (GridValue::Number(value), Some(CellTypeTag::Duration), None),
+        CellValue::Currency { value, currency_code } => {
+            (GridValue::Number(value), Some(CellTypeTag::Currency), currency_code)
+        }
+        CellValue::Richtext { text } => (GridValue::Richtext(text), Some(CellTypeTag::Richtext), None),
+        CellValue::Error { value } => (GridValue::Scalar(value), Some(CellTypeTag::Error), None),
+    }
 }
 
 /// decimal128 (binary integer decimal) → f64, per numbers-parser
@@ -872,10 +904,21 @@ fn decode_cell_v4(
         _ => None,
     };
 
+    let (v, type_tag, cur) = value_into_parts(value);
     Some((
         row,
         col,
-        TableCell { value, cell_style_index, format_index: None, formula: None },
+        TableCell { v, r#type: type_tag, cur, fmt: None, cell_style_index, formula: None },
         format,
     ))
+}
+
+/// f64 -> JSON number preserving integral-ness: 7434.0 serializes as 7434
+/// (smaller envelopes, same value); fractional values stay floats.
+fn number_from_f64(n: f64) -> serde_json::Number {
+    if n.fract() == 0.0 && n.abs() < 9.007_199_254_740_992e15 {
+        serde_json::Number::from(n as i64)
+    } else {
+        serde_json::Number::from_f64(n).unwrap_or_else(|| serde_json::Number::from(0))
+    }
 }

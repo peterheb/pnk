@@ -132,7 +132,7 @@ fn crate_text(st: &StyledText) -> String {
         .iter()
         .flat_map(|p| p.items.iter())
         .filter_map(|i| match i {
-            ParagraphItem::Text { text, .. } => Some(text.clone()),
+            ParagraphItem::Plain(text) | ParagraphItem::Text { text, .. } => Some(text.clone()),
             _ => None,
         })
         .collect::<Vec<_>>()
@@ -238,4 +238,79 @@ fn cell_value_union_shape() {
 
     let empty = serde_json::to_value(CellValue::Empty).unwrap();
     assert_eq!(empty["type"], "empty");
+}
+
+#[test]
+fn json_escapes_zs_cf_code_points() {
+    // gotchas #15/#17: space separators (Zs) and format chars (Cf) escape as
+    // \uXXXX in JSON output; space/tab stay raw; decoded strings identical.
+    use pnk2json::model::*;
+    let doc = KeynoteDocument {
+        kind: "keynote".to_string(),
+        meta: DocumentMeta { app: AppKind::Keynote, ..Default::default() },
+        warnings: vec![],
+        fonts: vec![],
+        media: vec![],
+        styles: StylePools::default(),
+        slide_size: Size { width: 100.0, height: 100.0 },
+        slides: vec![Slide {
+            name: None,
+            skipped: None,
+            master_name: None,
+            drawables: vec![Drawable::Textbox {
+                common: DrawableCommon::default(),
+                text: StyledText {
+                    paragraphs: vec![Paragraph {
+                        p_style: None,
+                        items: vec![
+                            ParagraphItem::Plain("a\u{00a0}b\u{200b}c\u{200d}d\u{202f}e\u{3000}f".into()),
+                        ],
+                    }],
+                },
+                vertical_alignment: None,
+                text_insets: None,
+            }],
+            notes: None,
+            transition: None,
+            slide_number_visible: None,
+        }],
+        masters: Vec::new(),
+        theme_name: None,
+        playback: None,
+        soundtrack: None,
+        recording: None,
+    };
+    let doc = PnkDocument::Keynote(doc);
+    let json = pnk2json::to_json(&doc);
+    // raw Zs/Cf bytes must be absent
+    for (name, cp) in [
+        ("NBSP", '\u{00a0}'),
+        ("ZWSP", '\u{200b}'),
+        ("ZWNJ", '\u{200c}'),
+        ("ZWJ", '\u{200d}'),
+        ("narrow-NBSP", '\u{202f}'),
+        ("ideographic-space", '\u{3000}'),
+        ("LS", '\u{2028}'),
+        ("PS", '\u{2029}'),
+    ] {
+        assert!(
+            !json.contains(cp),
+            "raw {name} (U+{:04X}) leaked into JSON output",
+            cp as u32
+        );
+    }
+    // escaped forms present
+    assert!(json.contains("\\u00a0"), "NBSP escape missing");
+    assert!(json.contains("\\u200b"), "ZWSP escape missing");
+    assert!(json.contains("\\u200d"), "ZWJ escape missing");
+    assert!(json.contains("\\u202f"), "narrow-NBSP escape missing");
+    assert!(json.contains("\\u3000"), "ideographic-space escape missing");
+    // plain space + tab stay raw
+    assert!(json.contains(' '), "plain space must stay raw");
+    // decoded string is identical to input
+    let back: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let text = back["slides"][0]["drawables"][0]["text"]["paragraphs"][0]["items"][0]
+        .as_str()
+        .unwrap();
+    assert_eq!(text, "a\u{00a0}b\u{200b}c\u{200d}d\u{202f}e\u{3000}f");
 }

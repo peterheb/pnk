@@ -82,29 +82,47 @@ pub fn convert_ctx(ctx: &mut ctx::Ctx) -> Result<PnkDocument, iwadump::Error> {
 
 /// Serialize a document to pretty JSON.
 pub fn to_json(doc: &PnkDocument) -> String {
-    escape_ls_ps(&serde_json::to_string_pretty(doc).unwrap_or_else(|_| "{}".to_string()))
+    escape_review_hazards(&serde_json::to_string_pretty(doc).unwrap_or_else(|_| "{}".to_string()))
 }
 
 /// Serialize a document to compact JSON.
 pub fn to_json_compact(doc: &PnkDocument) -> String {
-    escape_ls_ps(&serde_json::to_string(doc).unwrap_or_else(|_| "{}".to_string()))
+    escape_review_hazards(&serde_json::to_string(doc).unwrap_or_else(|_| "{}".to_string()))
 }
 
-/// Escape U+2028 (LINE SEPARATOR) / U+2029 (PARAGRAPH SEPARATOR) as
-/// \u2028 / \u2029. They are spec-legal raw inside JSON strings and
-/// JSON.parse-safe, but raw LS/PS trip editor "unusual line terminator"
-/// warnings that mask real bugs (gotchas #15). Safe as a whole-text replace:
-/// in valid JSON those code points only occur inside string literals.
-fn escape_ls_ps(json: &str) -> String {
-    if !json.contains('\u{2028}') && !json.contains('\u{2029}') {
+/// Escape code points that JSON allows raw but that corrupt human review:
+/// - U+2028/U+2029 (LS/PS): editor "unusual line terminator" warnings that
+///   mask real stray-LS bugs (gotchas #15);
+/// - Unicode space separators (Zs) and format characters (Cf): invisible or
+///   width-ambiguous (NBSP, ZWSP, ZWNJ, ZWJ, BOM, bidi marks) — reviewers
+///   cannot distinguish them from ASCII spaces by eye.
+/// Spec-legal raw in JSON strings; escaping is a no-op semantically
+/// (json.loads of old vs new output yields identical strings). Safe as a
+/// whole-text pass: these code points only occur inside string literals.
+/// Regular space and tab are real whitespace and stay raw (serde_json's
+/// control escaping is untouched).
+fn escape_review_hazards(json: &str) -> String {
+    fn needs_escape(c: char) -> bool {
+        if matches!(c, '\u{2028}' | '\u{2029}') {
+            return true;
+        }
+        matches!(c,
+            // Zs — space separators
+            '\u{00a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}' | '\u{202f}' | '\u{205f}' | '\u{3000}'
+            // Cf — format characters
+            | '\u{00ad}' | '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}'
+            | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{206f}' | '\u{feff}'
+        )
+    }
+    if !json.chars().any(needs_escape) {
         return json.to_string();
     }
-    let mut out = String::with_capacity(json.len() + 24);
+    let mut out = String::with_capacity(json.len() + 32);
     for c in json.chars() {
-        match c {
-            '\u{2028}' => out.push_str("\\u2028"),
-            '\u{2029}' => out.push_str("\\u2029"),
-            other => out.push(other),
+        if needs_escape(c) {
+            out.push_str(&format!("\\u{:04x}", c as u32));
+        } else {
+            out.push(c);
         }
     }
     out

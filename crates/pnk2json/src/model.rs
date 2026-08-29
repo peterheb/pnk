@@ -562,36 +562,56 @@ pub struct StyledText {
 pub struct Paragraph {
     /// Index into the document's `styles.para` pool; absent = default/unstyled.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub para_style_index: Option<u32>,
+    pub p_style: Option<u32>,
     pub items: Vec<ParagraphItem>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(tag = "type", rename_all = "kebab-case", rename_all_fields = "camelCase")]
+#[serde(untagged, rename_all_fields = "camelCase")]
 pub enum ParagraphItem {
+    /// Plain unstyled text run — the common case.
+    Plain(String),
+    /// Styled run (no `type` key needed: the `text` key is self-evident).
     Text {
         text: String,
         /// Index into the document's `styles.char` pool; absent = unstyled.
         #[serde(skip_serializing_if = "Option::is_none")]
-        char_style_index: Option<u32>,
+        c_style: Option<u32>,
         #[serde(skip_serializing_if = "Option::is_none")]
         hyperlink: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         language: Option<String>,
     },
     InlineObject {
+        #[serde(rename = "type")]
+        kind: InlineObjectTag,
         drawable: Drawable,
         #[serde(skip_serializing_if = "Option::is_none")]
         offset: Option<InlineOffset>,
     },
     Field {
+        #[serde(rename = "type")]
+        kind: FieldTag,
         /// Index into the document's `styles.char` pool; absent = unstyled.
         #[serde(skip_serializing_if = "Option::is_none")]
-        char_style_index: Option<u32>,
+        c_style: Option<u32>,
         #[serde(skip_serializing_if = "Option::is_none")]
         value: Option<String>,
         field: FieldKind,
     },
+}
+
+/// Tag literals for the tagged variants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum InlineObjectTag {
+    #[serde(rename = "inline-object")]
+    InlineObject,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FieldTag {
+    #[serde(rename = "field")]
+    Field,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -942,7 +962,7 @@ pub struct TableModel {
     pub default_column_width_pt: Option<f64>,
     /// Dense row-major cell grid (`grid[row][column]`); `None` = no cell
     /// stored at that position (sparse tables).
-    pub grid: Vec<Vec<Option<TableCell>>>,
+    pub grid: Vec<Vec<Option<GridCell>>>,
     /// Distinct number formats used by this table, deduped; cells reference
     /// them by `TableCell.formatIndex`.
     pub formats: Vec<CellFormat>,
@@ -967,15 +987,66 @@ pub struct RowColInfo {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TableCell {
-    pub value: CellValue,
+    /// The cell's value; `None` = present-but-valueless (style/merge only).
+    pub v: GridValue,
+    /// Value type tag — REQUIRED when the JSON type of `v` is ambiguous
+    /// (an ISO string could be text, a number could be seconds), omitted for
+    /// plain text/number/bool.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub r#type: Option<CellTypeTag>,
+    /// Currency code when type = "currency".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cur: Option<String>,
+    /// Index into `TableModel.formats`; absent = unformatted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fmt: Option<u32>,
     /// Index into `TableModel.cellStyles`; absent = table default look.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cell_style_index: Option<u32>,
-    /// Index into `TableModel.formats`; absent = unformatted.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub format_index: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub formula: Option<TsceFormulaRef>,
+}
+
+/// The `v` payload: plain scalar, ISO string, or rich text.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum GridValue {
+    Scalar(String),
+    Number(f64),
+    Bool(bool),
+    Richtext(StyledText),
+    None,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CellTypeTag {
+    Date,
+    Duration,
+    Currency,
+    Richtext,
+    Error,
+}
+
+/// One grid slot: a plain unformatted value or an explicit cell object.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum GridCell {
+    /// Plain unformatted simple value.
+    Plain(GridPlain),
+    /// Cell that needs more than a bare value.
+    Cell(TableCell),
+}
+
+/// Plain grid values (unformatted text/number/bool).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum GridPlain {
+    Text(String),
+    /// JSON number preserving integral-ness (7434 serializes as 7434, not
+    /// 7434.0) — smaller envelopes, same value.
+    Number(serde_json::Number),
+    Bool(bool),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

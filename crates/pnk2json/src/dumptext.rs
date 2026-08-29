@@ -37,7 +37,7 @@ fn para_plain(p: &Paragraph) -> String {
     let mut s = String::new();
     for item in &p.items {
         match item {
-            ParagraphItem::Text { text, .. } => {
+            ParagraphItem::Plain(text) | ParagraphItem::Text { text, .. } => {
                 // Soft breaks render as spaces in the flat dumpers (the
                 // paragraph block is one line); raw LS/PS would confuse
                 // line-oriented tooling (gotchas #15).
@@ -60,8 +60,11 @@ fn para_markdown(p: &Paragraph, char_styles: &[CharStyle]) -> String {
     let mut s = String::new();
     for item in &p.items {
         match item {
-            ParagraphItem::Text { text, char_style_index, .. } => {
-                let style = char_style_index.and_then(|i| char_styles.get(i as usize));
+            ParagraphItem::Plain(text) => {
+                s.push_str(&text.replace('\t', "    "));
+            }
+            ParagraphItem::Text { text, c_style, .. } => {
+                let style = c_style.and_then(|i| char_styles.get(i as usize));
                 // Soft break → markdown hard line break inside the paragraph.
                 let text = if text.contains('\u{2028}') || text.contains('\u{2029}') {
                     text.replace('\u{2028}', "  \n").replace('\u{2029}', "  \n")
@@ -211,7 +214,7 @@ fn slide_title_and_bullets(slide: &Slide, para_styles: &[ParaStyle]) -> (Option<
             }
             // List markers render as bullets; plain paragraphs as lines.
             let is_list = p
-                .para_style_index
+                .p_style
                 .and_then(|i| para_styles.get(i as usize))
                 .map(|s| s.list.is_some())
                 .unwrap_or(false);
@@ -291,7 +294,7 @@ fn pages_body_md(body: &StyledText, styles: &StylePools, out: &mut String) {
             continue;
         }
         let level = p
-            .para_style_index
+            .p_style
             .and_then(|i| styles.para.get(i as usize))
             .and_then(|s| s.outline_level)
             .unwrap_or(0);
@@ -318,7 +321,7 @@ fn pages_text(d: &PagesDocument, out: &mut String) {
                         continue;
                     }
                     let level = p
-                        .para_style_index
+                        .p_style
                         .and_then(|i| d.styles.para.get(i as usize))
                         .and_then(|s| s.outline_level)
                         .unwrap_or(0);
@@ -395,6 +398,22 @@ fn pages_md(d: &PagesDocument, out: &mut String) {
 /// Render one table as a markdown grid. Formula cells show the formula's
 /// sourceText when trivially recoverable, else the stored last-calculated
 /// value (docs/model-design.md §2.8; the dumpers never re-evaluate).
+fn cell_text_plain(cell: &TableCell) -> String {
+    match (&cell.v, cell.r#type) {
+        (GridValue::None, _) => String::new(),
+        (GridValue::Number(n), Some(CellTypeTag::Duration)) => format!("{}s", fmt_num(*n)),
+        (GridValue::Number(n), Some(CellTypeTag::Currency)) => match &cell.cur {
+            Some(c) => format!("{} {}", fmt_num(*n), c),
+            None => fmt_num(*n),
+        },
+        (GridValue::Richtext(t), _) => styled_plain(t),
+        (GridValue::Scalar(s), Some(CellTypeTag::Error)) => format!("ERROR: {s}"),
+        (GridValue::Scalar(s), _) => s.clone(),
+        (GridValue::Number(n), _) => fmt_num(*n),
+        (GridValue::Bool(b), _) => if *b { "TRUE" } else { "FALSE" }.to_string(),
+    }
+}
+
 fn table_markdown(t: &TableModel, out: &mut String) {
     let name = t
         .name
@@ -403,26 +422,27 @@ fn table_markdown(t: &TableModel, out: &mut String) {
     out.push_str(&format!("**{name}** ({} rows × {} columns)\n\n", t.row_count, t.column_count));
 
     let hr = t.header_row_count as usize;
-    let grid_cell = |r: usize, c: usize| -> Option<&TableCell> {
-        t.grid.get(r).and_then(|row| row.get(c)).and_then(|slot| slot.as_ref())
-    };
-
-    let nrows = t.row_count.min(200) as usize; // cap dump size per table
-    let ncols = t.column_count.min(40) as usize;
-
     let cell_text = |r: usize, c: usize| -> String {
-        match grid_cell(r, c) {
-            Some(cell) => {
+        match t.grid.get(r).and_then(|row| row.get(c)).and_then(|slot| slot.as_ref()) {
+            Some(GridCell::Plain(GridPlain::Text(s))) => escape_md(s),
+            Some(GridCell::Plain(GridPlain::Number(n))) => fmt_num(n.as_f64().unwrap_or(0.0)),
+            Some(GridCell::Plain(GridPlain::Bool(b))) => {
+                if *b { "TRUE" } else { "FALSE" }.to_string()
+            }
+            Some(GridCell::Cell(cell)) => {
                 // Formula cells: prefer the formula string when the source
                 // carried a recoverable one, else the calculated value.
                 if let Some(src) = cell.formula.as_ref().and_then(|f| f.source_text.as_ref()) {
                     return format!("`={src}`");
                 }
-                escape_md(&cell_value_plain(&cell.value))
+                escape_md(&cell_text_plain(cell))
             }
             None => String::new(),
         }
     };
+
+    let nrows = t.row_count.min(200) as usize; // cap dump size per table
+    let ncols = t.column_count.min(40) as usize;
 
     if hr > 0 {
         out.push('|');

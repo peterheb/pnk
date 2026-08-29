@@ -188,7 +188,7 @@ pub fn extract_from_msg(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText> {
                 Some(sid) => resolve_char_style(ctx, sid),
                 None => CharStyle::default(),
             };
-            let char_style_index = ctx.char_pool.intern(char_style);
+            let c_style = ctx.char_pool.intern(char_style);
 
             let seg_start_char = u16_to_char_index(&map, b0);
             let seg_end_char = u16_to_char_index(&map, b1);
@@ -215,12 +215,17 @@ pub fn extract_from_msg(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText> {
                             } else {
                                 None
                             };
-                            items.push(ParagraphItem::InlineObject { drawable, offset });
+                            items.push(ParagraphItem::InlineObject {
+                                kind: InlineObjectTag::InlineObject,
+                                drawable,
+                                offset,
+                            });
                             continue;
                         }
                         AttachmentResult::Field { style, value, field } => {
                             items.push(ParagraphItem::Field {
-                                char_style_index: ctx.char_pool.intern(style),
+                                kind: FieldTag::Field,
+                                c_style: ctx.char_pool.intern(style),
                                 value,
                                 field,
                             });
@@ -262,17 +267,24 @@ pub fn extract_from_msg(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText> {
 
             if let Some(fk) = field_kind {
                 items.push(ParagraphItem::Field {
-                    char_style_index,
+                    kind: FieldTag::Field,
+                    c_style,
                     value: Some(seg),
                     field: fk,
                 });
             } else if !seg.is_empty() {
-                items.push(ParagraphItem::Text {
-                    text: seg,
-                    char_style_index,
-                    hyperlink,
-                    language: None,
-                });
+                // Bare string when plain (unstyled, no hyperlink/language);
+                // object only when there is more to say.
+                if c_style.is_none() && hyperlink.is_none() {
+                    items.push(ParagraphItem::Plain(seg));
+                } else {
+                    items.push(ParagraphItem::Text {
+                        text: seg,
+                        c_style,
+                        hyperlink,
+                        language: None,
+                    });
+                }
             }
         }
 
@@ -291,8 +303,8 @@ pub fn extract_from_msg(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText> {
             }
             pstyle.list = Some(lf);
         }
-        let para_style_index = ctx.para_pool.intern(pstyle);
-        paragraphs.push(Paragraph { para_style_index, items });
+        let p_style = ctx.para_pool.intern(pstyle);
+        paragraphs.push(Paragraph { p_style, items });
     }
 
     Some(ExtractedText { text: StyledText { paragraphs }, footnotes })

@@ -200,3 +200,16 @@ default true): 1/absent = word-processing, 0 = page-layout. Corpus sweep
 2026-08-29: 17 of 325 Pages fixtures flip from the body-storage heuristic to
 page-layout. pnk2json preserves the layout doc's hidden flow as
 `hiddenBody` (omitted when empty) — no silent data loss.
+
+
+## 17. Invisible Unicode in text runs — escaped in JSON output
+
+Real documents carry NBSP, ZWSP/ZWNJ/ZWJ, bidi marks, BOM, soft hyphens and
+ideographic spaces inside text runs (fixture-verified: G1 torture paragraph
+uses NBSP). They are spec-legal raw in JSON strings, but reviewers cannot
+visually distinguish them from ASCII spaces, so pnk2json's serializer escapes
+every Unicode space separator (Zs) and format character (Cf) plus
+U+2028/U+2029 as `\uXXXX` (plain space/tab stay raw). Decoded data is
+byte-identical — this is a review-hygiene policy, not a format constraint.
+The corpus sweep caught no surprises: escapes appear only where the source
+files carry the code points.

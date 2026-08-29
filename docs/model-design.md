@@ -82,6 +82,12 @@ for a present-but-valueless cell); **`fmt`** = index into the table's
 into `styles.para`; **`cur`** = ISO 4217 currency code when
 `type: "currency"`.
 
+String-escaping rule (serializer-side, decoded data unaffected): space
+separators (Zs: NBSP, ideographic space, …) and format characters (Cf: ZWSP,
+ZWNJ, ZWJ, BOM, bidi marks, soft hyphen, …) plus U+2028/U+2029 escape as
+`\uXXXX`; plain space and tab stay raw. Reviewers must be able to trust that
+what looks like a space IS a space (docs/format/gotchas.md #17).
+
 Rust reference (serde untagged enums — the real impl lives in
 `crates/pnk2json/src/model.rs`; pattern shown for copy-paste):
 
