@@ -23,6 +23,7 @@ import type {
   DocumentEnvelope,
   Drawable,
   DrawableCommon,
+  Fill,
   IsoDateString,
   MediaAsset,
   Size,
@@ -39,10 +40,10 @@ import type {
  */
 export interface MasterSlide {
   name: string;
-  /** All drawables on the master, including its placeholders. */
   drawables: Drawable[];
-  /** Presenter notes template, rarely present. */
   notes?: StyledText;
+  /** Master background fill [proto: KN.SlideStyleArchive.slide_properties.fill]. */
+  background?: Fill;
 }
 
 // ---------------------------------------------------------------------------
@@ -112,6 +113,11 @@ export interface Slide {
   transition?: TransitionSpec;
   /** Show slide number on this slide. [proto: KN.SlideNodeArchive.isSlideNumberVisible] */
   slideNumberVisible?: boolean;
+  /**
+   * Slide background fill [proto: KN.SlideStyleArchive.slide_properties.fill];
+   * absent = inherit the master's.
+   */
+  background?: Fill;
 }
 
 // ---------------------------------------------------------------------------
@@ -157,12 +163,17 @@ export interface KeynoteDocument extends DocumentEnvelope {
   recording?: { durationSec?: number };
 }
 
-// Extend DrawableCommon with the Keynote-only build hook, declared here to
+// Extend DrawableCommon with Keynote-only hooks, declared here to
 // keep shared.ts app-neutral.
 declare module "./shared" {
   interface DrawableCommon {
     /** Keynote build/animation attached to this drawable. */
     keynoteBuild?: BuildSpec;
+    /**
+     * Placeholder identity: role from the converter plus the inherited flag
+     * (master-derived geometry/style). [proto: KN.PlaceholderArchive.Kind]
+     */
+    placeholder?: { role: string; inherited?: boolean };
   }
 }
 
