@@ -422,9 +422,11 @@ export interface UnknownDrawable {
 
 /**
  * A table, resolved from TST.TableModelArchive + DataStore + tiles
- * (docs/format/tables.md). Dimensions and header counts are explicit; cells
- * are addressed by [row, column]; values are the LAST CALCULATED results —
- * the model never re-evaluates formulas (docs/format/calcengine.md).
+ * (docs/format/tables.md). Dimensions and header counts are explicit; the
+ * cell grid is DENSE row-major (`grid[row][column]`) — a viewer can walk it
+ * 1:1 onto `<tr>` rendering — with `null` marking absent cells (sparse
+ * sheets). Cell values are the LAST CALCULATED results; the model never
+ * re-evaluates formulas (docs/format/calcengine.md).
  */
 export interface TableModel {
   /** Display name. [proto: TableModelArchive.table_name] */
@@ -445,14 +447,34 @@ export interface TableModel {
   defaultRowHeightPt?: number;
   defaultColumnWidthPt?: number;
   /**
-   * Present cells, sparse: only non-empty cells are listed, row-major.
-   * Cell values are the stored last-calculated results.
+   * Cell grid, row-major: exactly `rowCount` rows of `columnCount` entries.
+   * `null` = no cell stored for that position (sparse tables); every other
+   * slot carries the cell's LAST-CALCULATED value.
    */
-  cells: TableCell[];
-  /** Merged regions; only the anchor cell carries content in `cells`. */
+  grid: (TableCell | null)[][];
+  /**
+   * Distinct number formats used by this table, deduped; cells reference a
+   * format by index (`TableCell.formatIndex`), absent = unformatted.
+   */
+  formats: CellFormat[];
+  /** Merged regions; only the anchor cell carries content in `grid`. */
   merges: TableMerge[];
   /** Resolved table-level look. */
   style?: TableStyle;
+}
+
+/**
+ * One present cell (a non-null `grid` slot).
+ */
+export interface TableCell {
+  /** The cell value, tagged. */
+  value: CellValue;
+  /** Index into `TableModel.formats`; absent = unformatted. */
+  formatIndex?: number;
+  /** Resolved look of this cell (fill, per-side borders, padding, wrap). */
+  style?: CellStyle;
+  /** Formula placeholder when the cell computes its value. */
+  formula?: TsceFormulaRef;
 }
 
 export interface RowColInfo {
@@ -461,18 +483,6 @@ export interface RowColInfo {
   hidden?: boolean;
 }
 
-export interface TableCell {
-  row: number;
-  column: number;
-  /** The cell value, tagged. `empty` cells are omitted from `cells`. */
-  value: CellValue;
-  /** Resolved look of this cell (fill, per-side borders, padding, wrap). */
-  style?: CellStyle;
-  /** Number/format hint applied to the raw value. */
-  format?: CellFormat;
-  /** Formula placeholder when the cell computes its value. */
-  formula?: TsceFormulaRef;
-}
 
 /** Tagged cell value. Dates/durations are pre-converted (ISO / seconds). */
 export type CellValue =

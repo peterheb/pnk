@@ -158,13 +158,19 @@ The tile/offset-buffer machinery is fully flattened:
 |---|---|
 | `TableModelArchive` dimensions, header counts, frozen flags | `TableModel` scalar fields |
 | `DataStore.rowHeaders/columnHeaders` buckets | `rows[]/columns[]` (index, sizePt, hidden) |
-| tile `cell_storage_buffer` + packed offsets (BNC v5) | `cells[]` — only non-empty cells survive, row-major |
+| tile `cell_storage_buffer` + packed offsets (BNC v5) | `grid[row][column]` — dense row-major, `null` for absent cells |
 | cell type byte → payload flags | `CellValue` tagged union (dates → ISO, currency kept separate) |
 | `TableDataList` STRING/RICH_TEXT_PAYLOAD entries | `CellValue` "text"/"richtext" |
-| `TableDataList` FORMAT/CUSTOM_FORMAT | `CellFormat` (custom formats degrade to `kind:"custom"` + raw string) |
+| `TableDataList` FORMAT/CUSTOM_FORMAT | `formats[]` deduped pool, referenced by `TableCell.formatIndex` (custom formats degrade to `kind:"custom"` + raw string) |
 | `merge_region_map` CellRanges (col<<16|row packedData) | `merges[]` anchor + span |
 | `TableStyleNetworkArchive` role slots | `TableStyle` defaults; per-cell `cell_style`/`text_style` overrides resolved on top |
 | `TST.CellStylePropertiesArchive` fills/strokes/vertical alignment/padding | `CellStyle` |
+
+Cell layout is a **dense row-major `grid` with a deduped `formats` pool** instead
+of a flat sparse cell list: measured on the dense 28881×59 Numbers fixture, the
+flat `cells` design (pretty-printed JSON + a `CellFormat` object duplicated per
+cell) pushed the envelope to 474 MB; `grid` + format-pool + compact emission
+lands at ~70–90 MB, and row-major maps 1:1 onto `<tr>` rendering.
 
 Formulas: the cell's stored value **is** the last calculated result
 (docs/format/calcengine.md) — the model never re-evaluates. The presence of a
