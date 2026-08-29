@@ -213,3 +213,23 @@ U+2028/U+2029 as `\uXXXX` (plain space/tab stay raw). Decoded data is
 byte-identical — this is a review-hygiene policy, not a format constraint.
 The corpus sweep caught no surprises: escapes appear only where the source
 files carry the code points.
+
+
+## 18. Numbers merge ranges have TWO storage generations
+
+Legacy (pre-uid): `DataStore.merge_region_map` (field 13) →
+`TST.MergeRegionMapArchive` with packed-int `CellRange`s (col<<16|row) —
+decoded by pnk2json (tables.md §Merges). Modern Numbers additionally writes
+a uid-based merge table on the model itself (field 70 in the observed G5
+layout): UUIDRect-style coordinate pairs (row-uid pair + col-uid pair) that
+resolve through the table's row/column UID maps. pnk2json does not yet
+decode the uid form: when it is present and the legacy map produced no
+merges, the converter emits a `table-degraded` warning naming the covered
+null-cell count — the grid nulls already mark covered cells, only span
+info is missing [fixture-verified: G5 Table 2, Pages 26.3.1].
+
+Related: `FormatStructArchive.decimal_places = 253` (also -3 as u32
+4294967293 in fraction_accuracy) is the app's AUTO-DECIMALS sentinel across
+decimal/currency/percent/scientific formats — NOT malformed. pnk2json emits
+such formats with `decimals` absent (fixture-verified: G5 Table 2 cells
+r2c1-c3/r3c2/r4c3).

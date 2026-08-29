@@ -307,6 +307,30 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
         }
     }
 
+    // Modern Numbers writes uid-based merge ranges (a merge table on the
+    // model — field 70 in the observed layout — with UUIDRect-style
+    // coordinate pairs referencing row/column UID maps we don't yet
+    // resolve). When such ranges exist but the legacy packed-int map didn't
+    // produce merges, flag the table: the grid nulls still mark covered
+    // cells, but span info is missing (gotcha #18). Fixture-verified: G5
+    // Table 2.
+    if m.has(70) && merges.is_empty() {
+        let null_cells: u32 = grid
+            .iter()
+            .flat_map(|row| row.iter())
+            .filter(|slot| slot.is_none())
+            .count() as u32;
+        if null_cells > 0 {
+            ctx.warn_detail(
+                WarningCode::TableDegraded,
+                format!(
+                    "uid-based merge ranges not yet decoded (legacy packed-int merge map absent); {null_cells} covered cells emit as null without span info"
+                ),
+                format!("table '{}'", m.string(8).unwrap_or_default()),
+            );
+        }
+    }
+
     TableModel {
         name: {
             let n = m.string(8);
@@ -749,13 +773,14 @@ fn pick_format(
             .map(|f| (f, kind))
     });
     if let Some((f, kind)) = found {
-        // Decimal places are a count: negative or absurd values (e.g. a -1
-        // int32 sentinel) are malformed — drop the format, never clamp.
-        let malformed = f.varint(2).is_some_and(|v| v > 20);
-        if malformed {
-            return (None, true);
-        }
-        let decimals = f.varint(2).map(|v| v as u32);
+        // decimal_places > 20 is the app's AUTO sentinel (253 = -3 as i8 /
+        // 4294967293 = -3 as u32, fixture-verified on G5: decimal/currency/
+        // percent/scientific all carry it) — legit "auto decimals": emit the
+        // format with `decimals` absent, never degrade.
+        let decimals = f
+            .varint(2)
+            .filter(|v| *v <= 20)
+            .map(|v| v as u32);
         return (
             Some(CellFormat {
                 kind,

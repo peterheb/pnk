@@ -168,6 +168,15 @@ pub fn extract_from_msg(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText> {
                 boundaries.push(e.utf16_off);
             }
         }
+        // Anchored attachments occupy exactly their U+FFFC position; when a
+        // writer glues the FFFC to adjacent text (fixture G5: inline images
+        // in the same run as body words), the attachment entry offset must
+        // still be a run boundary so the object can be split off.
+        for e in &attach_entries {
+            if e.utf16_off > p_start_u16 && e.utf16_off < p_end_u16 {
+                boundaries.push(e.utf16_off);
+            }
+        }
         for (ci, ch) in text.chars().enumerate().skip(*start).take(end.saturating_sub(*start)) {
             if ch == '\u{FFFC}' {
                 boundaries.push(map[ci]);
@@ -198,41 +207,51 @@ pub fn extract_from_msg(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText> {
                 .take(seg_end_char - seg_start_char)
                 .collect();
 
-            // A segment that is one or more U+FFFC chars starting exactly at
-            // an attachment entry becomes an inline object / field run.
-            let seg_is_fffc = !seg.is_empty() && seg.chars().all(|c| c == '\u{FFFC}');
-            if seg_is_fffc {
-                if let Some(att) = attach_entries.iter().find(|e| e.utf16_off == b0) {
-                    match resolve_attachment(
-                        ctx,
-                        att.object_id,
-                        pi as u32,
-                        &mut footnotes,
-                    ) {
-                        AttachmentResult::Drawable(drawable, h_off, v_off) => {
-                            let offset = if h_off.is_some() || v_off.is_some() {
-                                Some(InlineOffset { h_pt: h_off, v_pt: v_off })
-                            } else {
-                                None
-                            };
-                            items.push(ParagraphItem::InlineObject {
-                                kind: InlineObjectTag::InlineObject,
-                                drawable,
-                                offset,
-                            });
-                            continue;
+            // A segment starting at an attachment entry (its U+FFFC anchor
+            // char) becomes an inline object / field run. The attachment
+            // occupies exactly one char; remaining text in the segment falls
+            // through to the text path below (G5: writers glue FFFC to body
+            // words in the same run).
+            let seg_starts_fffc = seg.starts_with('\u{FFFC}');
+            let att_at_start = seg_starts_fffc
+                .then(|| attach_entries.iter().find(|e| e.utf16_off == b0))
+                .flatten();
+            if let Some(att) = att_at_start {
+                match resolve_attachment(
+                    ctx,
+                    att.object_id,
+                    pi as u32,
+                    &mut footnotes,
+                ) {
+                    AttachmentResult::Drawable(drawable, h_off, v_off) => {
+                        let offset = if h_off.is_some() || v_off.is_some() {
+                            Some(InlineOffset { h_pt: h_off, v_pt: v_off })
+                        } else {
+                            None
+                        };
+                        items.push(ParagraphItem::InlineObject {
+                            kind: InlineObjectTag::InlineObject,
+                            drawable,
+                            offset,
+                        });
+                        // Remaining chars of the segment (if any) continue as
+                        // a text run via the normal path below.
+                        if seg.len() > 1 {
+                            let rest: String = seg.chars().skip(1).collect();
+                            items.push(ParagraphItem::Plain(rest));
                         }
-                        AttachmentResult::Field { style, value, field } => {
-                            items.push(ParagraphItem::Field {
-                                kind: FieldTag::Field,
-                                c_style: ctx.char_pool.intern(style),
-                                value,
-                                field,
-                            });
-                            continue;
-                        }
-                        AttachmentResult::None => {}
+                        continue;
                     }
+                    AttachmentResult::Field { style, value, field } => {
+                        items.push(ParagraphItem::Field {
+                            kind: FieldTag::Field,
+                            c_style: ctx.char_pool.intern(style),
+                            value: value.or(Some(seg.chars().skip(1).collect())),
+                            field,
+                        });
+                        continue;
+                    }
+                    AttachmentResult::None => {}
                 }
             }
 
