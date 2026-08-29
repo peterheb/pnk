@@ -203,10 +203,16 @@ function shapeSvg(g: ShapeGeometry, w: number, h: number, style: DrawableCommon[
 // Content pieces
 // ---------------------------------------------------------------------------
 
-function imageEl(dataId: string | undefined, fileName: string | undefined, ctx: ViewerCtx, alt?: string): HTMLElement {
+function imageEl(
+  dataId: string | undefined,
+  fileName: string | undefined,
+  ctx: ViewerCtx,
+  alt?: string,
+  thumbnail?: { dataId: string; fileName?: string; preferredFileName?: string },
+): HTMLElement {
   const url = dataId ? ctx.url(dataId) : undefined;
-  const isPdf = /\.pdf$/i.test(fileName ?? "");
-  if (url && !isPdf) {
+  const vector = /\.(pdf|ai|eps)$/i.test(fileName ?? "");
+  if (url && !vector) {
     const img = document.createElement("img");
     img.src = url;
     img.alt = alt ?? fileName ?? "image";
@@ -215,11 +221,24 @@ function imageEl(dataId: string | undefined, fileName: string | undefined, ctx: 
     img.style.objectFit = "fill";
     return img;
   }
-  // <img> cannot rasterize PDFs — Apple's vector logo art shows as a broken
-  // glyph, so a labeled placeholder is the honest render
+  // <img> cannot rasterize vector art (PDF/AI/EPS) — fall back to the
+  // converter-emitted raster thumbnail (Keynote stores one alongside vector
+  // media, e.g. -small-*.png twins) before degrading to a labeled placeholder.
+  const thumbUrl = thumbnail?.dataId ? ctx.url(thumbnail.dataId) : undefined;
+  const thumbName = thumbnail ? thumbnail.fileName ?? thumbnail.preferredFileName : undefined;
+  const thumbRaster = thumbUrl && !/\.(pdf|ai|eps)$/i.test(thumbName ?? "");
+  if (thumbRaster) {
+    const img = document.createElement("img");
+    img.src = thumbUrl;
+    img.alt = alt ?? fileName ?? "image";
+    img.style.width = "100%";
+    img.style.height = "100%";
+    img.style.objectFit = "fill";
+    return img;
+  }
   const miss = el("div", "media-missing");
   miss.textContent = fileName
-    ? isPdf ? `vector art: ${fileName.replace(/\.pdf$/i, "")} (PDF)` : `${fileName} (media missing)`
+    ? vector ? `vector art: ${fileName.replace(/\.(pdf|ai|eps)$/i, "")}` : `${fileName} (media missing)`
     : "media missing";
   return miss;
 }
@@ -325,15 +344,26 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
 
   if (d.type === "textbox") {
     const layer = textLayer(d, doc, ctx);
-    if (layer) div.appendChild(layer);
-    else div.textContent = "";
+    if (layer) {
+      // Zero-size textboxes (Keynote emits some badge labels at 0×0) carry
+      // their text unclipped: let the content size the box instead.
+      if (!c.size || (c.size.width === 0 && c.size.height === 0)) {
+        div.style.width = "auto";
+        div.style.height = "auto";
+        div.style.overflow = "visible";
+        layer.style.overflow = "visible";
+        layer.style.position = "relative";
+        layer.style.whiteSpace = "nowrap";
+      }
+      div.appendChild(layer);
+    } else div.textContent = "";
   } else if (d.type === "shape") {
     const svg = shapeSvg(d.geometry, w, h, c.style);
     div.appendChild(svg);
     const layer = textLayer({ ...d, text: d.text, verticalAlignment: d.verticalAlignment, common: c }, doc, ctx);
     if (layer) div.appendChild(layer);
   } else if (d.type === "image") {
-    div.appendChild(imageEl(d.image.dataId, d.image.preferredFileName ?? d.image.fileName, ctx, d.image.preferredFileName));
+    div.appendChild(imageEl(d.image.dataId, d.image.preferredFileName ?? d.image.fileName, ctx, d.image.preferredFileName, d.thumbnail));
   } else if (d.type === "movie") {
     div.appendChild(movieEl(d, ctx));
   } else if (d.type === "group") {
