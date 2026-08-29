@@ -59,7 +59,7 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> KeynoteDocument {
         let (master, name) = convert_slide_raw(ctx, *tid, true);
         let name = name.unwrap_or_else(|| format!("Master {}", i + 1));
         master_names.insert(*tid, name.clone());
-        masters.push(MasterSlide { name, drawables: master.drawables, notes: master.notes });
+        masters.push(MasterSlide { name, drawables: master.drawables, notes: master.notes, background: master.background });
     }
 
     // Slide order: SlideTreeArchive.slides (field 2, authoritative);
@@ -287,6 +287,16 @@ fn convert_slide_raw(ctx: &mut Ctx, slide_id: u64, is_master: bool) -> (Slide, O
         .map(|d| (d, crate::drawables::convert_drawable(ctx, d)))
         .collect();
     attach_builds(ctx, slide_id, &mut converted);
+
+    // Slides may carry title/body/slide-number/object placeholders outside
+    // the paint lists (SlideArchive fields 5/6/20/30) — decode those too,
+    // appended after the painted drawables.
+    let painted: std::collections::HashSet<u64> = converted.iter().map(|(id, _)| *id).collect();
+    for pid in [5u32, 6, 20, 30].iter().flat_map(|f| m.references(*f)) {
+        if !painted.contains(&pid) {
+            converted.push((pid, crate::drawables::convert_drawable(ctx, pid)));
+        }
+    }
     let drawables: Vec<Drawable> = converted.into_iter().map(|(_, d)| d).collect();
 
     // Notes: KN.NoteArchive { containedStorage = 1 } → TSWP.StorageArchive.
@@ -297,6 +307,9 @@ fn convert_slide_raw(ctx: &mut Ctx, slide_id: u64, is_master: bool) -> (Slide, O
         .and_then(|stid| crate::text::extract(ctx, stid))
         .map(|e| e.text);
 
+    // Background: KN.SlideStyleArchive.slide_properties(11).fill(1), walking
+    // up the TSS.StyleArchive parent chain when the style itself sets none.
+    let background = m.reference(1).and_then(|sid| slide_background_fill(ctx, sid, 0));
     // Transition: TransitionArchive.attributes(2).animationAttributes(8).
     let transition = m
         .msg(4)
@@ -324,6 +337,7 @@ fn convert_slide_raw(ctx: &mut Ctx, slide_id: u64, is_master: bool) -> (Slide, O
             notes,
             transition,
             slide_number_visible: None,
+            background,
         },
         name,
     )
@@ -338,6 +352,7 @@ fn empty_slide() -> Slide {
         notes: None,
         transition: None,
         slide_number_visible: None,
+        background: None,
     }
 }
 
@@ -545,6 +560,24 @@ fn apply_inherited(master: &DrawableCommon) -> DrawableCommon {
         size: master.size,
         angle_deg: master.angle_deg,
         style: master.style.clone(),
+        placeholder: master.placeholder.clone(),
         ..Default::default()
     }
+}
+
+/// Slide/master background fill: `KN.SlideStyleArchive.slide_properties(11)
+/// .fill(1)`, walking up the `TSS.StyleArchive.parent` chain (theme preset
+/// styles) when the style itself sets no fill. Bounded depth.
+fn slide_background_fill(ctx: &mut Ctx, style_id: u64, depth: u32) -> Option<Fill> {
+    if depth > 16 {
+        return None;
+    }
+    let m = ctx.loaded.msg(style_id).cloned()?;
+    if let Some(props) = m.msg(11) {
+        if let Some(fill) = props.msg(1).and_then(|f| crate::tsd::fill_of(ctx, &f)) {
+            return Some(fill);
+        }
+    }
+    let parent = m.msg(1).and_then(|base| base.reference(3))?;
+    slide_background_fill(ctx, parent, depth + 1)
 }

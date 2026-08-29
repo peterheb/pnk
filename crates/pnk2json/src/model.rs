@@ -1274,6 +1274,9 @@ pub struct MasterSlide {
     pub drawables: Vec<Drawable>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notes: Option<StyledText>,
+    /// Slide background fill [proto: KN.SlideStyleArchive.slide_properties.fill].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub background: Option<Fill>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -1377,6 +1380,10 @@ pub struct Slide {
     pub transition: Option<TransitionSpec>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub slide_number_visible: Option<bool>,
+    /// Slide background fill [proto: KN.SlideStyleArchive.slide_properties.fill];
+    /// absent = inherit the master's.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub background: Option<Fill>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

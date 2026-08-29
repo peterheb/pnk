@@ -34,7 +34,7 @@ pub fn style_of(ctx: &Ctx, id: u64) -> Option<Style> {
 
 /// Walk the parent chain collecting property payload `field` (11 = char,
 /// 12 = para), most-derived first. Guards against cycles.
-fn chain(ctx: &Ctx, id: u64, field: u32) -> Vec<Msg> {
+pub fn chain(ctx: &Ctx, id: u64, field: u32) -> Vec<Msg> {
     let mut out = Vec::new();
     let mut seen = std::collections::HashSet::new();
     let mut cur = Some(id);

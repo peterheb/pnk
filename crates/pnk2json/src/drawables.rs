@@ -224,7 +224,11 @@ fn merge_extras(common: &mut DrawableCommon, extras: Option<DrawableCommon>) {
 }
 
 /// `TSWP.ShapeInfoArchive` { super = 1 (TSD.ShapeArchive), text_flow = 3,
-/// owned_storage = 4, is_text_box = 6 } (+ KN/TP.PlaceholderArchive kind).
+/// owned_storage = 4, is_text_box = 6 }.
+///
+/// KN.PlaceholderArchive / TP.PlaceholderArchive wrap one more level:
+/// `{ super = 1 (ShapeInfoArchive), kind = 2 }` — so for those types the
+/// ShapeInfoArchive lives at `m.msg(1)` and only the Kind is read off `m`.
 fn shape_info_drawable(
     ctx: &mut Ctx,
     m: &Msg,
@@ -232,7 +236,12 @@ fn shape_info_drawable(
     type_id: u32,
     type_name: Option<String>,
 ) -> Drawable {
-    let Some(shape) = m.msg(1) else {
+    // Placeholder types: unwrap `{ super, kind }` → the ShapeInfoArchive.
+    let super_info =
+        if type_id == 7 || type_id == 12 { m.msg(1) } else { None };
+    let info = super_info.as_ref().unwrap_or(m);
+    let kind = if type_id == 7 || type_id == 12 { m.varint(2) } else { None };
+    let Some(shape) = info.msg(1) else {
         return Drawable::Unknown {
             common: None,
             type_id: format!("0x{type_id:x}"),
@@ -243,24 +252,37 @@ fn shape_info_drawable(
     let placeholder_role = match type_id {
         // KN.PlaceholderArchive.Kind (KNArchives.proto:203-209)
         7 | 12 if type_name.as_deref().map(|n| n.starts_with("KN.")).unwrap_or(false) => {
-            match m.varint(2).unwrap_or(0) {
-                1 => Some("slide-number".to_string()),
-                2 => Some("title".to_string()),
-                3 => Some("body".to_string()),
-                4 => Some("object".to_string()),
-                _ => Some("placeholder".to_string()),
-            }
+            Some(
+                match kind.unwrap_or(0) {
+                    1 => "slide-number",
+                    2 => "title",
+                    3 => "body",
+                    4 => "object",
+                    _ => "placeholder",
+                }
+                .to_string(),
+            )
         }
         7 | 12 => Some("placeholder".to_string()), // TP.PlaceholderArchive
         _ => None,
     };
 
     // Text: owned_storage (4) wins, else text_flow (3) → FlowInfo.text_storage (1).
-    let storage_id = m
+    let storage_id = info
         .reference(4)
-        .or_else(|| m.msg(3).and_then(|f| f.reference(1)));
-    let text = storage_id.and_then(|sid| crate::text::extract(ctx, sid)).map(|e| e.text);
-    let is_text_box = m.boolean(6).unwrap_or(false);
+        .or_else(|| info.msg(3).and_then(|f| f.reference(1)));
+    let mut text = storage_id.and_then(|sid| crate::text::extract(ctx, sid)).map(|e| e.text);
+    // Keynote placeholders and title/body shapes keep their look on the
+    // referenced paragraph style (their storage char-style tables hold null
+    // overrides), so runs without their own character style inherit the
+    // paragraph style's font name/size/color. Keynote-scoped: Pages storages
+    // carry real character styles and are golden-pinned.
+    if ctx.app_kind == crate::model::AppKind::Keynote {
+        if let (Some(sid), Some(t)) = (storage_id, text.as_mut()) {
+            promote_para_font(ctx, sid, t);
+        }
+    }
+    let is_text_box = info.boolean(6).unwrap_or(false);
 
     let mut drawable = if is_text_box || type_id == 7 || type_id == 12 {
         // Textbox (or placeholder, which renders like a textbox).
@@ -300,6 +322,43 @@ fn common_from_shape(ctx: &mut Ctx, shape: &Msg) -> DrawableCommon {
     common.style = style;
     merge_extras(&mut common, extras);
     common
+}
+
+/// Rewrite runs that carry no character style of their own so they inherit
+/// the referenced paragraph style's font attributes (Keynote placeholder
+/// storages hold their look on the paragraph style, with null char-table
+/// entries). Styled runs are left untouched.
+fn promote_para_font(ctx: &mut Ctx, storage_id: u64, text: &mut StyledText) {
+    // Paragraph-style refs in storage order (table_para_style = 5).
+    let para_styles: Vec<u64> = {
+        let storage = ctx.loaded.msg(storage_id).cloned();
+        let Some(storage) = storage else { return };
+        storage
+            .msgs(5)
+            .iter()
+            .flat_map(|t| t.msgs(1))
+            .filter_map(|e| e.reference(2))
+            .collect()
+    };
+    if para_styles.is_empty() {
+        return;
+    }
+    for (pi, para) in text.paragraphs.iter_mut().enumerate() {
+        // One style per paragraph; extra paragraphs reuse the last entry.
+        let sid = para_styles[pi.min(para_styles.len() - 1)];
+        let cs = crate::styles::char_style_from(ctx, &crate::styles::chain(ctx, sid, 11));
+        let Some(idx) = ctx.char_pool.intern(cs) else { continue };
+        for item in para.items.iter_mut() {
+            if let ParagraphItem::Plain(s) = item {
+                *item = ParagraphItem::Text {
+                    text: std::mem::take(s),
+                    c_style: Some(idx),
+                    hyperlink: None,
+                    language: None,
+                };
+            }
+        }
+    }
 }
 
 fn shape_vertical_alignment(_ctx: &Ctx, _shape: &Msg) -> Option<VerticalAlignment> {
