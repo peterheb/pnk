@@ -22,7 +22,9 @@ dist/
 !/fixtures/README.md
 !/fixtures/golden/
 
-# Test output
+
+# Local manual-review outputs (regenerable)
+/json-samples/
 /test-results/
 /playwright-report/
 
