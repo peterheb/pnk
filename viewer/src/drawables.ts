@@ -33,7 +33,7 @@ function el(tag: string, className?: string): HTMLElement {
 // ---------------------------------------------------------------------------
 
 /** CSS background for a fill; image fills degrade to a neutral tone. */
-function fillToCss(f: Fill | undefined): string | undefined {
+export function fillToCss(f: Fill | undefined): string | undefined {
   if (!f) return undefined;
   if (f.type === "solid") return f.color;
   if (f.type === "gradient") {
