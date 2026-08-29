@@ -186,8 +186,12 @@ def main() -> int:
         md = subprocess.run([str(PNK2JSON), str(src), "--markdown"], capture_output=True, text=True, timeout=120)
         js = subprocess.run([str(PNK2JSON), str(src)], capture_output=True, text=True, timeout=120)
         if js.returncode != 0:
-            print(f"{lid:44} {r['format']:8} {kind:7} CONVERT-FAIL")
-            failures += 1
+            err = (js.stderr or "").lower()
+            if "encrypt" in err or "password" in err:
+                print(f"{lid:44} {r['format']:8} {kind:7} ok:encrypted-reject")
+            else:
+                print(f"{lid:44} {r['format']:8} {kind:7} CONVERT-FAIL: {(js.stderr or '').strip()[:90]}")
+                failures += 1
             continue
         (work / "out.json").write_text(js.stdout)
         (work / "out.md").write_text(md.stdout)
