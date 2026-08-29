@@ -33,16 +33,26 @@ function buildCanvas(
   applyStageBackground(inner, slide.background ?? null, master?.background ?? null, ctx);
 
   // master furniture first (decorations), skipping furniture the slide
-  // overrides (same placeholder role, or same geometry — Keynote bakes the
-  // slide's footer/title copies at the master's frame), then slide content.
+  // overrides: same placeholder role, same rounded geometry, or — for master
+  // text prompts stored as plain shapes (no placeholder identity) — a slide
+  // text drawable covering the prompt's frame (Keynote bakes slide copies of
+  // title/footer/subtitle prompts at (nearly) the master's frame).
   const slideRoles = new Set(slide.drawables.map(roleOf).filter((r): r is string => !!r));
   const slideGeoms = new Set(slide.drawables.map(geomKey).filter((k): k is string => !!k));
+  const slideTextFrames = slide.drawables
+    .filter((d) => textOf(d) !== null)
+    .map(frameOf)
+    .filter((f): f is Frame => !!f);
   if (master) {
     for (const d of master.drawables) {
       const role = roleOf(d);
       if (role && slideRoles.has(role)) continue;
       const key = geomKey(d);
       if (key && slideGeoms.has(key)) continue;
+      if (textOf(d)) {
+        const f = frameOf(d);
+        if (f && slideTextFrames.some((sf) => covers(f, sf))) continue;
+      }
       inner.appendChild(renderCanvasDrawable(d, hdoc, ctx));
     }
   }
@@ -152,6 +162,43 @@ function geomKey(d: Drawable): string | null {
 function commonOf(d: Drawable): DrawableCommon | null {
   if ("common" in d && d.common) return d.common;
   return null;
+}
+
+/** Positioned frame of a drawable, when fully placed. */
+interface Frame {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+function frameOf(d: Drawable): Frame | null {
+  const c = commonOf(d);
+  if (!c?.position || !c.size) return null;
+  return { x: c.position.x, y: c.position.y, w: c.size.width, h: c.size.height };
+}
+
+/** First non-empty text run of a drawable, when it carries visible text. */
+function textOf(d: Drawable): string | null {
+  if (!("text" in d) || !d.text) return null;
+  for (const p of d.text.paragraphs) {
+    for (const item of p.items) {
+      if (typeof item === "string") {
+        if (item.trim()) return item;
+      } else if ("text" in item && typeof item.text === "string" && item.text.trim()) {
+        return item.text;
+      }
+    }
+  }
+  return null;
+}
+
+/** True when `outer` covers at least 60% of `inner`'s area. */
+function covers(outer: Frame, inner: Frame): boolean {
+  const ix = Math.max(0, Math.min(outer.x + outer.w, inner.x + inner.w) - Math.max(outer.x, inner.x));
+  const iy = Math.max(0, Math.min(outer.y + outer.h, inner.y + inner.h) - Math.max(outer.y, inner.y));
+  const area = inner.w * inner.h;
+  return area > 0 && (ix * iy) / area >= 0.6;
 }
 
 function renderStage(
