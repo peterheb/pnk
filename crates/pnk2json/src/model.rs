@@ -1574,6 +1574,11 @@ pub struct PagesDocument {
     pub page_scale: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body: Option<StyledText>,
+    /// Page-layout flavor only: the never-rendered body flow the file
+    /// still carries (Convert-to-Layout "body discarded" is rendering-level).
+    /// Omitted when the stored body is empty/absent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hidden_body: Option<StyledText>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub footnotes: Option<Vec<Footnote>>,
     pub floating: Vec<FloatingPage>,

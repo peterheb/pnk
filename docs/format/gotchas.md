@@ -184,3 +184,19 @@ Two independent editor-layer behaviors verified against the same fixture:
   warnings that mask real review signals — pnk2json escapes them as
   `\u2028`/`\u2029` in JSON output [inferred: policy; decode semantics
   unchanged]. Dumpers render them as spaces (text) / markdown hard breaks.
+
+
+## 16. Pages flavor: body_storage exists in BOTH flavors — never infer flavor from it
+
+Pages 26.3.1 page-layout documents still carry a `TP.DocumentArchive.body_storage`
+(field 4) reference with a live, decodable text flow. The "Convert to Page
+Layout" dialog's "body will be discarded" warning is about RENDERING, not
+storage — find/replace still reaches the hidden flow [fixture-verified:
+G2-golden-pages-layout.pages built in Pages 26.3.1; UI evidence
+g2-menu-screenshot.png shows the File menu offering "Convert to Word
+Processing", which only appears on layout docs]. The discriminator is
+`TP.SettingsArchive.body` (settings reached via root field 7; field 1,
+default true): 1/absent = word-processing, 0 = page-layout. Corpus sweep
+2026-08-29: 17 of 325 Pages fixtures flip from the body-storage heuristic to
+page-layout. pnk2json preserves the layout doc's hidden flow as
+`hiddenBody` (omitted when empty) — no silent data loss.

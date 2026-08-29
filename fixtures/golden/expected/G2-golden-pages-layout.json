@@ -1,0 +1,1420 @@
+{
+  "kind": "pages",
+  "flavor": "page-layout",
+  "meta": {
+    "app": "pages",
+    "fileFormatVersion": "26.3.1",
+    "buildVersionHistory": [
+      "Template: Blank (dev/15.3)",
+      "M15.3.1-7050.1.1-2"
+    ],
+    "documentId": "806DE6E4-AEBA-4D9C-88D2-AFE63A4527E8",
+    "locale": "en_US"
+  },
+  "warnings": [
+    {
+      "code": "unknown-object-type",
+      "message": "1 object(s) with type id 10017 (0x2721) have no trusted registry entry; payloads skipped",
+      "detail": "0x2721"
+    }
+  ],
+  "fonts": [],
+  "media": [
+    {
+      "dataId": "26",
+      "fileName": "pasted-movie-26.png",
+      "preferredFileName": "pasted-movie.png",
+      "kind": "image",
+      "byteLength": 121651,
+      "pixelSize": {
+        "width": 250.0,
+        "height": 300.0
+      }
+    },
+    {
+      "dataId": "27",
+      "fileName": "pasted-movie-small-27.png",
+      "preferredFileName": "pasted-movie-small.png",
+      "kind": "image",
+      "byteLength": 92021
+    }
+  ],
+  "styles": {
+    "para": [
+      {
+        "horizontalAlignment": "auto",
+        "leftIndentPt": 0.0,
+        "rightIndentPt": 0.0,
+        "firstLineIndentPt": 0.0,
+        "spaceBeforePt": 0.0,
+        "spaceAfterPt": 0.0,
+        "defaultTabStopPt": 36.0,
+        "list": {
+          "level": 0,
+          "markerKind": "none",
+          "markerIndentPt": 0.0
+        },
+        "keepLinesTogether": false,
+        "keepWithNext": false,
+        "hyphenate": true,
+        "pageBreakBefore": false
+      },
+      {
+        "list": {
+          "level": 0,
+          "markerKind": "none",
+          "markerIndentPt": 0.0
+        }
+      },
+      {
+        "horizontalAlignment": "center",
+        "leftIndentPt": 0.0,
+        "rightIndentPt": 0.0,
+        "firstLineIndentPt": 0.0,
+        "spaceBeforePt": 0.0,
+        "spaceAfterPt": 0.0,
+        "defaultTabStopPt": 46.0,
+        "list": {
+          "level": 0,
+          "markerKind": "none",
+          "markerIndentPt": 0.0
+        },
+        "keepLinesTogether": true,
+        "keepWithNext": false,
+        "hyphenate": true,
+        "pageBreakBefore": false
+      },
+      {
+        "horizontalAlignment": "center",
+        "leftIndentPt": 0.0,
+        "rightIndentPt": 0.0,
+        "firstLineIndentPt": 0.0,
+        "spaceBeforePt": 0.0,
+        "spaceAfterPt": 0.0,
+        "defaultTabStopPt": 36.0,
+        "list": {
+          "level": 0,
+          "markerKind": "none",
+          "markerIndentPt": 0.0
+        },
+        "keepLinesTogether": false,
+        "keepWithNext": false,
+        "hyphenate": true,
+        "pageBreakBefore": false
+      }
+    ],
+    "char": [
+      {
+        "bold": true,
+        "italic": true
+      },
+      {
+        "italic": true
+      },
+      {
+        "bold": true
+      },
+      {
+        "underline": "single"
+      }
+    ]
+  },
+  "pageSize": {
+    "width": 612.0,
+    "height": 792.0
+  },
+  "pageMargins": {
+    "top": 72.0,
+    "bottom": 72.0,
+    "left": 72.0,
+    "right": 72.0,
+    "header": 36.0,
+    "footer": 43.20000076293945
+  },
+  "orientation": "portrait",
+  "pageScale": 1.0,
+  "hiddenBody": {
+    "paragraphs": [
+      {
+        "paraStyleIndex": 0,
+        "items": [
+          {
+            "type": "text",
+            "text": "[where is this mystery text]"
+          }
+        ]
+      }
+    ]
+  },
+  "floating": [
+    {
+      "pageIndex": 0,
+      "drawables": [
+        {
+          "type": "textbox",
+          "common": {
+            "position": {
+              "x": 75.97708129882812,
+              "y": 62.400001525878906
+            },
+            "size": {
+              "width": 250.0,
+              "height": 128.0
+            },
+            "angleDeg": 0.0,
+            "locked": false,
+            "textWrap": {
+              "kind": "largest",
+              "marginPt": 12.0
+            },
+            "style": {
+              "lineEnds": {
+                "head": {}
+              }
+            }
+          },
+          "text": {
+            "paragraphs": [
+              {
+                "paraStyleIndex": 0,
+                "items": [
+                  {
+                    "type": "text",
+                    "text": "Shapes can hold text too."
+                  }
+                ]
+              },
+              {
+                "paraStyleIndex": 1,
+                "items": [
+                  {
+                    "type": "text",
+                    "text": "Paragraphs "
+                  },
+                  {
+                    "type": "text",
+                    "text": "a",
+                    "charStyleIndex": 0
+                  },
+                  {
+                    "type": "text",
+                    "text": "n",
+                    "charStyleIndex": 1
+                  },
+                  {
+                    "type": "text",
+                    "text": "d",
+                    "charStyleIndex": 2
+                  },
+                  {
+                    "type": "text",
+                    "text": " spans"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "type": "shape",
+          "common": {
+            "position": {
+              "x": 306.0,
+              "y": 62.400001525878906
+            },
+            "size": {
+              "width": 100.0,
+              "height": 100.0
+            },
+            "angleDeg": 0.0,
+            "locked": false,
+            "textWrap": {
+              "kind": "largest",
+              "marginPt": 12.0
+            },
+            "style": {
+              "lineEnds": {
+                "head": {}
+              }
+            }
+          },
+          "geometry": {
+            "preset": "rounded-rect",
+            "scalar": 15.0,
+            "naturalSize": {
+              "width": 100.0,
+              "height": 100.0
+            }
+          },
+          "text": {
+            "paragraphs": [
+              {
+                "paraStyleIndex": 2,
+                "items": []
+              }
+            ]
+          }
+        },
+        {
+          "type": "shape",
+          "common": {
+            "position": {
+              "x": 431.16876220703125,
+              "y": 62.400001525878906
+            },
+            "size": {
+              "width": 100.0,
+              "height": 100.0
+            },
+            "angleDeg": 0.0,
+            "locked": false,
+            "textWrap": {
+              "kind": "largest",
+              "marginPt": 12.0
+            },
+            "style": {
+              "lineEnds": {
+                "head": {}
+              }
+            }
+          },
+          "geometry": {
+            "naturalSize": {
+              "width": 100.0,
+              "height": 100.0
+            },
+            "path": {
+              "elements": [
+                {
+                  "type": "move",
+                  "points": [
+                    {
+                      "x": 85.35533905029297,
+                      "y": 14.644660949707031
+                    }
+                  ]
+                },
+                {
+                  "type": "cubic",
+                  "points": [
+                    {
+                      "x": 104.88155364990234,
+                      "y": 34.170875549316406
+                    },
+                    {
+                      "x": 104.88155364990234,
+                      "y": 65.8291244506836
+                    },
+                    {
+                      "x": 85.35533905029297,
+                      "y": 85.35533905029297
+                    }
+                  ]
+                },
+                {
+                  "type": "cubic",
+                  "points": [
+                    {
+                      "x": 65.8291244506836,
+                      "y": 104.88155364990234
+                    },
+                    {
+                      "x": 34.170875549316406,
+                      "y": 104.88155364990234
+                    },
+                    {
+                      "x": 14.644660949707031,
+                      "y": 85.35533905029297
+                    }
+                  ]
+                },
+                {
+                  "type": "cubic",
+                  "points": [
+                    {
+                      "x": -4.881553649902344,
+                      "y": 65.8291244506836
+                    },
+                    {
+                      "x": -4.881553649902344,
+                      "y": 34.170875549316406
+                    },
+                    {
+                      "x": 14.644660949707031,
+                      "y": 14.644660949707031
+                    }
+                  ]
+                },
+                {
+                  "type": "cubic",
+                  "points": [
+                    {
+                      "x": 34.170875549316406,
+                      "y": -4.881553649902344
+                    },
+                    {
+                      "x": 65.8291244506836,
+                      "y": -4.881553649902344
+                    },
+                    {
+                      "x": 85.35533905029297,
+                      "y": 14.644660949707031
+                    }
+                  ]
+                },
+                {
+                  "type": "close"
+                },
+                {
+                  "type": "move",
+                  "points": [
+                    {
+                      "x": 85.35533905029297,
+                      "y": 14.644660949707031
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "text": {
+            "paragraphs": [
+              {
+                "paraStyleIndex": 2,
+                "items": []
+              }
+            ]
+          }
+        },
+        {
+          "type": "shape",
+          "common": {
+            "position": {
+              "x": 306.0,
+              "y": 176.9499969482422
+            },
+            "size": {
+              "width": 100.0,
+              "height": 100.0
+            },
+            "angleDeg": 0.0,
+            "locked": false,
+            "textWrap": {
+              "kind": "largest",
+              "marginPt": 12.0
+            },
+            "style": {
+              "lineEnds": {
+                "head": {}
+              }
+            }
+          },
+          "geometry": {
+            "naturalSize": {
+              "width": 100.0,
+              "height": 100.0
+            },
+            "path": {
+              "elements": [
+                {
+                  "type": "move",
+                  "points": [
+                    {
+                      "x": 50.0,
+                      "y": 0.0
+                    }
+                  ]
+                },
+                {
+                  "type": "line",
+                  "points": [
+                    {
+                      "x": 100.0,
+                      "y": 100.0
+                    }
+                  ]
+                },
+                {
+                  "type": "line",
+                  "points": [
+                    {
+                      "x": 0.0,
+                      "y": 100.0
+                    }
+                  ]
+                },
+                {
+                  "type": "close"
+                },
+                {
+                  "type": "move",
+                  "points": [
+                    {
+                      "x": 50.0,
+                      "y": 0.0
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "text": {
+            "paragraphs": [
+              {
+                "paraStyleIndex": 2,
+                "items": []
+              }
+            ]
+          }
+        },
+        {
+          "type": "shape",
+          "common": {
+            "position": {
+              "x": 426.16876220703125,
+              "y": 176.9499969482422
+            },
+            "size": {
+              "width": 110.0,
+              "height": 110.0
+            },
+            "angleDeg": 0.0,
+            "locked": false,
+            "textWrap": {
+              "kind": "largest",
+              "marginPt": 12.0
+            }
+          },
+          "geometry": {
+            "preset": "regular-polygon",
+            "scalar": 5.0,
+            "naturalSize": {
+              "width": 110.0,
+              "height": 110.0
+            }
+          },
+          "text": {
+            "paragraphs": [
+              {
+                "paraStyleIndex": 2,
+                "items": [
+                  {
+                    "type": "text",
+                    "text": "Text"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "type": "shape",
+          "common": {
+            "position": {
+              "x": 306.0,
+              "y": 296.0
+            },
+            "size": {
+              "width": 100.0,
+              "height": 100.0
+            },
+            "angleDeg": 0.0,
+            "locked": false,
+            "textWrap": {
+              "kind": "largest",
+              "marginPt": 12.0
+            }
+          },
+          "geometry": {
+            "naturalSize": {
+              "width": 100.0,
+              "height": 100.0
+            },
+            "path": {
+              "elements": [
+                {
+                  "type": "move",
+                  "points": [
+                    {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  ]
+                },
+                {
+                  "type": "line",
+                  "points": [
+                    {
+                      "x": 100.0,
+                      "y": 0.0
+                    }
+                  ]
+                },
+                {
+                  "type": "line",
+                  "points": [
+                    {
+                      "x": 100.0,
+                      "y": 100.0
+                    }
+                  ]
+                },
+                {
+                  "type": "line",
+                  "points": [
+                    {
+                      "x": 0.0,
+                      "y": 100.0
+                    }
+                  ]
+                },
+                {
+                  "type": "close"
+                },
+                {
+                  "type": "move",
+                  "points": [
+                    {
+                      "x": 0.0,
+                      "y": 0.0
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "text": {
+            "paragraphs": [
+              {
+                "paraStyleIndex": 2,
+                "items": []
+              }
+            ]
+          }
+        },
+        {
+          "type": "shape",
+          "common": {
+            "position": {
+              "x": 428.86065673828125,
+              "y": 296.0
+            },
+            "size": {
+              "width": 100.0,
+              "height": 100.0
+            },
+            "angleDeg": 0.0,
+            "locked": false,
+            "textWrap": {
+              "kind": "largest",
+              "marginPt": 12.0
+            },
+            "style": {
+              "lineEnds": {
+                "head": {}
+              }
+            }
+          },
+          "geometry": {
+            "naturalSize": {
+              "width": 100.0,
+              "height": 100.0
+            },
+            "path": {
+              "elements": [
+                {
+                  "type": "move",
+                  "points": [
+                    {
+                      "x": 0.0,
+                      "y": 50.0
+                    }
+                  ]
+                },
+                {
+                  "type": "line",
+                  "points": [
+                    {
+                      "x": 50.0,
+                      "y": 100.0
+                    }
+                  ]
+                },
+                {
+                  "type": "line",
+                  "points": [
+                    {
+                      "x": 100.0,
+                      "y": 50.0
+                    }
+                  ]
+                },
+                {
+                  "type": "line",
+                  "points": [
+                    {
+                      "x": 50.0,
+                      "y": 0.0
+                    }
+                  ]
+                },
+                {
+                  "type": "close"
+                },
+                {
+                  "type": "move",
+                  "points": [
+                    {
+                      "x": 0.0,
+                      "y": 50.0
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "text": {
+            "paragraphs": [
+              {
+                "paraStyleIndex": 2,
+                "items": []
+              }
+            ]
+          }
+        },
+        {
+          "type": "shape",
+          "common": {
+            "position": {
+              "x": 296.0,
+              "y": 438.5062561035156
+            },
+            "size": {
+              "width": 120.0,
+              "height": 60.0
+            },
+            "angleDeg": 0.0,
+            "locked": false,
+            "textWrap": {
+              "kind": "largest",
+              "marginPt": 12.0
+            }
+          },
+          "geometry": {
+            "naturalSize": {
+              "width": 120.0,
+              "height": 60.0
+            },
+            "path": {
+              "elements": [
+                {
+                  "type": "move",
+                  "points": [
+                    {
+                      "x": 100.0,
+                      "y": 0.0
+                    }
+                  ]
+                },
+                {
+                  "type": "cubic",
+                  "points": [
+                    {
+                      "x": 44.77000045776367,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 0.0,
+                      "y": 44.77000045776367
+                    },
+                    {
+                      "x": 0.0,
+                      "y": 100.0
+                    }
+                  ]
+                },
+                {
+                  "type": "cubic",
+                  "points": [
+                    {
+                      "x": 0.0,
+                      "y": 155.23004150390625
+                    },
+                    {
+                      "x": 44.77000045776367,
+                      "y": 200.0
+                    },
+                    {
+                      "x": 100.0,
+                      "y": 200.0
+                    }
+                  ]
+                },
+                {
+                  "type": "line",
+                  "points": [
+                    {
+                      "x": 300.0,
+                      "y": 200.0
+                    }
+                  ]
+                },
+                {
+                  "type": "cubic",
+                  "points": [
+                    {
+                      "x": 355.22998046875,
+                      "y": 200.0
+                    },
+                    {
+                      "x": 400.0,
+                      "y": 155.22999572753906
+                    },
+                    {
+                      "x": 400.0,
+                      "y": 100.0
+                    }
+                  ]
+                },
+                {
+                  "type": "cubic",
+                  "points": [
+                    {
+                      "x": 400.0,
+                      "y": 44.77000045776367
+                    },
+                    {
+                      "x": 355.2300109863281,
+                      "y": 0.0
+                    },
+                    {
+                      "x": 300.0,
+                      "y": 0.0
+                    }
+                  ]
+                },
+                {
+                  "type": "line",
+                  "points": [
+                    {
+                      "x": 100.0,
+                      "y": 0.0
+                    }
+                  ]
+                },
+                {
+                  "type": "close"
+                },
+                {
+                  "type": "move",
+                  "points": [
+                    {
+                      "x": 100.0,
+                      "y": 0.0
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "text": {
+            "paragraphs": [
+              {
+                "paraStyleIndex": 2,
+                "items": []
+              }
+            ]
+          }
+        },
+        {
+          "type": "shape",
+          "common": {
+            "position": {
+              "x": 442.9926452636719,
+              "y": 441.3953552246094
+            },
+            "size": {
+              "width": 120.35222625732422,
+              "height": 57.11088943481445
+            },
+            "angleDeg": 0.0,
+            "locked": false,
+            "textWrap": {
+              "kind": "largest",
+              "marginPt": 12.0
+            }
+          },
+          "geometry": {
+            "naturalSize": {
+              "width": 120.35222625732422,
+              "height": 57.11088943481445
+            },
+            "path": {
+              "elements": [
+                {
+                  "type": "move",
+                  "points": [
+                    {
+                      "x": 85.90625,
+                      "y": 0.0
+                    }
+                  ]
+                },
+                {
+                  "type": "line",
+                  "points": [
+                    {
+                      "x": 0.0,
+                      "y": 189.8125
+                    }
+                  ]
+                },
+                {
+                  "type": "line",
+                  "points": [
+                    {
+                      "x": 314.09375,
+                      "y": 189.8125
+                    }
+                  ]
+                },
+                {
+                  "type": "line",
+                  "points": [
+                    {
+                      "x": 400.0,
+                      "y": 0.0
+                    }
+                  ]
+                },
+                {
+                  "type": "line",
+                  "points": [
+                    {
+                      "x": 85.90625,
+                      "y": 0.0
+                    }
+                  ]
+                },
+                {
+                  "type": "close"
+                },
+                {
+                  "type": "move",
+                  "points": [
+                    {
+                      "x": 85.90625,
+                      "y": 0.0
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "text": {
+            "paragraphs": [
+              {
+                "paraStyleIndex": 2,
+                "items": []
+              }
+            ]
+          }
+        },
+        {
+          "type": "shape",
+          "common": {
+            "position": {
+              "x": 443.09375,
+              "y": 543.1658935546875
+            },
+            "size": {
+              "width": 114.37886810302734,
+              "height": 57.22382354736328
+            },
+            "angleDeg": 0.0,
+            "locked": false,
+            "textWrap": {
+              "kind": "largest",
+              "marginPt": 12.0
+            }
+          },
+          "geometry": {
+            "naturalSize": {
+              "width": 114.37886810302734,
+              "height": 57.22382354736328
+            },
+            "path": {
+              "elements": [
+                {
+                  "type": "move",
+                  "points": [
+                    {
+                      "x": 0.0,
+                      "y": 48.14661407470703
+                    }
+                  ]
+                },
+                {
+                  "type": "line",
+                  "points": [
+                    {
+                      "x": 16.71875,
+                      "y": 14.099740028381348
+                    }
+                  ]
+                },
+                {
+                  "type": "line",
+                  "points": [
+                    {
+                      "x": 40.42886734008789,
+                      "y": 32.88739013671875
+                    }
+                  ]
+                },
+                {
+                  "type": "line",
+                  "points": [
+                    {
+                      "x": 57.378868103027344,
+                      "y": 11.244356155395508
+                    }
+                  ]
+                },
+                {
+                  "type": "line",
+                  "points": [
+                    {
+                      "x": 64.92886352539062,
+                      "y": 19.078773498535156
+                    }
+                  ]
+                },
+                {
+                  "type": "cubic",
+                  "points": [
+                    {
+                      "x": 67.4455337524414,
+                      "y": 21.69024658203125
+                    },
+                    {
+                      "x": 69.96220397949219,
+                      "y": 24.301719665527344
+                    },
+                    {
+                      "x": 72.47886657714844,
+                      "y": 26.913192749023438
+                    }
+                  ]
+                },
+                {
+                  "type": "line",
+                  "points": [
+                    {
+                      "x": 86.29136657714844,
+                      "y": 0.0
+                    }
+                  ]
+                },
+                {
+                  "type": "line",
+                  "points": [
+                    {
+                      "x": 114.37886810302734,
+                      "y": 15.650090217590332
+                    }
+                  ]
+                },
+                {
+                  "type": "line",
+                  "points": [
+                    {
+                      "x": 110.60386657714844,
+                      "y": 24.901948928833008
+                    }
+                  ]
+                },
+                {
+                  "type": "line",
+                  "points": [
+                    {
+                      "x": 92.09761810302734,
+                      "y": 12.948824882507324
+                    }
+                  ]
+                },
+                {
+                  "type": "line",
+                  "points": [
+                    {
+                      "x": 75.72261810302734,
+                      "y": 38.892574310302734
+                    }
+                  ]
+                },
+                {
+                  "type": "line",
+                  "points": [
+                    {
+                      "x": 59.2194938659668,
+                      "y": 26.230073928833008
+                    }
+                  ]
+                },
+                {
+                  "type": "line",
+                  "points": [
+                    {
+                      "x": 41.9538688659668,
+                      "y": 43.05507278442383
+                    }
+                  ]
+                },
+                {
+                  "type": "line",
+                  "points": [
+                    {
+                      "x": 20.419492721557617,
+                      "y": 30.067575454711914
+                    }
+                  ]
+                },
+                {
+                  "type": "line",
+                  "points": [
+                    {
+                      "x": 7.963242053985596,
+                      "y": 57.22382354736328
+                    }
+                  ]
+                },
+                {
+                  "type": "line",
+                  "points": [
+                    {
+                      "x": 0.0,
+                      "y": 48.14661407470703
+                    }
+                  ]
+                },
+                {
+                  "type": "close"
+                }
+              ]
+            }
+          },
+          "text": {
+            "paragraphs": [
+              {
+                "paraStyleIndex": 2,
+                "items": []
+              }
+            ]
+          }
+        },
+        {
+          "type": "textbox",
+          "common": {
+            "position": {
+              "x": 63.0,
+              "y": 368.0
+            },
+            "size": {
+              "width": 207.7375030517578,
+              "height": 31.0
+            },
+            "angleDeg": 0.0,
+            "locked": false,
+            "textWrap": {
+              "kind": "largest",
+              "marginPt": 12.0
+            },
+            "style": {
+              "lineEnds": {
+                "head": {}
+              }
+            }
+          },
+          "text": {
+            "paragraphs": [
+              {
+                "paraStyleIndex": 0,
+                "items": [
+                  {
+                    "type": "text",
+                    "text": "Source (CC0):"
+                  }
+                ]
+              },
+              {
+                "paraStyleIndex": 1,
+                "items": [
+                  {
+                    "type": "text",
+                    "text": "https://commons.wikimedia.org/wiki/File:Tabby_cat_with_blue_eyes-3336579.jpg",
+                    "charStyleIndex": 3
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "type": "image",
+          "common": {
+            "position": {
+              "x": 63.0,
+              "y": 246.0
+            },
+            "size": {
+              "width": 94.43827056884766,
+              "height": 113.32592010498047
+            },
+            "angleDeg": 0.0,
+            "locked": false,
+            "textWrap": {
+              "kind": "right",
+              "marginPt": 12.0
+            },
+            "style": {
+              "stroke": {
+                "color": "#000000",
+                "widthPt": 1.0,
+                "cap": "butt",
+                "join": "miter",
+                "miterLimit": 4.0,
+                "dashPhase": 0.0
+              }
+            },
+            "opacity": 1.0,
+            "shadow": {
+              "color": "#000000",
+              "angleDeg": 315.0,
+              "offsetPt": 5.0,
+              "radiusPt": 1.0,
+              "opacity": 1.0,
+              "kind": "drop"
+            },
+            "reflection": {
+              "opacity": 0.5
+            }
+          },
+          "image": {
+            "dataId": "26",
+            "fileName": "pasted-movie-26.png",
+            "preferredFileName": "pasted-movie.png",
+            "pixelSize": {
+              "width": 250.0,
+              "height": 300.0
+            }
+          },
+          "thumbnail": {
+            "dataId": "27",
+            "fileName": "pasted-movie-small-27.png",
+            "preferredFileName": "pasted-movie-small.png"
+          },
+          "naturalSize": {
+            "width": 250.0,
+            "height": 300.0
+          }
+        },
+        {
+          "type": "group",
+          "common": {
+            "position": {
+              "x": 245.95416259765625,
+              "y": 524.7249755859375
+            },
+            "size": {
+              "width": 160.04583740234375,
+              "height": 100.0
+            },
+            "angleDeg": 0.0,
+            "locked": false,
+            "textWrap": {
+              "kind": "right",
+              "marginPt": 12.0
+            }
+          },
+          "children": [
+            {
+              "type": "shape",
+              "common": {
+                "position": {
+                  "x": -185.9083251953125,
+                  "y": -524.7249755859375
+                },
+                "size": {
+                  "width": 100.0,
+                  "height": 100.0
+                },
+                "angleDeg": 0.0,
+                "locked": false,
+                "textWrap": {
+                  "kind": "largest",
+                  "marginPt": 12.0
+                }
+              },
+              "geometry": {
+                "preset": "right-arrow",
+                "naturalSize": {
+                  "width": 100.0,
+                  "height": 100.0
+                }
+              },
+              "text": {
+                "paragraphs": [
+                  {
+                    "paraStyleIndex": 2,
+                    "items": []
+                  }
+                ]
+              }
+            },
+            {
+              "type": "shape",
+              "common": {
+                "position": {
+                  "x": -245.95416259765625,
+                  "y": -474.7249755859375
+                },
+                "size": {
+                  "width": 57.045833587646484,
+                  "height": 0.0
+                },
+                "angleDeg": 10313.240312354817,
+                "locked": false,
+                "textWrap": {
+                  "kind": "largest",
+                  "marginPt": 12.0
+                }
+              },
+              "geometry": {
+                "naturalSize": {
+                  "width": 57.045833587646484,
+                  "height": 0.0
+                },
+                "path": {
+                  "elements": [
+                    {
+                      "type": "move",
+                      "points": [
+                        {
+                          "x": 0.0,
+                          "y": 0.0
+                        }
+                      ]
+                    },
+                    {
+                      "type": "line",
+                      "points": [
+                        {
+                          "x": 141.42135620117188,
+                          "y": 0.0
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              "text": {
+                "paragraphs": [
+                  {
+                    "paraStyleIndex": 0,
+                    "items": []
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "pageIndex": 1,
+      "drawables": [
+        {
+          "type": "textbox",
+          "common": {
+            "position": {
+              "x": 181.0,
+              "y": 148.1999969482422
+            },
+            "size": {
+              "width": 250.0,
+              "height": 128.0
+            },
+            "angleDeg": 0.0,
+            "locked": false,
+            "textWrap": {
+              "kind": "largest",
+              "marginPt": 12.0
+            }
+          },
+          "text": {
+            "paragraphs": [
+              {
+                "paraStyleIndex": 3,
+                "items": [
+                  {
+                    "type": "text",
+                    "text": "Page 2"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "type": "textbox",
+          "common": {
+            "position": {
+              "x": 87.80000305175781,
+              "y": 285.3999938964844
+            },
+            "size": {
+              "width": 250.0,
+              "height": 128.0
+            },
+            "angleDeg": 0.0,
+            "locked": false,
+            "textWrap": {
+              "kind": "largest",
+              "marginPt": 12.0
+            },
+            "style": {
+              "lineEnds": {
+                "head": {}
+              }
+            }
+          },
+          "text": {
+            "paragraphs": [
+              {
+                "paraStyleIndex": 0,
+                "items": [
+                  {
+                    "type": "text",
+                    "text": "Once upon a time, in a GitHub repo far away, there was a project that got vibed into existence by an agent. And the project was OK but not great, but it had tests so we went with it anyway!…"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "pageTemplates": [
+    {
+      "name": "Blank",
+      "drawables": [],
+      "placeholders": [],
+      "hideHeadersFooters": false,
+      "headers": [],
+      "footers": [],
+      "headersFootersMatchPreviousPage": true
+    }
+  ],
+  "sections": []
+}

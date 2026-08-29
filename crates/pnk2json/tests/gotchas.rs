@@ -77,15 +77,16 @@ fn gotcha11_operation_storage_is_skipped_not_decoded() {
 
 #[test]
 fn gotcha4_unknown_type_ids_become_warnings() {
-    // Gantt-chart keynote fixture with registry-unknown type id 222 (0xde).
-    let Some(path) = fixture_path(
-        "fixtures/crawl/6b8460d2240a2fdf7a7c3fb2b9ce5ddfee064439faad05f21a5b041d3ca528b3.key",
-    ) else {
+    // G2 golden fixture (Pages 26.3.1 fresh save): its lone
+    // unknown-object-type warning is type 10017 (0x2721) — genuinely absent
+    // from both the embedded tables and keynote-parser 14.5's registry.
+    // (The 14.5 registry upgrade resolved the older gantt-fixture ids.)
+    let Some(path) = fixture_path("fixtures/golden/G2-golden-pages-layout.pages") else {
         eprintln!("fixture corpus absent; skipping");
         return;
     };
     let doc = pnk2json::convert_path(&path).unwrap();
-    let PnkDocument::Keynote(d) = &doc else { panic!("expected keynote") };
+    let PnkDocument::Pages(d) = &doc else { panic!("expected pages") };
     let unknown = d
         .warnings
         .iter()

@@ -12,10 +12,19 @@ use crate::pb::{ids, Msg};
 pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
     let locale = ctx.resolve_locale(root);
 
-    let flavor = if root.has(4) {
-        PagesFlavor::WordProcessing
-    } else {
-        PagesFlavor::PageLayout
+    // Flavor discriminator: TP.SettingsArchive.body (field 1, default true)
+    // — "include body text in the document". Layout docs carry body=0 even
+    // though body_storage (4) is still present (fixture-verified G1/G2 +
+    // corpus: both flavors reference a body storage, so presence is NOT the
+    // discriminator; docs/format/pages.md + gotchas #16). Absent settings →
+    // default true = word-processing.
+    let flavor = match root
+        .reference(7)
+        .and_then(|sid| ctx.loaded.msg(sid))
+        .and_then(|s| s.varint(1))
+    {
+        Some(0) => PagesFlavor::PageLayout,
+        _ => PagesFlavor::WordProcessing,
     };
 
     let page_size = if root.has(30) || root.has(31) {
@@ -100,15 +109,30 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
         }
     }
 
-    // Word-processing body + footnotes.
+    // Body flow: word-processing renders it as `body`; page-layout docs keep
+    // a never-rendered body storage — preserved as `hiddenBody` when it has
+    // any content (no silent data loss; omitted when empty).
     let mut body = None;
+    let mut hidden_body = None;
     let mut footnotes: Vec<Footnote> = Vec::new();
-    if flavor == PagesFlavor::WordProcessing {
-        if let Some(bsid) = root.reference(4) {
-            if let Some(ex) = crate::text::extract(ctx, bsid) {
-                body = Some(ex.text);
-                for (para_idx, ftext) in ex.footnotes {
-                    footnotes.push(Footnote { anchor_paragraph_index: para_idx, text: ftext });
+    if let Some(bsid) = root.reference(4) {
+        if let Some(ex) = crate::text::extract(ctx, bsid) {
+            let non_empty = ex
+                .text
+                .paragraphs
+                .iter()
+                .any(|p| p.items.iter().any(|it| !matches!(it, ParagraphItem::Text { text, .. } if text.is_empty())));
+            match flavor {
+                PagesFlavor::WordProcessing => {
+                    body = Some(ex.text);
+                    for (para_idx, ftext) in ex.footnotes {
+                        footnotes.push(Footnote { anchor_paragraph_index: para_idx, text: ftext });
+                    }
+                }
+                PagesFlavor::PageLayout => {
+                    if non_empty {
+                        hidden_body = Some(ex.text);
+                    }
                 }
             }
         }
@@ -133,6 +157,7 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
         orientation,
         page_scale,
         body,
+        hidden_body,
         footnotes: if footnotes.is_empty() { None } else { Some(footnotes) },
         floating,
         page_templates,
