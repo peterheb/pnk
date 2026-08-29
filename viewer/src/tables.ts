@@ -6,12 +6,13 @@
 
 import type {
   CellFormat,
-  CellStyle,
   CellValue,
+  TableCellStyle,
   TableModel,
   TableMerge,
 } from "../../model/src/shared";
 import { applyCharStyle } from "./text";
+import { cellStyleOf } from "./hydrate";
 
 // Document locale, set from meta.locale after parse. Comma-decimal
 // separators follow the CLDR region when one is present (Apple renders
@@ -79,7 +80,7 @@ function valueToText(value: CellValue, format: CellFormat | undefined): string {
   }
 }
 
-function applyCellStyle(td: HTMLTableCellElement, style: CellStyle | undefined, header: boolean, footer: boolean): void {
+function applyCellStyle(td: HTMLTableCellElement, style: TableCellStyle | undefined, header: boolean, footer: boolean): void {
   const s = td.style;
   if (style?.fill) s.backgroundColor = style.fill.type === "solid" ? style.fill.color : "#e8e8ee";
   if (style?.borders) {
@@ -154,7 +155,7 @@ export function renderTable(model: TableModel): HTMLTableElement {
         if (merge.rowSpan > 1) td.rowSpan = merge.rowSpan;
         if (merge.columnSpan > 1) td.colSpan = merge.columnSpan;
       }
-      applyCellStyle(td, cell?.style, header, footer);
+      applyCellStyle(td, cellStyleOf(model, cell?.cellStyleIndex), header, footer);
       if (cell) {
         const format = cell.formatIndex !== undefined ? formats[cell.formatIndex] : undefined;
         if (cell.value.type === "error") td.classList.add("cell-error");

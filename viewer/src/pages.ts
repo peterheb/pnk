@@ -7,9 +7,11 @@ import type { ViewerCtx } from "./ctx";
 import type { Drawable } from "../../model/src/shared";
 import { renderParagraph, renderStyledText } from "./text";
 import { renderCanvasDrawable } from "./drawables";
+import type { HydratedDoc } from "./hydrate";
 
 function pageCanvas(
   doc: PagesDocument,
+  hdoc: HydratedDoc,
   ctx: ViewerCtx,
   drawables: Drawable[],
   pageIndex: number | undefined,
@@ -29,7 +31,7 @@ function pageCanvas(
     inner.style.top = "0";
     inner.style.left = "50%";
     inner.style.marginLeft = `${-doc.pageSize.width * scale / 2}px`;
-    for (const d of drawables) inner.appendChild(renderCanvasDrawable(d, ctx));
+    for (const d of drawables) inner.appendChild(renderCanvasDrawable(d, hdoc, ctx));
     frame.appendChild(inner);
     frame.style.height = `${doc.pageSize.height * scale}px`;
     frame.dataset.pageIndex = pageIndex === undefined ? "" : String(pageIndex);
@@ -39,7 +41,7 @@ function pageCanvas(
     inner.style.position = "relative";
     inner.style.width = "720px";
     inner.style.minHeight = "400px";
-    for (const d of drawables) inner.appendChild(renderCanvasDrawable(d, ctx));
+    for (const d of drawables) inner.appendChild(renderCanvasDrawable(d, hdoc, ctx));
     frame.appendChild(inner);
   }
   return frame;
@@ -47,6 +49,7 @@ function pageCanvas(
 
 function floatingSection(
   doc: PagesDocument,
+  hdoc: HydratedDoc,
   ctx: ViewerCtx,
   mount: HTMLElement,
   groups: PagesDocument["floating"],
@@ -63,12 +66,12 @@ function floatingSection(
     label.className = "muted canvas-caption";
     label.textContent = group.pageIndex !== undefined ? `Page ${group.pageIndex + 1}` : `Group ${i + 1}`;
     wrap.appendChild(label);
-    wrap.appendChild(pageCanvas(doc, ctx, group.drawables, group.pageIndex));
+    wrap.appendChild(pageCanvas(doc, hdoc, ctx, group.drawables, group.pageIndex));
   });
   mount.appendChild(wrap);
 }
 
-export function renderPages(doc: PagesDocument, ctx: ViewerCtx, mount: HTMLElement): void {
+export function renderPages(doc: PagesDocument, hdoc: HydratedDoc, ctx: ViewerCtx, mount: HTMLElement): void {
   const view = document.createElement("div");
   view.id = "pages-view";
 
@@ -78,13 +81,13 @@ export function renderPages(doc: PagesDocument, ctx: ViewerCtx, mount: HTMLEleme
   const leading = doc.floating.filter((g) => (g.pageIndex ?? 0) === 0);
   const trailing = doc.floating.filter((g) => (g.pageIndex ?? 0) !== 0);
   if (!wordProcessing || doc.body) {
-    floatingSection(doc, ctx, view, leading, wordProcessing ? "Cover page" : "Pages");
+    floatingSection(doc, hdoc, ctx, view, leading, wordProcessing ? "Cover page" : "Pages");
   }
 
   if (wordProcessing && doc.body) {
     const flow = document.createElement("article");
     flow.className = "pages-flow";
-    for (const p of doc.body.paragraphs) flow.appendChild(renderParagraph(p, ctx));
+    for (const p of doc.body.paragraphs) flow.appendChild(renderParagraph(p, hdoc, ctx));
     view.appendChild(flow);
 
     if (doc.footnotes?.length) {
@@ -100,7 +103,7 @@ export function renderPages(doc: PagesDocument, ctx: ViewerCtx, mount: HTMLEleme
         mark.className = "mark";
         mark.textContent = `${i + 1}.`;
         row.appendChild(mark);
-        row.appendChild(renderStyledText(fn.text, ctx));
+        row.appendChild(renderStyledText(fn.text, hdoc, ctx));
         section.appendChild(row);
       });
       view.appendChild(section);
@@ -108,7 +111,7 @@ export function renderPages(doc: PagesDocument, ctx: ViewerCtx, mount: HTMLEleme
   }
 
   if (trailing.length > 0) {
-    floatingSection(doc, ctx, view, trailing, "Floating objects");
+    floatingSection(doc, hdoc, ctx, view, trailing, "Floating objects");
   }
   mount.appendChild(view);
 }

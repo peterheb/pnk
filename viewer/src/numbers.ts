@@ -4,6 +4,7 @@
 import type { NumbersDocument, Sheet } from "../../model/src/numbers";
 import type { ViewerCtx } from "./ctx";
 import { renderCanvasDrawable } from "./drawables";
+import type { HydratedDoc } from "./hydrate";
 
 function drawableExtent(
   d: { type: string; common?: { position?: { x: number; y: number }; size?: { width: number; height: number } }; children?: unknown[] },
@@ -24,7 +25,7 @@ function sheetExtent(sheet: Sheet): { width: number; height: number } {
   return { width: cur.x + 40, height: cur.y + 40 };
 }
 
-function renderSheet(sheet: Sheet, ctx: ViewerCtx, index: number): HTMLElement {
+function renderSheet(sheet: Sheet, hdoc: HydratedDoc, ctx: ViewerCtx, index: number): HTMLElement {
   const area = document.createElement("div");
   area.className = "sheet-area";
   area.dataset.sheetIndex = String(index);
@@ -35,13 +36,13 @@ function renderSheet(sheet: Sheet, ctx: ViewerCtx, index: number): HTMLElement {
   canvas.style.width = `${ext.width}px`;
   canvas.style.height = `${ext.height}px`;
 
-  for (const d of sheet.drawables) canvas.appendChild(renderCanvasDrawable(d, ctx));
+  for (const d of sheet.drawables) canvas.appendChild(renderCanvasDrawable(d, hdoc, ctx));
 
   area.appendChild(canvas);
   return area;
 }
 
-export function renderNumbers(doc: NumbersDocument, ctx: ViewerCtx, mount: HTMLElement): void {
+export function renderNumbers(doc: NumbersDocument, hdoc: HydratedDoc, ctx: ViewerCtx, mount: HTMLElement): void {
   const view = document.createElement("div");
   view.id = "numbers-view";
 
@@ -51,7 +52,7 @@ export function renderNumbers(doc: NumbersDocument, ctx: ViewerCtx, mount: HTMLE
 
   const activate = (index: number) => {
     areaSlot.replaceChildren();
-    areaSlot.appendChild(renderSheet(doc.sheets[index], ctx, index));
+    areaSlot.appendChild(renderSheet(doc.sheets[index], hdoc, ctx, index));
     for (const tab of tabs.children) {
       tab.classList.toggle("active", (tab as HTMLElement).dataset.sheetIndex === String(index));
     }

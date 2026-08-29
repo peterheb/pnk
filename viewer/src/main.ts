@@ -4,6 +4,7 @@
 
 import init, { convert, media_bytes } from "./wasm/pnk2json_wasm.js";
 import { ViewerCtx } from "./ctx";
+import { hydrate } from "./hydrate";
 import { mapError, renderErrorCard } from "./errors";
 import { renderKeynote } from "./keynote";
 import { renderNumbers } from "./numbers";
@@ -64,9 +65,9 @@ function renderDocument(doc: PnkDocument, filename: string): void {
   view.classList.remove("hidden");
   $("drop-zone").classList.add("hidden");
 
-  if (doc.kind === "keynote") renderKeynote(doc, mediaCtx, view);
-  else if (doc.kind === "numbers") renderNumbers(doc, mediaCtx, view);
-  else renderPages(doc, mediaCtx, view);
+  if (doc.kind === "keynote") renderKeynote(doc, hydrate(doc), mediaCtx, view);
+  else if (doc.kind === "numbers") renderNumbers(doc, hydrate(doc), mediaCtx, view);
+  else renderPages(doc, hydrate(doc), mediaCtx, view);
 }
 
 function showError(err: unknown, filename: string): void {

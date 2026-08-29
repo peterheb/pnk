@@ -1,5 +1,6 @@
-// StyledText -> DOM. Paragraphs become <p> (or <h1>-<h6> when outlineLevel
-// says heading); runs become styled <span>/<a>; smart fields render their
+// StyledText -> DOM. Paragraphs become <p> (or <h1>-<h5> when the hydrated
+// paragraph style's outlineLevel says heading); runs resolve their char style
+// through the document pool (charStyleIndex); smart fields render their
 // stored value; inline attachments recurse into the drawable renderer.
 import type {
   CharStyle,
@@ -10,6 +11,7 @@ import type {
 } from "../../model/src/shared";
 import type { ViewerCtx } from "./ctx";
 import { renderFlowDrawable } from "./drawables";
+import { charStyleOf, paraStyleOf, type HydratedDoc } from "./hydrate";
 
 export function applyCharStyle(el: HTMLElement, cs: CharStyle | undefined): void {
   if (!cs) return;
@@ -62,18 +64,19 @@ function fieldPlaceholderText(item: Extract<ParagraphItem, { type: "field" }>): 
   }
 }
 
-/** One paragraph, styled. Headings (outlineLevel ≥ 1) render h1-h6. */
-export function renderParagraph(p: Paragraph, ctx: ViewerCtx): HTMLElement {
-  const level = p.style.outlineLevel ?? 0;
+/** One paragraph, styled from the hydrated pools. Headings by outlineLevel. */
+export function renderParagraph(p: Paragraph, doc: HydratedDoc, ctx: ViewerCtx): HTMLElement {
+  const style = paraStyleOf(doc, p.paraStyleIndex);
+  const level = style?.outlineLevel ?? 0;
   const el = level >= 1 && level <= 5
     ? document.createElement(`h${level}`)
     : document.createElement("p");
-  applyParaStyle(el, p.style);
+  if (style) applyParaStyle(el, style);
   for (const item of p.items) {
     if (item.type === "text") {
       const span = document.createElement(item.hyperlink ? "a" : "span");
       span.textContent = item.text;
-      applyCharStyle(span, item.style);
+      applyCharStyle(span, charStyleOf(doc, item.charStyleIndex));
       if (item.hyperlink) {
         (span as HTMLAnchorElement).href = item.hyperlink;
         (span as HTMLAnchorElement).target = "_blank";
@@ -85,20 +88,20 @@ export function renderParagraph(p: Paragraph, ctx: ViewerCtx): HTMLElement {
       span.className = "field";
       span.dataset.fieldKind = item.field.kind;
       span.textContent = item.value ?? fieldPlaceholderText(item);
-      applyCharStyle(span, item.style);
+      applyCharStyle(span, charStyleOf(doc, item.charStyleIndex));
       el.appendChild(span);
     } else {
       // inline attachment (U+FFFC): render the embedded drawable in-flow
-      el.appendChild(renderFlowDrawable(item.drawable, ctx));
+      el.appendChild(renderFlowDrawable(item.drawable, doc, ctx));
     }
   }
   return el;
 }
 
 /** A whole text block (body, notes, cell rich text…). */
-export function renderStyledText(t: StyledText | undefined, ctx: ViewerCtx): HTMLElement {
+export function renderStyledText(t: StyledText | undefined, doc: HydratedDoc, ctx: ViewerCtx): HTMLElement {
   const div = document.createElement("div");
   div.className = "styled-text";
-  if (t) for (const p of t.paragraphs) div.appendChild(renderParagraph(p, ctx));
+  if (t) for (const p of t.paragraphs) div.appendChild(renderParagraph(p, doc, ctx));
   return div;
 }

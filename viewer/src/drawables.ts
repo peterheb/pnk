@@ -20,6 +20,7 @@ import type {
 import type { ViewerCtx } from "./ctx";
 import { renderTable } from "./tables";
 import { renderStyledText } from "./text";
+import type { HydratedDoc } from "./hydrate";
 
 function el(tag: string, className?: string): HTMLElement {
   const e = document.createElement(tag);
@@ -233,12 +234,12 @@ function verticalAlignStyle(d: { verticalAlignment?: string }): string {
 }
 
 /** Text content of a textbox/shape, filling the positioned container. */
-function textLayer(d: Drawable & { text?: unknown; common?: DrawableCommon }, ctx: ViewerCtx): HTMLElement | null {
+function textLayer(d: Drawable & { text?: unknown; common?: DrawableCommon }, doc: HydratedDoc, ctx: ViewerCtx): HTMLElement | null {
   if (!("text" in d) || !d.text || (d.text as { paragraphs?: unknown[] }).paragraphs === undefined) return null;
   const layer = el("div", "drawable-text");
   layer.style.alignItems = verticalAlignStyle(d as { verticalAlignment?: string });
   const inner = el("div", "drawable-text-inner");
-  inner.appendChild(renderStyledText(d.text as never, ctx));
+  inner.appendChild(renderStyledText(d.text as never, doc, ctx));
   layer.appendChild(inner);
   return layer;
 }
@@ -301,7 +302,7 @@ export function applyCommonGeometry(div: HTMLElement, c: DrawableCommon): void {
 }
 
 /** One drawable on a canvas: absolutely positioned inside .canvas-inner. */
-export function renderCanvasDrawable(d: Drawable, ctx: ViewerCtx): HTMLElement {
+export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerCtx): HTMLElement {
   const div = el("div", "canvas-drawable");
   if (d.type === "unknown" || !d.common) {
     div.className = "canvas-drawable unknown-drawable";
@@ -316,13 +317,13 @@ export function renderCanvasDrawable(d: Drawable, ctx: ViewerCtx): HTMLElement {
   const h = c.size?.height ?? 60;
 
   if (d.type === "textbox") {
-    const layer = textLayer(d, ctx);
+    const layer = textLayer(d, doc, ctx);
     if (layer) div.appendChild(layer);
     else div.textContent = "";
   } else if (d.type === "shape") {
     const svg = shapeSvg(d.geometry, w, h, c.style);
     div.appendChild(svg);
-    const layer = textLayer({ ...d, text: d.text, verticalAlignment: d.verticalAlignment, common: c }, ctx);
+    const layer = textLayer({ ...d, text: d.text, verticalAlignment: d.verticalAlignment, common: c }, doc, ctx);
     if (layer) div.appendChild(layer);
   } else if (d.type === "image") {
     div.appendChild(imageEl(d.image.dataId, d.image.preferredFileName ?? d.image.fileName, ctx, d.image.preferredFileName));
@@ -331,7 +332,7 @@ export function renderCanvasDrawable(d: Drawable, ctx: ViewerCtx): HTMLElement {
   } else if (d.type === "group") {
     // children are re-based into the group's space by the converter: render
     // them as canvas drawables inside this positioned container
-    for (const child of d.children) div.appendChild(renderCanvasDrawable(child, ctx));
+    for (const child of d.children) div.appendChild(renderCanvasDrawable(child, doc, ctx));
   } else if (d.type === "connection-line") {
     const svg = shapeSvg({ path: d.path }, w, h, c.style);
     svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
@@ -353,15 +354,15 @@ export function renderCanvasDrawable(d: Drawable, ctx: ViewerCtx): HTMLElement {
 }
 
 /** One drawable in a flow context (inline attachment / floating text stream). */
-export function renderFlowDrawable(d: Drawable, ctx: ViewerCtx): HTMLElement {
+export function renderFlowDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerCtx): HTMLElement {
   if (d.type === "textbox") {
     const wrap = el("div", "flow-textbox");
-    wrap.appendChild(renderStyledText(d.text, ctx));
+    wrap.appendChild(renderStyledText(d.text, doc, ctx));
     return wrap;
   }
   if (d.type === "shape" && d.text) {
     const wrap = el("div", "flow-textbox");
-    wrap.appendChild(renderStyledText(d.text, ctx));
+    wrap.appendChild(renderStyledText(d.text, doc, ctx));
     return wrap;
   }
   if (d.type === "image") {
@@ -387,7 +388,7 @@ export function renderFlowDrawable(d: Drawable, ctx: ViewerCtx): HTMLElement {
   }
   if (d.type === "group") {
     const wrap = el("div", "flow-group");
-    for (const child of d.children) wrap.appendChild(renderFlowDrawable(child, ctx));
+    for (const child of d.children) wrap.appendChild(renderFlowDrawable(child, doc, ctx));
     return wrap;
   }
   if (d.type === "chart") return chartSummary(d);

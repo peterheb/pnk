@@ -4,12 +4,14 @@ import type { KeynoteDocument, Slide } from "../../model/src/keynote";
 import type { ViewerCtx } from "./ctx";
 import { renderCanvasDrawable } from "./drawables";
 import { renderStyledText } from "./text";
+import type { HydratedDoc } from "./hydrate";
 
 const THUMB_WIDTH = 168;
 
 function buildCanvas(
   slide: Slide,
   doc: KeynoteDocument,
+  hdoc: HydratedDoc,
   ctx: ViewerCtx,
   widthPx: number,
 ): HTMLElement {
@@ -28,18 +30,25 @@ function buildCanvas(
 
   // master furniture first (background, placeholders), then slide content
   const master = doc.masters.find((m) => m.name === slide.masterName);
-  if (master) for (const d of master.drawables) inner.appendChild(renderCanvasDrawable(d, ctx));
-  for (const d of slide.drawables) inner.appendChild(renderCanvasDrawable(d, ctx));
+  if (master) for (const d of master.drawables) inner.appendChild(renderCanvasDrawable(d, hdoc, ctx));
+  for (const d of slide.drawables) inner.appendChild(renderCanvasDrawable(d, hdoc, ctx));
 
   frame.appendChild(inner);
   return frame;
 }
 
-function renderStage(doc: KeynoteDocument, ctx: ViewerCtx, slide: Slide, index: number, widthPx: number): HTMLElement {
+function renderStage(
+  doc: KeynoteDocument,
+  hdoc: HydratedDoc,
+  ctx: ViewerCtx,
+  slide: Slide,
+  index: number,
+  widthPx: number,
+): HTMLElement {
   const stage = document.createElement("div");
   stage.className = "slide-stage";
 
-  const frame = buildCanvas(slide, doc, ctx, widthPx);
+  const frame = buildCanvas(slide, doc, hdoc, ctx, widthPx);
   frame.dataset.slideIndex = String(index);
   stage.appendChild(frame);
 
@@ -59,7 +68,7 @@ function renderStage(doc: KeynoteDocument, ctx: ViewerCtx, slide: Slide, index: 
   h.textContent = "Presenter notes";
   notes.appendChild(h);
   notes.appendChild(slide.notes
-    ? renderStyledText(slide.notes, ctx)
+    ? renderStyledText(slide.notes, hdoc, ctx)
     : Object.assign(document.createElement("p"), { textContent: "No notes on this slide.", className: "muted" }));
   stage.appendChild(notes);
 
@@ -72,7 +81,12 @@ function renderStage(doc: KeynoteDocument, ctx: ViewerCtx, slide: Slide, index: 
   return stage;
 }
 
-export function renderKeynote(doc: KeynoteDocument, ctx: ViewerCtx, mount: HTMLElement): void {
+export function renderKeynote(
+  doc: KeynoteDocument,
+  hdoc: HydratedDoc,
+  ctx: ViewerCtx,
+  mount: HTMLElement,
+): void {
   const view = document.createElement("div");
   view.id = "keynote-view";
 
@@ -87,7 +101,7 @@ export function renderKeynote(doc: KeynoteDocument, ctx: ViewerCtx, mount: HTMLE
 
   const activate = (index: number) => {
     stageSlot.replaceChildren();
-    stageSlot.appendChild(renderStage(doc, ctx, doc.slides[index], index, stageSlot.clientWidth || 800));
+    stageSlot.appendChild(renderStage(doc, hdoc, ctx, doc.slides[index], index, stageSlot.clientWidth || 800));
     for (const item of list.children) {
       item.classList.toggle("active", (item as HTMLElement).dataset.slideIndex === String(index));
     }
@@ -97,7 +111,7 @@ export function renderKeynote(doc: KeynoteDocument, ctx: ViewerCtx, mount: HTMLE
     const item = document.createElement("div");
     item.className = "slide-list-item";
     item.dataset.slideIndex = String(i);
-    item.appendChild(buildCanvas(slide, doc, ctx, THUMB_WIDTH));
+    item.appendChild(buildCanvas(slide, doc, hdoc, ctx, THUMB_WIDTH));
     const label = document.createElement("span");
     label.className = "label";
     label.textContent = `${i + 1}${slide.name ? ` · ${slide.name}` : ""}${slide.skipped ? " (skipped)" : ""}`;
