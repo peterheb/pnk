@@ -104,6 +104,46 @@
         "keepWithNext": false,
         "hyphenate": true,
         "pageBreakBefore": false
+      },
+      {
+        "list": {
+          "level": 0,
+          "markerKind": "none",
+          "markerIndentPt": 0.0
+        }
+      },
+      {
+        "list": {
+          "level": 0,
+          "markerKind": "number",
+          "numberKind": "decimal",
+          "start": 1.0,
+          "markerIndentPt": 0.0
+        }
+      },
+      {
+        "list": {
+          "level": 0,
+          "markerKind": "number",
+          "numberKind": "decimal",
+          "markerIndentPt": 0.0
+        }
+      },
+      {
+        "list": {
+          "level": 0,
+          "markerKind": "string",
+          "markerText": "•",
+          "markerIndentPt": 0.0
+        }
+      },
+      {
+        "list": {
+          "level": 1,
+          "markerKind": "string",
+          "markerText": "•",
+          "markerIndentPt": 9.0
+        }
       }
     ],
     "char": [
@@ -147,6 +187,7 @@
         ]
       },
       {
+        "paraStyleIndex": 1,
         "items": [
           {
             "type": "text",
@@ -155,6 +196,7 @@
         ]
       },
       {
+        "paraStyleIndex": 1,
         "items": [
           {
             "type": "text",
@@ -163,6 +205,7 @@
         ]
       },
       {
+        "paraStyleIndex": 1,
         "items": [
           {
             "type": "text",
@@ -171,6 +214,7 @@
         ]
       },
       {
+        "paraStyleIndex": 1,
         "items": [
           {
             "type": "text",
@@ -211,6 +255,7 @@
         ]
       },
       {
+        "paraStyleIndex": 2,
         "items": [
           {
             "type": "text",
@@ -219,6 +264,7 @@
         ]
       },
       {
+        "paraStyleIndex": 3,
         "items": [
           {
             "type": "text",
@@ -227,6 +273,7 @@
         ]
       },
       {
+        "paraStyleIndex": 3,
         "items": [
           {
             "type": "text",
@@ -235,6 +282,7 @@
         ]
       },
       {
+        "paraStyleIndex": 4,
         "items": [
           {
             "type": "text",
@@ -243,6 +291,7 @@
         ]
       },
       {
+        "paraStyleIndex": 5,
         "items": [
           {
             "type": "text",
@@ -251,10 +300,11 @@
         ]
       },
       {
+        "paraStyleIndex": 1,
         "items": [
           {
             "type": "text",
-            "text": "Soft line break"
+            "text": "Soft line\u2028break"
           }
         ]
       }
