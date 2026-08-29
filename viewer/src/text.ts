@@ -75,13 +75,19 @@ export function renderParagraph(p: Paragraph, doc: HydratedDoc, ctx: ViewerCtx):
   for (const item of p.items) {
     if (item.type === "text") {
       const span = document.createElement(item.hyperlink ? "a" : "span");
-      span.textContent = item.text;
       applyCharStyle(span, charStyleOf(doc, item.charStyleIndex));
       if (item.hyperlink) {
         (span as HTMLAnchorElement).href = item.hyperlink;
         (span as HTMLAnchorElement).target = "_blank";
         (span as HTMLAnchorElement).rel = "noopener";
       }
+      // soft line breaks (U+2028 paragraph separator / U+2029 line
+      // separator) are visible breaks in iWork but not in HTML text
+      const parts = item.text.split(/[\u2028\u2029]/);
+      parts.forEach((part, i) => {
+        if (i > 0) span.appendChild(document.createElement("br"));
+        if (part) span.appendChild(document.createTextNode(part));
+      });
       el.appendChild(span);
     } else if (item.type === "field") {
       const span = document.createElement("span");
