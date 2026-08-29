@@ -4,6 +4,7 @@
 // stored value; inline attachments recurse into the drawable renderer.
 import type {
   CharStyle,
+  ImageDrawable,
   ParaStyle,
   Paragraph,
   ParagraphItem,
@@ -181,8 +182,15 @@ function renderParagraphContent(el: HTMLElement, p: Paragraph, doc: HydratedDoc,
       applyCharStyle(span, charStyleOf(doc, item.cStyle));
       el.appendChild(span);
     } else if ("type" in item && item.type === "inline-object") {
-      // inline attachment (U+FFFC): render the embedded drawable in-flow
-      el.appendChild(renderFlowDrawable(item.drawable, doc, ctx));
+      // U+FFFC inline attachment: images flow WITH the sentence (Apple
+      // renders them mid-text, baseline-ish); block drawables (tables)
+      // keep the flow renderer
+      const d = item.drawable;
+      if (d.type === "image") {
+        el.appendChild(inlineImageEl(d, ctx));
+      } else {
+        el.appendChild(renderFlowDrawable(d, doc, ctx));
+      }
     } else {
       const run = item as TextRun;
       const span = document.createElement(run.hyperlink ? "a" : "span");
@@ -196,6 +204,28 @@ function renderParagraphContent(el: HTMLElement, p: Paragraph, doc: HydratedDoc,
       el.appendChild(span);
     }
   }
+}
+
+/** An inline-attachment image: flows with the sentence, baseline-aligned. */
+function inlineImageEl(d: ImageDrawable, ctx: ViewerCtx): HTMLElement {
+  const url = ctx.url(d.image.dataId);
+  const size = d.common?.size;
+  if (!url) {
+    const miss = document.createElement("span");
+    miss.className = "media-missing";
+    miss.textContent = d.image.preferredFileName ?? d.image.fileName ?? "inline image (media missing)";
+    return miss;
+  }
+  const img = document.createElement("img");
+  img.src = url;
+  img.alt = d.image.preferredFileName ?? d.image.fileName ?? "inline image";
+  if (size) {
+    img.style.width = `${size.width}px`;
+    img.style.height = `${size.height}px`;
+  }
+  img.style.verticalAlign = "text-bottom";
+  img.className = "inline-image";
+  return img;
 }
 
 /**
