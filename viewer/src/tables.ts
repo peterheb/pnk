@@ -6,8 +6,9 @@
 
 import type {
   CellFormat,
-  CellValue,
+  GridCell,
   TableCellStyle,
+  TableCell,
   TableModel,
   TableMerge,
 } from "../../model/src/shared";
@@ -47,6 +48,12 @@ function indexMerges(merges: TableMerge[]): MergeIndex {
   }
   return { anchor, covered };
 }
+/** Normalize a grid slot: plain scalars become unformatted cell views. */
+function asCell(slot: NonNullable<GridCell>): TableCell {
+  if (typeof slot === "object") return slot;
+  return { v: slot };
+}
+
 /** Fixed-decimal display, trailing zeros trimmed, in the document's locale. */
 function formatNumber(v: number, decimals: number | undefined): string {
   const n = decimals !== undefined ? Math.min(Math.max(decimals, 0), 8) : undefined;
@@ -57,26 +64,33 @@ function formatNumber(v: number, decimals: number | undefined): string {
   return s;
 }
 
-/** Best-effort display string for a tagged cell value. */
-function valueToText(value: CellValue, format: CellFormat | undefined): string {
-  switch (value.type) {
-    case "empty": return "";
+/** Display string for a normalized cell view. */
+function valueToText(cell: TableCell, format: CellFormat | undefined): string {
+  const { v } = cell;
+  if (v === null || v === undefined) return "";
+  const type = cell.type ?? (typeof v === "number" ? "number" : typeof v === "boolean" ? "bool" : "text");
+  switch (type) {
     case "number": {
+      const n = typeof v === "number" ? v : Number(v);
       if (format?.kind === "percent") {
         // iWork stores percent as a fraction; the format displays it ×100
-        return `${formatNumber(value.value * 100, format.decimals)}%`;
+        return `${formatNumber(n * 100, format.decimals)}%`;
       }
       const decimals = format && (format.kind === "number" || format.kind === "automatic")
         ? format.decimals : undefined;
-      return formatNumber(value.value, decimals);
+      return formatNumber(n, decimals);
     }
-    case "text": return value.value;
-    case "bool": return value.value ? "true" : "false";
-    case "date": return value.value.slice(0, 10);
-    case "duration": return `${value.value}s`;
-    case "currency": return `${value.currencyCode ?? "$"} ${formatNumber(value.value, format?.decimals)}`;
-    case "error": return value.value;
-    case "richtext": return value.text.paragraphs.map((p) => p.items.map((i) => (i.type === "text" ? i.text : i.type === "field" ? (i.value ?? "") : "")).join("")).join("\n");
+    case "bool": return typeof v === "boolean" ? (v ? "true" : "false") : String(v);
+    case "date": return String(v).slice(0, 10);
+    case "duration": return `${v}s`;
+    case "currency": return `${cell.cur ?? "$"} ${formatNumber(typeof v === "number" ? v : Number(v), format?.decimals)}`;
+    case "error": return String(v);
+    case "richtext": {
+      const st = v as TableModel["grid"] extends never ? never : NonNullable<TableCell["v"]> & { paragraphs?: { items?: { type?: string; text?: string }[] }[] };
+      return (st as { paragraphs?: { items?: { type?: string; text?: string }[] }[] }).paragraphs
+        ?.map((p) => (p.items ?? []).map((i) => (typeof i === "string" ? i : i.text ?? "")).join("")).join("\n") ?? String(v);
+    }
+    default: return String(v);
   }
 }
 
@@ -146,7 +160,7 @@ export function renderTable(model: TableModel): HTMLTableElement {
     if (info?.sizePt) tr.style.height = `${info.sizePt}px`;
     for (const c of visCols) {
       if (covered.has(cellKey(r, c))) continue;
-      const cell = grid[r]?.[c] ?? null;
+      const cell: GridCell | null = grid[r]?.[c] ?? null;
       const header = r < headEnd || c < model.headerColumnCount;
       const footer = r >= footStart && !header;
       const td = document.createElement(header ? "th" : "td") as HTMLTableCellElement;
@@ -155,11 +169,12 @@ export function renderTable(model: TableModel): HTMLTableElement {
         if (merge.rowSpan > 1) td.rowSpan = merge.rowSpan;
         if (merge.columnSpan > 1) td.colSpan = merge.columnSpan;
       }
-      applyCellStyle(td, cellStyleOf(model, cell?.cellStyleIndex), header, footer);
-      if (cell) {
-        const format = cell.formatIndex !== undefined ? formats[cell.formatIndex] : undefined;
-        if (cell.value.type === "error") td.classList.add("cell-error");
-        td.textContent = valueToText(cell.value, format);
+      const norm = cell !== null ? asCell(cell) : null;
+      applyCellStyle(td, cellStyleOf(model, norm?.cellStyleIndex), header, footer);
+      if (norm) {
+        const format = norm.fmt !== undefined ? formats[norm.fmt] : undefined;
+        if (norm.type === "error") td.classList.add("cell-error");
+        td.textContent = valueToText(norm, format);
       }
       td.dataset.row = String(r);
       td.dataset.col = String(c);

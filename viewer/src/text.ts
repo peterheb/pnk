@@ -8,6 +8,7 @@ import type {
   Paragraph,
   ParagraphItem,
   StyledText,
+  TextRun,
 } from "../../model/src/shared";
 import type { ViewerCtx } from "./ctx";
 import { renderFlowDrawable } from "./drawables";
@@ -115,7 +116,7 @@ export function renderParagraph(
   ctx: ViewerCtx,
   listState: ListNumberingState = newListNumberingState(),
 ): HTMLElement {
-  const style = paraStyleOf(doc, p.paraStyleIndex);
+  const style = paraStyleOf(doc, p.pStyle);
   const list = style?.list;
   const hasMarker = !!list && list.markerKind !== "none" &&
     (list.markerKind === "string" ? !!list.markerText : list.markerKind === "number");
@@ -169,34 +170,46 @@ export function renderParagraph(
 /** Items of a paragraph into the given element. */
 function renderParagraphContent(el: HTMLElement, p: Paragraph, doc: HydratedDoc, ctx: ViewerCtx): void {
   for (const item of p.items) {
-    if (item.type === "text") {
-      const span = document.createElement(item.hyperlink ? "a" : "span");
-      applyCharStyle(span, charStyleOf(doc, item.charStyleIndex));
-      if (item.hyperlink) {
-        (span as HTMLAnchorElement).href = item.hyperlink;
-        (span as HTMLAnchorElement).target = "_blank";
-        (span as HTMLAnchorElement).rel = "noopener";
-      }
-      // soft line breaks (U+2028 paragraph separator / U+2029 line
-      // separator) are visible breaks in iWork but not in HTML text
-      const parts = item.text.split(/[\u2028\u2029]/);
-      parts.forEach((part, i) => {
-        if (i > 0) span.appendChild(document.createElement("br"));
-        if (part) span.appendChild(document.createTextNode(part));
-      });
-      el.appendChild(span);
-    } else if (item.type === "field") {
+    // bare string = plain unstyled run; object = styled/typed run
+    if (typeof item === "string") {
+      appendRunText(el, item, undefined);
+    } else if ("type" in item && item.type === "field") {
       const span = document.createElement("span");
       span.className = "field";
       span.dataset.fieldKind = item.field.kind;
       span.textContent = item.value ?? fieldPlaceholderText(item);
-      applyCharStyle(span, charStyleOf(doc, item.charStyleIndex));
+      applyCharStyle(span, charStyleOf(doc, item.cStyle));
       el.appendChild(span);
-    } else {
+    } else if ("type" in item && item.type === "inline-object") {
       // inline attachment (U+FFFC): render the embedded drawable in-flow
       el.appendChild(renderFlowDrawable(item.drawable, doc, ctx));
+    } else {
+      const run = item as TextRun;
+      const span = document.createElement(run.hyperlink ? "a" : "span");
+      applyCharStyle(span, charStyleOf(doc, run.cStyle));
+      if (run.hyperlink) {
+        (span as HTMLAnchorElement).href = run.hyperlink;
+        (span as HTMLAnchorElement).target = "_blank";
+        (span as HTMLAnchorElement).rel = "noopener";
+      }
+      appendRunText(span, run.text, span);
+      el.appendChild(span);
     }
   }
+}
+
+/**
+ * Run text into the given parent: soft line breaks (U+2028 paragraph
+ * separator / U+2029 line separator) are visible breaks in iWork but not in
+ * HTML text, so they split into nodes joined by <br>.
+ */
+function appendRunText(parent: HTMLElement, text: string, styleHost: HTMLElement | undefined): void {
+  const parts = text.split(/[\u2028\u2029]/);
+  parts.forEach((part, i) => {
+    if (i > 0) parent.appendChild(document.createElement("br"));
+    if (part) parent.appendChild(document.createTextNode(part));
+  });
+  void styleHost;
 }
 
 /** A whole text block (body, notes, cell rich text…). */
