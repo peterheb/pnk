@@ -13,6 +13,15 @@ import type {
 } from "../../model/src/shared";
 import { applyCharStyle } from "./text";
 
+// Document locale, set from meta.locale after parse: comma-decimal locales
+// render "5,48" the way the source app would; others keep ".".
+const COMMA_DECIMAL = /^(de|fr|it|es|pt|nl|da|fi|nb|sv|el|pl|ru|tr)(-|$)/i;
+let decimalComma = false;
+
+export function setTableLocale(locale: string | undefined): void {
+  decimalComma = !!locale && COMMA_DECIMAL.test(locale);
+}
+
 const cellKey = (r: number, c: number) => `${r}:${c}`;
 
 interface MergeIndex {
@@ -33,12 +42,14 @@ function indexMerges(merges: TableMerge[]): MergeIndex {
   }
   return { anchor, covered };
 }
-
-/** Trailing-zero-trimmed display number. */
+/** Fixed-decimal display, trailing zeros trimmed, in the document's locale. */
 function formatNumber(v: number, decimals: number | undefined): string {
   const n = decimals !== undefined ? Math.min(Math.max(decimals, 0), 8) : undefined;
-  const s = n !== undefined ? v.toFixed(n) : String(v);
-  return s.includes(".") ? s.replace(/0+$/, "").replace(/\.$/, "") : s;
+  // unformatted cells: 12 significant digits kills double-repr noise
+  // (388.59999999999997 -> 388.6) without hiding real precision
+  let s = n !== undefined ? v.toFixed(n) : Number(v.toPrecision(12)).toString();
+  if (decimalComma) s = s.replace(".", ",");
+  return s;
 }
 
 /** Best-effort display string for a tagged cell value. */
@@ -46,15 +57,19 @@ function valueToText(value: CellValue, format: CellFormat | undefined): string {
   switch (value.type) {
     case "empty": return "";
     case "number": {
-      const decimals = format && (format.kind === "number" || format.kind === "percent" || format.kind === "currency" || format.kind === "automatic")
+      if (format?.kind === "percent") {
+        // iWork stores percent as a fraction; the format displays it ×100
+        return `${formatNumber(value.value * 100, format.decimals)}%`;
+      }
+      const decimals = format && (format.kind === "number" || format.kind === "automatic")
         ? format.decimals : undefined;
       return formatNumber(value.value, decimals);
     }
     case "text": return value.value;
     case "bool": return value.value ? "true" : "false";
-    case "date": return value.value;
+    case "date": return value.value.slice(0, 10);
     case "duration": return `${value.value}s`;
-    case "currency": return `${value.currencyCode ?? "$"}${formatNumber(value.value, format?.decimals)}`;
+    case "currency": return `${value.currencyCode ?? "$"} ${formatNumber(value.value, format?.decimals)}`;
     case "error": return value.value;
     case "richtext": return value.text.paragraphs.map((p) => p.items.map((i) => (i.type === "text" ? i.text : i.type === "field" ? (i.value ?? "") : "")).join("")).join("\n");
   }

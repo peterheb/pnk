@@ -7,6 +7,7 @@ import { ViewerCtx } from "./ctx";
 import { mapError, renderErrorCard } from "./errors";
 import { renderKeynote } from "./keynote";
 import { renderNumbers } from "./numbers";
+import { setTableLocale } from "./tables";
 import { renderPages } from "./pages";
 import { renderFonts, renderWarnings } from "./warnings";
 import type { PnkDocument } from "../../model/src/shared";
@@ -54,6 +55,7 @@ function renderDocument(doc: PnkDocument, filename: string): void {
   }
 
   renderHeader(doc, filename);
+  setTableLocale(doc.meta.locale);
   renderFonts(doc.fonts);
   renderWarnings(doc.warnings);
 
