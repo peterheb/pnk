@@ -45,14 +45,20 @@ function pageCanvas(
   return frame;
 }
 
-function floatingSection(doc: PagesDocument, ctx: ViewerCtx, mount: HTMLElement): void {
-  if (doc.floating.length === 0) return;
+function floatingSection(
+  doc: PagesDocument,
+  ctx: ViewerCtx,
+  mount: HTMLElement,
+  groups: PagesDocument["floating"],
+  title: string,
+): void {
+  if (groups.length === 0) return;
   const wrap = document.createElement("section");
   wrap.className = "floating-section";
   const h = document.createElement("h3");
-  h.textContent = doc.flavor === "page-layout" ? "Pages" : "Floating objects";
+  h.textContent = title;
   wrap.appendChild(h);
-  doc.floating.forEach((group, i) => {
+  groups.forEach((group, i) => {
     const label = document.createElement("div");
     label.className = "muted canvas-caption";
     label.textContent = group.pageIndex !== undefined ? `Page ${group.pageIndex + 1}` : `Group ${i + 1}`;
@@ -66,7 +72,16 @@ export function renderPages(doc: PagesDocument, ctx: ViewerCtx, mount: HTMLEleme
   const view = document.createElement("div");
   view.id = "pages-view";
 
-  if (doc.flavor === "word-processing" && doc.body) {
+  // document order: floating groups anchored to page 1 (a cover) belong
+  // above the flowing body; later pages trail it
+  const wordProcessing = doc.flavor === "word-processing";
+  const leading = doc.floating.filter((g) => (g.pageIndex ?? 0) === 0);
+  const trailing = doc.floating.filter((g) => (g.pageIndex ?? 0) !== 0);
+  if (!wordProcessing || doc.body) {
+    floatingSection(doc, ctx, view, leading, wordProcessing ? "Cover page" : "Pages");
+  }
+
+  if (wordProcessing && doc.body) {
     const flow = document.createElement("article");
     flow.className = "pages-flow";
     for (const p of doc.body.paragraphs) flow.appendChild(renderParagraph(p, ctx));
@@ -92,6 +107,8 @@ export function renderPages(doc: PagesDocument, ctx: ViewerCtx, mount: HTMLEleme
     }
   }
 
-  floatingSection(doc, ctx, view);
+  if (trailing.length > 0) {
+    floatingSection(doc, ctx, view, trailing, "Floating objects");
+  }
   mount.appendChild(view);
 }
