@@ -132,3 +132,29 @@ converts the committed file and asserts the contract lines above against
 values). Failing an assertion means a converter regression, a model change
 without contract update, or a genuinely wrong assumption — all worth a commit
 explaining which.
+
+## 4. Cross-validation against Apple renders (2026-08-28)
+
+Two independent ground-truth channels, both scriptable, no GUI fiddling needed:
+
+1. **Embedded QuickLook previews** — every fixture carries Apple's own render
+   (`preview.pdf`, or `preview.jpg`/`preview-web.jpg`; flavor varies per file).
+   `scripts/crossval.py` extracts them, rasterizes PDFs via CoreGraphics
+   (pypdf for text), and compares against our JSON/markdown: table census
+   (empty-grid detection) + normalized token overlap.
+2. **Live app export** — `scripts/app_export_pdf.sh <doc> <out.pdf>` drives the
+   real app over AppleScript (bundle id; dismisses the first-launch modal via
+   Accessibility; waits for the document; exports; closes). Validated on
+   Keynote: output matched the file's embedded preview exactly (both blank —
+   `cdx-00259-1` is a genuinely degenerate portrait doc, confirmed by both
+   channels agreeing).
+
+### Finding: empty-grid tables (fixture-verified 2026-08-28)
+
+`cdx-00006-5` (Numbers 11.1.2): our JSON emitted an all-null 8×4 grid, but the
+file's own QuickLook preview shows a populated playlist. Cause: TST.Tile row
+buffers reference cells **by key into `TST.TableDataList` archives** (columnar
+indirection) — the tile walker only handled inline values. Blast radius on the
+corpus: **45/358 tables all-null (11 fixtures), 148 more <25% populated**.
+Fix dispatched to pnk2json (resolve DataList keys; warn on unresolvable, never
+silent-null). `--scan` mode of the harness re-censuses the corpus after fixes.
