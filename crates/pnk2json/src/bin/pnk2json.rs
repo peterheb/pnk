@@ -31,9 +31,9 @@ struct Args {
     #[arg(long)]
     markdown: bool,
 
-    /// Compact JSON (no pretty-printing)
+    /// Pretty-print JSON (default is compact: ~3x smaller on large documents)
     #[arg(long)]
-    compact: bool,
+    pretty: bool,
 }
 
 fn main() -> ExitCode {
@@ -68,9 +68,9 @@ fn run(args: &Args) -> Result<String, String> {
         Ok(pnk2json::dumptext::to_text(&doc))
     } else if args.markdown {
         Ok(pnk2json::dumptext::to_markdown(&doc))
-    } else if args.compact {
-        Ok(pnk2json::to_json_compact(&doc))
-    } else {
+    } else if args.pretty {
         Ok(pnk2json::to_json(&doc))
+    } else {
+        Ok(pnk2json::to_json_compact(&doc))
     }
 }

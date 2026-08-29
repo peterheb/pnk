@@ -24,6 +24,16 @@ pub fn convert(bytes: &[u8]) -> Result<String, JsError> {
         .map_err(|e| JsError::new(&e.to_string()))?;
     let doc = pnk2json::convert_ctx(&mut ctx).map_err(|e| JsError::new(&e.to_string()))?;
     LAST_CTX.with(|slot| *slot.borrow_mut() = Some(ctx));
+    Ok(pnk2json::to_json_compact(&doc))
+}
+
+/// Pretty-printed JSON (debug/inspection use; ~3x larger than compact).
+#[wasm_bindgen]
+pub fn convert_pretty(bytes: &[u8]) -> Result<String, JsError> {
+    let mut ctx = pnk2json::ctx::Ctx::from_bytes(bytes)
+        .map_err(|e| JsError::new(&e.to_string()))?;
+    let doc = pnk2json::convert_ctx(&mut ctx).map_err(|e| JsError::new(&e.to_string()))?;
+    LAST_CTX.with(|slot| *slot.borrow_mut() = Some(ctx));
     Ok(pnk2json::to_json(&doc))
 }
 
