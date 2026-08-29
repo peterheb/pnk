@@ -26,7 +26,7 @@ Requires: pillow, pyobjc-framework-Quartz (PDF rasterization), pymupdf
 viewer/node_modules) and target/release/pnk2json.
 """
 from __future__ import annotations
-
+import csv
 import argparse
 import json
 import os
@@ -456,7 +456,7 @@ def crop_regions(pdf: Path | None, preview: Path | None, shot: Path,
         if a_img:
             break
     o_img = ours_bbox_crop(ours_tables.get("Table 1"), margin=8)
-    if a_img or o_img:
+    if a_img and o_img:
         side_by_side(a_img or _blank(), o_img or _blank(),
                      crops / "table1-3x3.png", "Apple (Table 1)", "ours (Table 1)")
         written.append(crops / "table1-3x3.png")
@@ -489,13 +489,13 @@ def crop_regions(pdf: Path | None, preview: Path | None, shot: Path,
             a_img = _crop(ap_img, (left - 10, top - 12, right, bottom), 0)
 
     o_img = ours_bbox_crop(ours_tables.get("Table 2"), margin=8)
-    if a_img or o_img:
+    if a_img and o_img:
         side_by_side(a_img or _blank(), o_img or _blank(),
                      crops / "table2-5x4.png", "Apple (Table 2)", "ours (Table 2)")
         written.append(crops / "table2-5x4.png")
 
     tb = ours_tables.get("Table 2")
-    if tb:
+    if tb and row_anchors:
         cell_of = {(c2["r"], c2["c"]): c2 for c2 in tb.get("cells", [])}
         degraded = {"r2c1": (2, 1), "r2c2": (2, 2), "r2c3": (2, 3),
                     "r3c2": (3, 2), "r4c3": (4, 3)}
@@ -589,7 +589,9 @@ def write_summary(work: Path, fixture: Path, mode: str, n_pages: int,
     lines += ["", "## Regions cropped"]
     for c in crops:
         lines.append(f"- `crops/{c.name}`")
-    lines += [
+    table_names = {t.get("caption") for t in bboxes.get("tables", [])}
+    if {"Table 1", "Table 2"} <= table_names:
+        lines += [
         "",
         "## Known differences to inspect",
         "",
@@ -616,7 +618,16 @@ def write_summary(work: Path, fixture: Path, mode: str, n_pages: int,
         "acceptable for a flow viewer, visible in `table1-3x3.png` and page composites.",
         "5. **Alignment**: Apple centers cell text (e.g. A1/B1/C1) and right-aligns numbers; ours "
         "left-aligns text and numbers. Cosmetic. Visible in `table1-3x3.png`.",
-    ]
+        ]
+    else:
+        lines += [
+        "",
+        "## Findings",
+        "",
+        "- Inspect the per-page composites above and the crop regions for layout, "
+        "formatting, and content drift between Apple's render and ours. Findings are "
+        "recorded in the campaign summary for this format.",
+        ]
     out = work / "summary.md"
     out.write_text("\n".join(lines) + "\n")
     return out
@@ -624,23 +635,8 @@ def write_summary(work: Path, fixture: Path, mode: str, n_pages: int,
 
 # ---------------------------------------------------------------- main
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--fixture", required=True, type=Path)
-    ap.add_argument("--app", choices=("pages", "numbers", "keynote"), default="pages",
-                    help="iWork app used for the Apple-side PDF export")
-    ap.add_argument("--out", required=True, type=Path, help="artifact dir (e.g. /tmp/g5-visual)")
-    ap.add_argument("--dpi", type=int, default=150)
-    ap.add_argument("--base-url", default="http://127.0.0.1:8123")
-    ap.add_argument("--skip-apple", action="store_true", help="use embedded preview fallback")
-    args = ap.parse_args()
-
-    fixture = args.fixture.resolve()
-    work = args.out.resolve()
+def run_one(app: str, fixture: Path, work: Path, args, log) -> bool:
     work.mkdir(parents=True, exist_ok=True)
-
-    def log(msg: str) -> None:
-        print(f"[visual_diff] {msg}", flush=True)
 
     # Apple side
     pdf = preview = None
@@ -649,7 +645,7 @@ def main() -> int:
         log("skipping Apple side (--skip-apple)")
     else:
         try:
-            pdf, mode = export_via_app(APP_NAMES[args.app], fixture, work, log)
+            pdf, mode = export_via_app(APP_NAMES[app], fixture, work, log)
         except Exception as e:
             log(f"Apple side aborted: {e}")
     if pdf is not None:
@@ -659,6 +655,11 @@ def main() -> int:
         preview = extract_preview(fixture, work / "apple")
         if preview and preview.suffix == ".pdf":
             rasterize_pdf(preview, work / "apple", dpi=args.dpi, max_pages=1)
+        elif preview is not None:
+            # jpg/png QuickLook preview: normalize to page-1.png so composites
+            # still get an Apple-side image
+            from PIL import Image
+            Image.open(preview).convert("RGB").save(work / "apple" / "page-1.png")
         if preview is None:
             log("no embedded preview either; Apple side will be empty")
         else:
@@ -676,7 +677,7 @@ def main() -> int:
             server.terminate()
     if rendered is None:
         print("[visual_diff] FATAL: could not render our side", file=sys.stderr)
-        return 1
+        return False
     shot, ctx = rendered
     bboxes, model = ctx["bboxes"], ctx["model"]
 
@@ -692,7 +693,71 @@ def main() -> int:
 
     print(f"[visual_diff] artifacts: {work}")
     print(f"[visual_diff] summary: {summary}")
-    return 0
+    return True
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--fixture", action="append", default=[], type=Path,
+                    help="fixture path; repeatable. Mutually exclusive with --batch.")
+    ap.add_argument("--batch", type=Path, metavar="TSV",
+                    help="success.tsv (or a plain text file of fixture paths); one doc "
+                         "per row, app inferred from the extension. "
+                         "--out is the campaign base dir (<out>/<ext>/<stem>/).")
+    ap.add_argument("--app", choices=("pages", "numbers", "keynote"), default="pages",
+                    help="iWork app used for the Apple-side PDF export (single mode)")
+    ap.add_argument("--out", required=True, type=Path, help="artifact dir (or base dir with --batch)")
+    ap.add_argument("--dpi", type=int, default=150)
+    ap.add_argument("--base-url", default="http://127.0.0.1:8123")
+    ap.add_argument("--skip-apple", action="store_true", help="use embedded preview fallback")
+    args = ap.parse_args()
+
+    def log(msg: str) -> None:
+        print(f"[visual_diff] {msg}", flush=True)
+
+    jobs: list[tuple[str, Path, Path]] = []
+    if args.batch:
+        if args.fixture:
+            ap.error("--batch and --fixture are mutually exclusive")
+        ext_to_app = {".pages": "pages", ".numbers": "numbers", ".key": "keynote"}
+        for line in open(args.batch):
+            line = line.strip()
+            if not line or line.startswith("local_id"):
+                continue
+            if "\t" in line:
+                cols = line.split("\t")
+                sha, ext = cols[1], cols[2]
+                p = REPO / "fixtures/crawl" / f"{sha}.{ext}"
+            else:
+                p = Path(line)
+            app = ext_to_app.get(p.suffix)
+            if app is None:
+                log(f"skip (no app for {p.suffix}): {p}")
+                continue
+            stem = p.name.rsplit(".", 1)[0][:60] or p.stem[:60]
+            jobs.append((app, p, args.out.resolve() / p.suffix.lstrip(".") / stem))
+    else:
+        if not args.fixture:
+            ap.error("one or more --fixture paths (or --batch) are required")
+        for f in args.fixture:
+            f = f.resolve()
+            jobs.append((args.app, f, args.out.resolve()))
+
+    failures = 0
+    for i, (app, fixture, work) in enumerate(jobs, start=1):
+        if len(jobs) > 1:
+            log(f"=== [{i}/{len(jobs)}] {fixture.name} ({app}) -> {work}")
+        if not fixture.exists():
+            log(f"fixture missing: {fixture}")
+            failures += 1
+            continue
+        try:
+            if not run_one(app, fixture, work, args, log):
+                failures += 1
+        except Exception as e:
+            log(f"FAILED {fixture.name}: {e}")
+            failures += 1
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":
