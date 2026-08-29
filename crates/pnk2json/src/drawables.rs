@@ -531,7 +531,8 @@ fn empty_table() -> TableModel {
         columns: None,
         default_row_height_pt: None,
         default_column_width_pt: None,
-        cells: Vec::new(),
+        grid: Vec::new(),
+        formats: Vec::new(),
         merges: Vec::new(),
         style: None,
     }

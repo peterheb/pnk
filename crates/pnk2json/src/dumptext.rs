@@ -379,9 +379,7 @@ fn table_markdown(t: &TableModel, out: &mut String) {
     let hr = t.header_row_count as usize;
     let mut lookup: std::collections::HashMap<(u32, u32), &TableCell> =
         std::collections::HashMap::new();
-    for c in &t.cells {
-        lookup.insert((c.row, c.column), c);
-    }
+
 
     let nrows = t.row_count.min(200) as usize; // cap dump size per table
     let ncols = t.column_count.min(40) as usize;

@@ -185,7 +185,7 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
         .filter(|v| *v > 0)
         .unwrap_or(256) as usize;
 
-    let mut cells: Vec<TableCell> = Vec::new();
+    let mut cells: Vec<(u32, u32, TableCell, Option<CellFormat>)> = Vec::new();
     let mut saw_pre_bnc = false;
     let mut buffer_ordinal = 0usize;
 
@@ -220,7 +220,7 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
             format!("table model {model_id} contains pre-BNC tile storage; decode is best-effort"),
         );
     }
-    cells.sort_by_key(|c| (c.row, c.column));
+    cells.sort_by_key(|(r, c, _, _)| (*r, *c));
 
     // Merges: merge_region_map (DataStore field 13) → MergeRegionMapArchive
     // { cell_range = 1 } with CellRange { origin = CellID, size = TableSize };
@@ -270,6 +270,29 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
         })
     });
 
+    // Dense row-major grid with None holes, plus a deduped formats pool;
+    // cells reference formats by index. Malformed formats (negative /
+    // absurd decimals) were already warned about and dropped inside
+    // decode_cell — the cell is emitted with `formatIndex` absent.
+    let mut grid: Vec<Vec<Option<TableCell>>> =
+        vec![vec![None; column_count as usize]; row_count as usize];
+    let mut formats: Vec<CellFormat> = Vec::new();
+    for (row, col, mut cell, format) in cells {
+        if let Some(f) = format {
+            let idx = match formats.iter().position(|e| *e == f) {
+                Some(i) => i,
+                None => {
+                    formats.push(f);
+                    formats.len() - 1
+                }
+            };
+            cell.format_index = Some(idx as u32);
+        }
+        if (row as usize) < grid.len() && (col as usize) < grid[row as usize].len() {
+            grid[row as usize][col as usize] = Some(cell);
+        }
+    }
+
     TableModel {
         name: {
             let n = m.string(8);
@@ -289,11 +312,13 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
         columns: rows_to_model(header_info(ctx, store.as_ref(), 0, 2), column_count),
         default_row_height_pt: m.f64v(16),
         default_column_width_pt: m.f64v(17),
-        cells,
+        grid,
+        formats,
         merges,
         style,
     }
 }
+
 
 fn fixed32(v: &iwadump::proto::Value) -> Option<u32> {
     match v {
@@ -316,7 +341,8 @@ fn empty_table() -> TableModel {
         columns: None,
         default_row_height_pt: None,
         default_column_width_pt: None,
-        cells: Vec::new(),
+        grid: Vec::new(),
+        formats: Vec::new(),
         merges: Vec::new(),
         style: None,
     }
@@ -336,7 +362,7 @@ fn convert_tile(
     format_table: &DataList,
     custom_format_table: &DataList,
     rich_text_table: &DataList,
-    cells: &mut Vec<TableCell>,
+    out: &mut Vec<(u32, u32, TableCell, Option<CellFormat>)>,
     saw_pre_bnc: &mut bool,
     buffer_ordinal: &mut usize,
 ) {
@@ -399,7 +425,7 @@ fn convert_tile(
             if cell_buf.len() < 12 {
                 continue;
             }
-            if let Some(cell) = decode_cell(
+            if let Some(t) = decode_cell(
                 ctx,
                 model_row,
                 slot as u32,
@@ -412,7 +438,7 @@ fn convert_tile(
                 custom_format_table,
                 rich_text_table,
             ) {
-                cells.push(cell);
+                out.push(t);
             }
         }
     }
@@ -431,7 +457,7 @@ fn decode_cell(
     format_table: &DataList,
     custom_format_table: &DataList,
     rich_text_table: &DataList,
-) -> Option<TableCell> {
+) -> Option<(u32, u32, TableCell, Option<CellFormat>)> {
     if buf[0] != 5 {
         ctx.warn_detail(
             WarningCode::TableDegraded,
@@ -586,8 +612,10 @@ fn decode_cell(
     let formula = formula_id.map(|id| TsceFormulaRef::unparsed(id.to_string()));
 
     // Format hint: per-type format id wins; custom formats degrade to "custom"
-    // + raw string (docs/model-design.md §2.6).
-    let format = pick_format(
+    // + raw string (docs/model-design.md §2.6). Malformed formats (negative /
+    // absurd decimals, e.g. a -1 int32 sentinel) are dropped with a warning —
+    // the cell is emitted unformatted rather than clamped.
+    let (format, malformed_format) = pick_format(
         num_format_id,
         currency_format_id,
         date_format_id,
@@ -596,8 +624,17 @@ fn decode_cell(
         format_table,
         custom_format_table,
     );
+    if malformed_format {
+        ctx.warn_detail(
+            WarningCode::TableDegraded,
+            format!(
+                "malformed number format (decimals out of range) dropped; cell r{row}c{col} emitted unformatted"
+            ),
+            format!("r{row}c{col}"),
+        );
+    }
 
-    Some(TableCell { row, column: col, value, style, format, formula })
+    Some((row, col, TableCell { value, style, format_index: None, formula }, format))
 }
 
 /// decimal128 (binary integer decimal) → f64, per numbers-parser
@@ -627,7 +664,7 @@ fn pick_format(
     text: Option<i32>,
     format_table: &DataList,
     custom_format_table: &DataList,
-) -> Option<CellFormat> {
+) -> (Option<CellFormat>, bool) {
     let found = [
         (num, CellFormatKind::Number),
         (currency, CellFormatKind::Currency),
@@ -642,14 +679,24 @@ fn pick_format(
             .map(|f| (f, kind))
     });
     if let Some((f, kind)) = found {
-        return Some(CellFormat {
-            kind,
-            decimals: f.varint(2).map(|v| v as u32),
-            currency_code: f.string(3),
-            format_string: f.string(18),
-        });
+        // Decimal places are a count: negative or absurd values (e.g. a -1
+        // int32 sentinel) are malformed — drop the format, never clamp.
+        let malformed = f.varint(2).is_some_and(|v| v > 20);
+        if malformed {
+            return (None, true);
+        }
+        let decimals = f.varint(2).map(|v| v as u32);
+        return (
+            Some(CellFormat {
+                kind,
+                decimals,
+                currency_code: f.string(3),
+                format_string: f.string(18),
+            }),
+            false,
+        );
     }
-    custom_format_table
+    let custom = custom_format_table
         .entries
         .values()
         .find_map(|e| e.custom_format.clone())
@@ -658,5 +705,6 @@ fn pick_format(
             decimals: None,
             currency_code: None,
             format_string: cf.string(3).or_else(|| cf.string(18)),
-        })
+        });
+    (custom, false)
 }

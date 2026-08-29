@@ -925,7 +925,12 @@ pub struct TableModel {
     pub default_row_height_pt: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_column_width_pt: Option<f64>,
-    pub cells: Vec<TableCell>,
+    /// Dense row-major cell grid (`grid[row][column]`); `None` = no cell
+    /// stored at that position (sparse tables).
+    pub grid: Vec<Vec<Option<TableCell>>>,
+    /// Distinct number formats used by this table, deduped; cells reference
+    /// them by `TableCell.formatIndex`.
+    pub formats: Vec<CellFormat>,
     pub merges: Vec<TableMerge>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub style: Option<TableStyle>,
@@ -943,13 +948,12 @@ pub struct RowColInfo {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TableCell {
-    pub row: u32,
-    pub column: u32,
     pub value: CellValue,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub style: Option<CellStyle>,
+    /// Index into `TableModel.formats`; absent = unformatted.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub format: Option<CellFormat>,
+    pub format_index: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub formula: Option<TsceFormulaRef>,
 }
