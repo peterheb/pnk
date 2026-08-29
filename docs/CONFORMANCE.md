@@ -144,17 +144,25 @@ Two independent ground-truth channels, both scriptable, no GUI fiddling needed:
    (empty-grid detection) + normalized token overlap.
 2. **Live app export** — `scripts/app_export_pdf.sh <doc> <out.pdf>` drives the
    real app over AppleScript (bundle id; dismisses the first-launch modal via
-   Accessibility; waits for the document; exports; closes). Validated on
+   Accessibility; waits for the document; exports; closes). Validated live on
    Keynote: output matched the file's embedded preview exactly (both blank —
    `cdx-00259-1` is a genuinely degenerate portrait doc, confirmed by both
    channels agreeing).
 
-### Finding: empty-grid tables (fixture-verified 2026-08-28)
+### Finding: empty-grid tables (fixture-verified 2026-08-28, FIXED in f04f925)
 
 `cdx-00006-5` (Numbers 11.1.2): our JSON emitted an all-null 8×4 grid, but the
-file's own QuickLook preview shows a populated playlist. Cause: TST.Tile row
-buffers reference cells **by key into `TST.TableDataList` archives** (columnar
-indirection) — the tile walker only handled inline values. Blast radius on the
-corpus: **45/358 tables all-null (11 fixtures), 148 more <25% populated**.
-Fix dispatched to pnk2json (resolve DataList keys; warn on unresolvable, never
-silent-null). `--scan` mode of the harness re-censuses the corpus after fixes.
+file's own QuickLook preview shows a populated playlist. Root cause: these docs
+use the **pre-BNC tile variant (storage_version 4)** — cell data lives in
+`TileRowInfo` fields 3/4 (the fields the modern proto names `*_pre_bnc`; here
+they are the ONLY storage), with a different per-cell block layout: text cells
+carry a string-table key at u32 slot 6 (the string `TableDataList` is
+**segmented**), duration/date/number cells carry f64 seconds in the 8 bytes
+before the trailing slot + format id at slot 5; 12-byte v4 blocks with type 0
+are explicit EMPTY stubs. numbers-parser refuses this variant outright
+("Pre-BNC storage is unsupported"), so our decode is fixture-verified against
+Apple's own render. Blast radius before the fix: **45/358 tables all-null
+(11 fixtures)**. After f04f925: scan shows 11 all-null — each verified a
+genuinely blank document (v4 emits explicit empty stubs). Unresolvable keys
+warn (`table-degraded`), never silent-null. `--scan` mode of the harness
+re-censuses the corpus after fixes.
