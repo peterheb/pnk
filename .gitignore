@@ -19,7 +19,8 @@ dist/
 !/fixtures/provenance.json
 !/fixtures/crawl.jsonl
 !/fixtures/success.tsv
-!/fixtures/README.md
+!/fixtures/templates/
+!/fixtures/templates/provenance.json
 !/fixtures/golden/
 
 

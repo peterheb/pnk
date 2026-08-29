@@ -1,0 +1,156 @@
+{
+ "description": "App-provided template fixtures copied from the local Creator Studio app bundles (SharedSupport/Templates). Apple's own template documents; pnk2json consumes them directly (renamed to the standard per-app extension).",
+ "collected": "2026-08-29",
+ "records": [
+  {
+   "app": "keynote",
+   "template": "20_BasicBlack",
+   "file": "20_BasicBlack.key",
+   "sha256": "5d281677de6c3fdb9e04bbf942285429ccb10efcbd2fda36ec5d11ce6f22cae8",
+   "bytes": 395386,
+   "pnk2json_exit": 0,
+   "json_bytes": 7040,
+   "source": "Keynote Creator Studio.app/Contents/SharedSupport/Templates/20_BasicBlack/Standard.kth"
+  },
+  {
+   "app": "keynote",
+   "template": "21_BasicWhite",
+   "file": "21_BasicWhite.key",
+   "sha256": "55e7b5b8a38e94c23ec432a7713106bb14f5c340f81c6512aec2e88fdaaca216",
+   "bytes": 390385,
+   "pnk2json_exit": 0,
+   "json_bytes": 7040,
+   "source": "Keynote Creator Studio.app/Contents/SharedSupport/Templates/21_BasicWhite/Standard.kth"
+  },
+  {
+   "app": "keynote",
+   "template": "22_ColorGradient",
+   "file": "22_ColorGradient.key",
+   "sha256": "8cc12c41f8b1cf468f96c3e184f05662edecb6f43cde8b833e5fb4d0789fd05c",
+   "bytes": 326161,
+   "pnk2json_exit": 0,
+   "json_bytes": 7020,
+   "source": "Keynote Creator Studio.app/Contents/SharedSupport/Templates/22_ColorGradient/Standard.kth"
+  },
+  {
+   "app": "keynote",
+   "template": "23_ClassicWhite",
+   "file": "23_ClassicWhite.key",
+   "sha256": "1353b06ce746c124382dd7609169bd4e067ac72c7a00d365067f1179a9c0c49e",
+   "bytes": 297612,
+   "pnk2json_exit": 0,
+   "json_bytes": 7031,
+   "source": "Keynote Creator Studio.app/Contents/SharedSupport/Templates/23_ClassicWhite/Standard.kth"
+  },
+  {
+   "app": "keynote",
+   "template": "24_Briefing",
+   "file": "24_Briefing.key",
+   "sha256": "0f5fc3c6486744cc54bed75af0069ee53c8cb50a57f8a5e2a5d28cf208ef64dd",
+   "bytes": 474295,
+   "pnk2json_exit": 0,
+   "json_bytes": 7644,
+   "source": "Keynote Creator Studio.app/Contents/SharedSupport/Templates/24_Briefing/Standard.kth"
+  },
+  {
+   "app": "numbers",
+   "template": "01_Running_Log",
+   "file": "01_Running_Log.numbers",
+   "sha256": "52d5ba58912980a4585358cd66d868a99e158898927282351a17fac50b948b7d",
+   "bytes": 99588,
+   "pnk2json_exit": 0,
+   "json_bytes": 20859,
+   "source": "Numbers Creator Studio.app/Contents/SharedSupport/Templates/01_Running_Log/Traditional.nmbtemplate"
+  },
+  {
+   "app": "numbers",
+   "template": "02_Invoice",
+   "file": "02_Invoice.numbers",
+   "sha256": "c49b0137e030b9f3786e56ed9346fccd4343aec1b30bf341839b4610e8c8fc1b",
+   "bytes": 82590,
+   "pnk2json_exit": 0,
+   "json_bytes": 13253,
+   "source": "Numbers Creator Studio.app/Contents/SharedSupport/Templates/02_Invoice/Traditional.nmbtemplate"
+  },
+  {
+   "app": "numbers",
+   "template": "07_AcademicCalendar",
+   "file": "07_AcademicCalendar.numbers",
+   "sha256": "3504dc4e5db4e54aeb123c0041ce0485ed7f663f4d559b6f76ebccf6c2cb9cbd",
+   "bytes": 263605,
+   "pnk2json_exit": 0,
+   "json_bytes": 247514,
+   "source": "Numbers Creator Studio.app/Contents/SharedSupport/Templates/07_AcademicCalendar/Traditional.nmbtemplate"
+  },
+  {
+   "app": "numbers",
+   "template": "07_Calendar",
+   "file": "07_Calendar.numbers",
+   "sha256": "eaeaa9ff51c0728db675d08be3c5e4620fa0e04adb4b4f2300c720b66bfb54f5",
+   "bytes": 141649,
+   "pnk2json_exit": 0,
+   "json_bytes": 69166,
+   "source": "Numbers Creator Studio.app/Contents/SharedSupport/Templates/07_Calendar/Traditional.nmbtemplate"
+  },
+  {
+   "app": "numbers",
+   "template": "07_Schedule",
+   "file": "07_Schedule.numbers",
+   "sha256": "78d00b459556adb8c7a5ab8399a12aeeb5a609a8148b25c9fe90a97d509acbd7",
+   "bytes": 113275,
+   "pnk2json_exit": 0,
+   "json_bytes": 22894,
+   "source": "Numbers Creator Studio.app/Contents/SharedSupport/Templates/07_Schedule/Traditional.nmbtemplate"
+  },
+  {
+   "app": "pages",
+   "template": "00B_Blank_Landscape",
+   "file": "00B_Blank_Landscape.pages",
+   "sha256": "e0755c89400764571b261a63cff1aaaf8a1a77b9a8ca1daefd9f21c463214b0a",
+   "bytes": 67538,
+   "pnk2json_exit": 0,
+   "json_bytes": 12890,
+   "source": "Pages Creator Studio.app/Contents/SharedSupport/Templates/00B_Blank_Landscape/Traditional.template"
+  },
+  {
+   "app": "pages",
+   "template": "00B_Blank_Portrait",
+   "file": "00B_Blank_Portrait.pages",
+   "sha256": "f81a87f46f95929ea6fc6740c7af8aff60a9438e5879c6cff28ee6e7210e3e7c",
+   "bytes": 61789,
+   "pnk2json_exit": 0,
+   "json_bytes": 2555,
+   "source": "Pages Creator Studio.app/Contents/SharedSupport/Templates/00B_Blank_Portrait/Traditional.template"
+  },
+  {
+   "app": "pages",
+   "template": "00C_Textbook_Portrait",
+   "file": "00C_Textbook_Portrait.pages",
+   "sha256": "2d663b2ed016ed6362cd85a6331b11f407c202fb6d700e533d017d73e0d39849",
+   "bytes": 97357,
+   "pnk2json_exit": 0,
+   "json_bytes": 8102,
+   "source": "Pages Creator Studio.app/Contents/SharedSupport/Templates/00C_Textbook_Portrait/Traditional.template"
+  },
+  {
+   "app": "pages",
+   "template": "00D_Textbook_Landscape",
+   "file": "00D_Textbook_Landscape.pages",
+   "sha256": "a0d3a5afd1c430e96bb042449880ba662201b9e123fb2a5f7c2be8b3f13bb00f",
+   "bytes": 130445,
+   "pnk2json_exit": 0,
+   "json_bytes": 35834,
+   "source": "Pages Creator Studio.app/Contents/SharedSupport/Templates/00D_Textbook_Landscape/Traditional.template"
+  },
+  {
+   "app": "pages",
+   "template": "00V_Vertical_Blank_Portrait",
+   "file": "00V_Vertical_Blank_Portrait.pages",
+   "sha256": "f735f3e066a89d3f839d61584f9a055ca32f038384d22f54f765cf427820b9eb",
+   "bytes": 62609,
+   "pnk2json_exit": 0,
+   "json_bytes": 3532,
+   "source": "Pages Creator Studio.app/Contents/SharedSupport/Templates/00V_Vertical_Blank_Portrait/Traditional.template"
+  }
+ ]
+}
