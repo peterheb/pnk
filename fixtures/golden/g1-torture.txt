@@ -1,0 +1,11 @@
+PASTE BLOCK — one paragraph, copy everything between the markers:
+
+---BEGIN---
+café ﬁle 日本語テキスト مرحبا 👨‍👩‍👧 “quotes” …
+---END---
+
+whitespace paragraph (leading 3sp, tab between a/b, 2 trailing sp, NBSP between c/d):
+
+---WS-BEGIN---
+   a	b  c d  
+---WS-END---

@@ -69,6 +69,11 @@ Body text, in order (use Show Invisibles while building):
 3. Unicode torture paragraph (all in ONE paragraph): `café` (é as e + combining
    U+0301), `ﬁle` (typed as f-i-l-e), `日本語テキスト`, `مرحبا` (RTL), `👨‍👩‍👧` (family
    emoji, ZWJ sequence), curly `“quotes”` and an ellipsis `…`.
+   *Do not type this by hand* — macOS input methods compose é into the
+   precomposed form and defeat the test. Copy-paste the exact blocks from
+   `fixtures/golden/g1-torture.txt` (byte-exact, verified code points).
+   The one thing to TYPE normally: `quotes` — Pages' smart quotes produce the
+   curly pair as you type (or paste them pre-curly; both satisfy the contract).
    *Contract:* code points round-trip byte-exact (no NFC normalization, no
    ligature substitution); the emoji arrives as its full code-point sequence;
    RTL text keeps logical order.
