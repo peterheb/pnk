@@ -795,11 +795,16 @@ fn pick_format(
             Some(270..=274) => CellFormatKind::Custom,
             _ => slot_kind,
         };
-        // Base (hex/binary/octal) formats: kind Number loses the base —
-        // surface it via formatString ("base-16") so a viewer can render
-        // 4D2-style output (fixture G5 key 9: base=16).
+        // Blessed convention (Main/ModelAgent): kind stays closed; the
+        // display semantic lives in formatString. Base-N (hex/binary/octal)
+        // surfaces as "base-<n>"; scientific surfaces via the stored
+        // scientific_pattern (f44) when customized — auto patterns are not
+        // persisted, so formatString is legitimately absent there.
         let format_string = f.string(18).or_else(|| match (ft, f.varint(8)) {
             (Some(269), Some(base)) => Some(format!("base-{base}")),
+            _ => None,
+        }).or_else(|| match (ft, f.string(44)) {
+            (Some(259), Some(pattern)) if !pattern.is_empty() => Some(pattern),
             _ => None,
         });
         return (
