@@ -107,11 +107,68 @@ fn editable_bezier(m: &Msg, natural: Option<Size>) -> ShapeGeometry {
 // ShapeGeometry — the six PathSourceArchive variants, priority per §2.5
 // ---------------------------------------------------------------------------
 
+/// Fit a `TSP.Path`'s tight bounds into the shape's naturalSize (uniform
+/// scale + centering). Apple renders bezier shapes this way: the stored
+/// coordinates carry no absolute unit, so the path's own bounds define the
+/// mapping onto the shape box.
+fn normalize_path(mut p: CurvePath, natural: Option<&Size>) -> CurvePath {
+    let Some(n) = natural else { return p };
+    if n.width <= 0.0 || n.height <= 0.0 {
+        return p;
+    }
+    let mut min = (f64::INFINITY, f64::INFINITY);
+    let mut max = (f64::NEG_INFINITY, f64::NEG_INFINITY);
+    for el in &p.elements {
+        let pts: &[Point] = match el {
+            CurveElement::Move { points }
+            | CurveElement::Line { points }
+            | CurveElement::Quad { points }
+            | CurveElement::Cubic { points }
+            | CurveElement::Close { points } => points,
+        };
+        for pt in pts {
+            min.0 = min.0.min(pt.x);
+            min.1 = min.1.min(pt.y);
+            max.0 = max.0.max(pt.x);
+            max.1 = max.1.max(pt.y);
+        }
+    }
+    if !min.0.is_finite() {
+        return p;
+    }
+    let bw = (max.0 - min.0).max(f64::EPSILON);
+    let bh = (max.1 - min.1).max(f64::EPSILON);
+    let scale = (n.width / bw).min(n.height / bh);
+    // center the scaled path in the box
+    let ox = (n.width - bw * scale) / 2.0;
+    let oy = (n.height - bh * scale) / 2.0;
+    for el in p.elements.iter_mut() {
+        let pts: &mut Vec<Point> = match el {
+            CurveElement::Move { points }
+            | CurveElement::Line { points }
+            | CurveElement::Quad { points }
+            | CurveElement::Cubic { points }
+            | CurveElement::Close { points } => points,
+        };
+        for pt in pts.iter_mut() {
+            pt.x = (pt.x - min.0) * scale + ox;
+            pt.y = (pt.y - min.1) * scale + oy;
+        }
+    }
+    p
+}
+
 pub fn shape_geometry(pathsource: &Msg) -> ShapeGeometry {
     // 1. explicit bezier / editable bezier
     if let Some(b) = pathsource.msg(5) {
         let natural = b.size(2).map(|(w, h)| Size { width: w, height: h });
         if let Some(p) = b.msg(3).as_ref().and_then(tsp_path) {
+            // TSP.Path coordinates are unit-less (fixture-verified: the ppd
+            // badge circle is r=35.36 units in a 285.77pt box; Apple fits the
+            // path's tight bounds to naturalSize). Normalize so the emitted
+            // path lives in the shape's point space; paths already authored at
+            // natural scale come through unchanged (scale ≈ 1).
+            let p = normalize_path(p, natural.as_ref());
             return ShapeGeometry {
                 preset: None,
                 scalar: None,
