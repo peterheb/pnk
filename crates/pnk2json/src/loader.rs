@@ -53,6 +53,31 @@ pub fn open_document(path: &Path) -> Result<(Document, Loaded), iwadump::Error> 
 }
 
 pub fn load(streams: &[StreamView], registry: &Registry, app: App) -> Loaded {
+    // When iwadump's stream-name heuristic fails (app = Unknown), recover the
+    // app from object-name evidence BEFORE naming records: scan type ids and
+    // accept unambiguous TN./TP./KN.-prefixed names (name_for with
+    // App::Unknown only returns unambiguous ids). Otherwise per-record names
+    // would be baked as None and the converter would warn unknown for ids
+    // that the correct app table resolves.
+    let app = if app == App::Unknown {
+        streams
+            .iter()
+            .flat_map(|s| s.archives.iter())
+            .flat_map(|a| a.messages.iter())
+            .find_map(|m| {
+                let name = registry.name_for(App::Unknown, m.type_id)?;
+                match name.as_str() {
+                    n if n.starts_with("TN.") => Some(App::Numbers),
+                    n if n.starts_with("TP.") => Some(App::Pages),
+                    n if n.starts_with("KN.") => Some(App::Keynote),
+                    _ => None,
+                }
+            })
+            .unwrap_or(App::Unknown)
+    } else {
+        app
+    };
+
     let mut records = HashMap::new();
     let mut unknown_ids: BTreeMap<u32, u64> = BTreeMap::new();
     let mut undecodable_ids: BTreeMap<u32, u64> = BTreeMap::new();

@@ -110,27 +110,55 @@ impl Ctx {
     /// Cross-check the stream-name heuristic (iwadump::detect_app) against the
     /// actual root object's type id (10000 = TP.DocumentArchive → Pages).
     fn refine_app(&mut self) {
-        if let Some(root) = self.loaded.msg(1) {
-            // Root type id comes from the record, not the parsed fields.
-            if let Some(rec) = self.loaded.record(1) {
-                let app_kind = match rec.type_id {
-                    10000 => AppKind::Pages,
-                    _ => match self.registry.name_for(self.app, rec.type_id).as_deref() {
-                        Some("KN.DocumentArchive") => AppKind::Keynote,
-                        Some("TN.DocumentArchive") => AppKind::Numbers,
-                        _ => self.app_kind,
-                    },
-                };
-                self.app_kind = app_kind;
-                self.meta.app = app_kind;
-                self.app = match app_kind {
-                    AppKind::Pages => App::Pages,
-                    AppKind::Numbers => App::Numbers,
-                    AppKind::Keynote => App::Keynote,
-                };
-                let _ = root;
+        // 1. Root type: 10000 = TP.DocumentArchive → Pages; a root resolving
+        //    to KN./TN.DocumentArchive in the CURRENT app namespace → that app.
+        if let Some(rec) = self.loaded.record(1) {
+            let by_root = match rec.type_id {
+                10000 => Some(AppKind::Pages),
+                _ => self
+                    .registry
+                    .name_for(self.app, rec.type_id)
+                    .as_deref()
+                    .and_then(|n| match n {
+                        "KN.DocumentArchive" => Some(AppKind::Keynote),
+                        "TN.DocumentArchive" => Some(AppKind::Numbers),
+                        _ => None,
+                    }),
+            };
+            if let Some(kind) = by_root {
+                self.set_app(kind);
+                return;
             }
         }
+        // 2. Object-name evidence: some documents (older Numbers saves with
+        //    unregistered root types) defeat iwadump's stream-name heuristic.
+        //    Resolve every object type id in the unambiguous-Common namespace;
+        //    the first TN./TP./KN.-prefixed name wins. TN./TP./KN. ids can
+        //    collide across app tables, so only accept names when the id is
+        //    unambiguous (name_for with App::Unknown already enforces that).
+        for rec in self.loaded.records.values() {
+            let Some(name) = self.registry.name_for(App::Unknown, rec.type_id) else { continue };
+            let kind = match name.as_str() {
+                n if n.starts_with("TN.") => Some(AppKind::Numbers),
+                n if n.starts_with("TP.") => Some(AppKind::Pages),
+                n if n.starts_with("KN.") => Some(AppKind::Keynote),
+                _ => None,
+            };
+            if let Some(kind) = kind {
+                self.set_app(kind);
+                return;
+            }
+        }
+    }
+
+    fn set_app(&mut self, kind: AppKind) {
+        self.app_kind = kind;
+        self.meta.app = kind;
+        self.app = match kind {
+            AppKind::Pages => App::Pages,
+            AppKind::Numbers => App::Numbers,
+            AppKind::Keynote => App::Keynote,
+        };
     }
 
     // -- warnings -----------------------------------------------------------
