@@ -82,6 +82,13 @@ for a present-but-valueless cell); **`fmt`** = index into the table's
 into `styles.para`; **`cur`** = ISO 4217 currency code when
 `type: "currency"`.
 
+**CellFormat kind is a CLOSED enum** (`CellFormat.kind`): exotic number
+displays emit as `kind: "number"` with the semantic carried in
+`formatString` — hex/binary/octal as `"base-16"` / `"base-2"` / `"base-8"`,
+fractions as templates like `"# ?/?"`, scientific as `E+` patterns
+(e.g. `"0.00E+00"`); the viewer renders from `formatString` (converter
+behavior landed in 3eb8066).
+
 String-escaping rule (serializer-side, decoded data unaffected): space
 separators (Zs: NBSP, ideographic space, …) and format characters (Cf: ZWSP,
 ZWNJ, ZWJ, BOM, bidi marks, soft hyphen, …) plus U+2028/U+2029 escape as
