@@ -56,6 +56,7 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> NumbersDocument {
         warnings: Vec::new(),
         fonts: Vec::new(),
         media: Vec::new(),
+        styles: StylePools::default(),
         sheets,
         page_size,
         forms: if forms.is_empty() { None } else { Some(forms) },

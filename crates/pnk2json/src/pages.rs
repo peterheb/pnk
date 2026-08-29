@@ -127,6 +127,7 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
         warnings: Vec::new(),
         fonts: Vec::new(),
         media: Vec::new(),
+        styles: StylePools::default(),
         page_size,
         page_margins,
         orientation,

@@ -49,25 +49,32 @@ pub fn convert_ctx(ctx: &mut ctx::Ctx) -> Result<PnkDocument, iwadump::Error> {
         model::AppKind::Keynote => PnkDocument::Keynote(keynote::convert_document(ctx, root_ref)),
     };
 
-    // Envelope: fonts (deduped, sorted), media inventory, warnings.
+    // Envelope: fonts (deduped, sorted), media inventory, warnings, styles.
     let fonts: Vec<String> = ctx.fonts.iter().cloned().collect();
     let media = ctx.build_media_assets();
     let warnings = std::mem::take(&mut ctx.warnings);
+    let styles = model::StylePools {
+        para: std::mem::take(&mut ctx.para_pool.items),
+        char: std::mem::take(&mut ctx.char_pool.items),
+    };
     match &mut doc {
         PnkDocument::Pages(d) => {
             d.fonts = fonts;
             d.media = media;
             d.warnings = warnings;
+            d.styles = styles;
         }
         PnkDocument::Numbers(d) => {
             d.fonts = fonts;
             d.media = media;
             d.warnings = warnings;
+            d.styles = styles;
         }
         PnkDocument::Keynote(d) => {
             d.fonts = fonts;
             d.media = media;
             d.warnings = warnings;
+            d.styles = styles;
         }
     }
     Ok(doc)

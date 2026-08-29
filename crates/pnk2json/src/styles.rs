@@ -390,9 +390,9 @@ pub fn resolve_list_format(ctx: &mut Ctx, list_id: u64, level: u32) -> Option<Li
 /// Resolve a `TST.CellStyleArchive` chain → CellStyle. The chain walk reuses
 /// field 11 (cell_properties occupies the same slot as char_properties on
 /// TSWP style wrappers).
-pub fn resolve_cell_style(ctx: &mut Ctx, id: u64) -> Option<CellStyle> {
+pub fn resolve_cell_style(ctx: &mut Ctx, id: u64) -> Option<TableCellStyle> {
     let msgs = chain(ctx, id, 11);
-    let mut s = CellStyle::default();
+    let mut s = TableCellStyle::default();
     // First-wins merge, most-derived first.
     for p in &msgs {
         if s.fill.is_none() {

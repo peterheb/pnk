@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use crate::ctx::Ctx;
+use crate::ctx::{Ctx, StylePool};
 use crate::model::*;
 use crate::pb::Msg;
 use crate::styles;
@@ -186,6 +186,7 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
         .unwrap_or(256) as usize;
 
     let mut cells: Vec<(u32, u32, TableCell, Option<CellFormat>)> = Vec::new();
+    let mut cell_pool: StylePool<TableCellStyle> = StylePool::default();
     let mut saw_pre_bnc = false;
     let mut buffer_ordinal = 0usize;
 
@@ -208,6 +209,7 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
                 &format_table,
                 &custom_format_table,
                 &rich_text_table,
+                &mut cell_pool,
                 &mut cells,
                 &mut saw_pre_bnc,
                 &mut buffer_ordinal,
@@ -314,6 +316,7 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
         default_column_width_pt: m.f64v(17),
         grid,
         formats,
+        cell_styles: std::mem::take(&mut cell_pool.items),
         merges,
         style,
     }
@@ -343,6 +346,7 @@ fn empty_table() -> TableModel {
         default_column_width_pt: None,
         grid: Vec::new(),
         formats: Vec::new(),
+        cell_styles: Vec::new(),
         merges: Vec::new(),
         style: None,
     }
@@ -362,6 +366,7 @@ fn convert_tile(
     format_table: &DataList,
     custom_format_table: &DataList,
     rich_text_table: &DataList,
+    cell_pool: &mut StylePool<TableCellStyle>,
     out: &mut Vec<(u32, u32, TableCell, Option<CellFormat>)>,
     saw_pre_bnc: &mut bool,
     buffer_ordinal: &mut usize,
@@ -445,6 +450,7 @@ fn convert_tile(
                     string_table,
                     style_table,
                     format_table,
+                    cell_pool,
                 )
             } else {
                 decode_cell(
@@ -459,6 +465,7 @@ fn convert_tile(
                     format_table,
                     custom_format_table,
                     rich_text_table,
+                    cell_pool,
                 )
             };
             if let Some(t) = decoded {
@@ -481,6 +488,7 @@ fn decode_cell(
     format_table: &DataList,
     custom_format_table: &DataList,
     rich_text_table: &DataList,
+    cell_pool: &mut StylePool<TableCellStyle>,
 ) -> Option<(u32, u32, TableCell, Option<CellFormat>)> {
     if buf[0] != 5 {
         ctx.warn_detail(
@@ -614,7 +622,8 @@ fn decode_cell(
     };
 
     // Style: per-cell cell_style_id → STYLE list entry.reference →
-    // TST.CellStyleArchive; the text style id resolves on top (CellStyle.text).
+    // TST.CellStyleArchive; the text style id resolves on top; pooled
+    // per table (TableCell.cellStyleIndex).
     let mut style = cell_style_id.and_then(|id| {
         style_table
             .entries
@@ -631,6 +640,7 @@ fn decode_cell(
             }
         }
     }
+    let cell_style_index = style.and_then(|s| cell_pool.intern(s));
 
     // Formula placeholder (TSCE stays opaque; model-design §2.8).
     let formula = formula_id.map(|id| TsceFormulaRef::unparsed(id.to_string()));
@@ -657,7 +667,12 @@ fn decode_cell(
             format!("r{row}c{col}"),
         );
     }
-    Some((row, col, TableCell { value, style, format_index: None, formula }, format))
+    Some((
+        row,
+        col,
+        TableCell { value, cell_style_index, format_index: None, formula },
+        format,
+    ))
 }
 
 /// decimal128 (binary integer decimal) → f64, per numbers-parser
@@ -747,6 +762,7 @@ fn decode_cell_v4(
     string_table: &DataList,
     style_table: &DataList,
     format_table: &DataList,
+    cell_pool: &mut StylePool<TableCellStyle>,
 ) -> Option<(u32, u32, TableCell, Option<CellFormat>)> {
     if buf.len() < 28 {
         return None;
@@ -831,6 +847,7 @@ fn decode_cell_v4(
             }
         }
     }
+    let cell_style_index = style.and_then(|s| cell_pool.intern(s));
 
     // Format id (fixture-verified: duration/date cells carry it at slot 5;
     // the FORMAT list holds those keys).
@@ -855,5 +872,10 @@ fn decode_cell_v4(
         _ => None,
     };
 
-    Some((row, col, TableCell { value, style, format_index: None, formula: None }, format))
+    Some((
+        row,
+        col,
+        TableCell { value, cell_style_index, format_index: None, formula: None },
+        format,
+    ))
 }

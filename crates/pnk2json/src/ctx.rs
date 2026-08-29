@@ -10,9 +10,44 @@ use iwadump::registry::{App, Registry};
 use crate::loader::{self, Loaded};
 use crate::members::Members;
 use crate::model::{
-    AppKind, DocumentMeta, MediaAsset, MediaKind, MediaRef, Size, Warning, WarningCode,
+    AppKind, CharStyle, DocumentMeta, MediaAsset, MediaKind, MediaRef, ParaStyle, Size, Warning,
+    WarningCode,
 };
 use crate::pb::Msg;
+
+/// Hash-cons pool with canonical JSON (sorted keys, compact) as dedup key;
+/// first-use order preserved.
+#[derive(Debug, Default)]
+pub struct StylePool<T> {
+    pub items: Vec<T>,
+    keys: std::collections::HashMap<String, u32>,
+}
+
+impl<T: serde::Serialize + PartialEq> StylePool<T> {
+    /// Intern `item`; returns its index. `None` for the empty/default value
+    /// ("{}" canonical form) — absent index means unstyled per the contract.
+    pub fn intern(&mut self, item: T) -> Option<u32> {
+        let key = canonical_json(&item);
+        if key == "{}" {
+            return None;
+        }
+        if let Some(i) = self.keys.get(&key) {
+            return Some(*i);
+        }
+        let idx = self.items.len() as u32;
+        self.items.push(item);
+        self.keys.insert(key, idx);
+        Some(idx)
+    }
+}
+
+/// Canonical form: serde_json::Value with alphabetically sorted keys,
+/// compact serialization.
+fn canonical_json<T: serde::Serialize>(item: &T) -> String {
+    let value: serde_json::Value =
+        serde_json::to_value(item).unwrap_or(serde_json::Value::Null);
+    serde_json::to_string(&value).unwrap_or_default()
+}
 
 pub struct Ctx {
     pub app: App,
@@ -22,6 +57,9 @@ pub struct Ctx {
     pub members: Members,
     pub warnings: Vec<Warning>,
     pub fonts: BTreeSet<String>,
+    /// Document-wide text-style pools (first-use order via emission order).
+    pub para_pool: StylePool<ParaStyle>,
+    pub char_pool: StylePool<CharStyle>,
     pub meta: DocumentMeta,
     /// TSP.PackageMetadata.datas, keyed by DataInfo.identifier.
     pub datas: HashMap<u64, DataInfoEntry>,
@@ -57,6 +95,8 @@ impl Ctx {
             members,
             warnings: Vec::new(),
             fonts: BTreeSet::new(),
+            para_pool: StylePool::default(),
+            char_pool: StylePool::default(),
             meta: DocumentMeta { app: app_kind, ..Default::default() },
             datas: HashMap::new(),
             referenced_datas: BTreeSet::new(),
@@ -402,6 +442,8 @@ impl Ctx {
             members: Members::from_map(map),
             warnings: Vec::new(),
             fonts: std::collections::BTreeSet::new(),
+            para_pool: StylePool::default(),
+            char_pool: StylePool::default(),
             meta: DocumentMeta { app: app_kind, ..Default::default() },
             datas: HashMap::new(),
             referenced_datas: std::collections::BTreeSet::new(),

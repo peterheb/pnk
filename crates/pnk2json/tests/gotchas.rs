@@ -156,6 +156,7 @@ fn serde_field_names_match_ts_contract() {
             detail: Some("0xde".into()),
         }],
         fonts: vec!["Helvetica".into()],
+        styles: StylePools::default(),
         media: vec![MediaAsset {
             data_id: "1".into(),
             file_name: Some("a.png".into()),
@@ -200,6 +201,8 @@ fn serde_field_names_match_ts_contract() {
     };
     let json = serde_json::to_value(&doc).unwrap();
     assert_eq!(json["kind"], "keynote");
+    assert_eq!(json["styles"]["para"], serde_json::json!([]));
+    assert_eq!(json["styles"]["char"], serde_json::json!([]));
     assert_eq!(json["meta"]["app"], "keynote");
     assert_eq!(json["meta"]["application"], "Keynote");
     assert_eq!(json["warnings"][0]["code"], "unknown-object-type");

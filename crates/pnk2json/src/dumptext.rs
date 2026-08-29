@@ -51,14 +51,15 @@ fn para_plain(p: &Paragraph) -> String {
 }
 
 /// Run text with markdown emphasis where the style says so (bold/italic only).
-fn para_markdown(p: &Paragraph) -> String {
+fn para_markdown(p: &Paragraph, char_styles: &[CharStyle]) -> String {
     let mut s = String::new();
     for item in &p.items {
         match item {
-            ParagraphItem::Text { text, style, .. } => {
+            ParagraphItem::Text { text, char_style_index, .. } => {
+                let style = char_style_index.and_then(|i| char_styles.get(i as usize));
                 let t = text.replace('\t', "    ");
-                let bold = style.bold == Some(true);
-                let italic = style.italic == Some(true);
+                let bold = style.and_then(|s| s.bold) == Some(true);
+                let italic = style.and_then(|s| s.italic) == Some(true);
                 if t.trim().is_empty() {
                     s.push_str(&t);
                 } else if bold && italic {
@@ -169,7 +170,7 @@ fn warnings_block(doc_warnings: &[Warning], out: &mut String, markdown: bool) {
 // Keynote
 // ---------------------------------------------------------------------------
 
-fn slide_title_and_bullets(slide: &Slide) -> (Option<String>, Vec<String>) {
+fn slide_title_and_bullets(slide: &Slide, para_styles: &[ParaStyle]) -> (Option<String>, Vec<String>) {
     let mut title = None;
     let mut bullets = Vec::new();
     for d in &slide.drawables {
@@ -198,9 +199,15 @@ fn slide_title_and_bullets(slide: &Slide) -> (Option<String>, Vec<String>) {
                 continue;
             }
             // List markers render as bullets; plain paragraphs as lines.
-            match &p.style.list {
-                Some(_) => bullets.push(format!("- {line}")),
-                None => bullets.push(line),
+            let is_list = p
+                .para_style_index
+                .and_then(|i| para_styles.get(i as usize))
+                .map(|s| s.list.is_some())
+                .unwrap_or(false);
+            if is_list {
+                bullets.push(format!("- {line}"));
+            } else {
+                bullets.push(line);
             }
         }
     }
@@ -217,7 +224,7 @@ fn keynote_text(d: &KeynoteDocument, out: &mut String) {
         if slide.skipped == Some(true) {
             out.push_str("[skipped]\n");
         }
-        let (title, bullets) = slide_title_and_bullets(slide);
+        let (title, bullets) = slide_title_and_bullets(slide, &d.styles.para);
         if let Some(t) = &title {
             out.push_str(&format!("Title: {t}\n"));
         }
@@ -240,7 +247,7 @@ fn keynote_md(d: &KeynoteDocument, out: &mut String) {
         out.push_str(&format!("*Theme: {name} — {} slides*\n\n", d.slides.len()));
     }
     for (i, slide) in d.slides.iter().enumerate() {
-        let (title, bullets) = slide_title_and_bullets(slide);
+        let (title, bullets) = slide_title_and_bullets(slide, &d.styles.para);
         let heading = title.clone().unwrap_or_else(|| format!("Slide {}", i + 1));
         out.push_str(&format!("## {heading}\n\n"));
         if slide.skipped == Some(true) {
@@ -266,13 +273,17 @@ fn keynote_md(d: &KeynoteDocument, out: &mut String) {
 // Pages
 // ---------------------------------------------------------------------------
 
-fn pages_body_md(body: &StyledText, out: &mut String) {
+fn pages_body_md(body: &StyledText, styles: &StylePools, out: &mut String) {
     for p in &body.paragraphs {
-        let text = para_markdown(p);
+        let text = para_markdown(p, &styles.char);
         if text.is_empty() {
             continue;
         }
-        let level = p.style.outline_level.unwrap_or(0);
+        let level = p
+            .para_style_index
+            .and_then(|i| styles.para.get(i as usize))
+            .and_then(|s| s.outline_level)
+            .unwrap_or(0);
         if level > 0 {
             let hashes = "#".repeat((level as usize).clamp(1, 6));
             out.push_str(&format!("{hashes} {text}\n\n"));
@@ -295,7 +306,11 @@ fn pages_text(d: &PagesDocument, out: &mut String) {
                     if text.is_empty() {
                         continue;
                     }
-                    let level = p.style.outline_level.unwrap_or(0);
+                    let level = p
+                        .para_style_index
+                        .and_then(|i| d.styles.para.get(i as usize))
+                        .and_then(|s| s.outline_level)
+                        .unwrap_or(0);
                     if level > 0 {
                         out.push_str(&format!("{} {}\n", "#".repeat(level as usize), text));
                     } else {
@@ -331,7 +346,7 @@ fn pages_md(d: &PagesDocument, out: &mut String) {
     match d.flavor {
         PagesFlavor::WordProcessing => {
             if let Some(body) = &d.body {
-                pages_body_md(body, out);
+                pages_body_md(body, &d.styles, out);
             }
             if let Some(footnotes) = &d.footnotes {
                 if !footnotes.is_empty() {

@@ -155,6 +155,7 @@ pub fn extract_from_msg(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText> {
                 Some(sid) => resolve_char_style(ctx, sid),
                 None => CharStyle::default(),
             };
+            let char_style_index = ctx.char_pool.intern(char_style);
 
             let seg_start_char = u16_to_char_index(&map, b0);
             let seg_end_char = u16_to_char_index(&map, b1);
@@ -185,7 +186,11 @@ pub fn extract_from_msg(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText> {
                             continue;
                         }
                         AttachmentResult::Field { style, value, field } => {
-                            items.push(ParagraphItem::Field { style, value, field });
+                            items.push(ParagraphItem::Field {
+                                char_style_index: ctx.char_pool.intern(style),
+                                value,
+                                field,
+                            });
                             continue;
                         }
                         AttachmentResult::None => {}
@@ -224,14 +229,14 @@ pub fn extract_from_msg(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText> {
 
             if let Some(fk) = field_kind {
                 items.push(ParagraphItem::Field {
-                    style: char_style,
+                    char_style_index,
                     value: Some(seg),
                     field: fk,
                 });
             } else if !seg.is_empty() {
                 items.push(ParagraphItem::Text {
                     text: seg,
-                    style: char_style,
+                    char_style_index,
                     hyperlink,
                     language: None,
                 });
@@ -242,7 +247,8 @@ pub fn extract_from_msg(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText> {
             Some(sid) => resolve_para_style(ctx, sid),
             None => ParaStyle::default(),
         };
-        paragraphs.push(Paragraph { style: pstyle, items });
+        let para_style_index = ctx.para_pool.intern(pstyle);
+        paragraphs.push(Paragraph { para_style_index, items });
     }
 
     Some(ExtractedText { text: StyledText { paragraphs }, footnotes })

@@ -533,6 +533,7 @@ fn empty_table() -> TableModel {
         default_column_width_pt: None,
         grid: Vec::new(),
         formats: Vec::new(),
+        cell_styles: Vec::new(),
         merges: Vec::new(),
         style: None,
     }

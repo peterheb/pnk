@@ -517,6 +517,15 @@ pub enum MediaKind {
     Other,
 }
 
+/// Document-wide text-style pools (model contract: deduped, first-use
+/// order; absent index = unstyled/default).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct StylePools {
+    pub para: Vec<ParaStyle>,
+    pub char: Vec<CharStyle>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentMeta {
@@ -551,7 +560,9 @@ pub struct StyledText {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Paragraph {
-    pub style: ParaStyle,
+    /// Index into the document's `styles.para` pool; absent = default/unstyled.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub para_style_index: Option<u32>,
     pub items: Vec<ParagraphItem>,
 }
 
@@ -560,7 +571,9 @@ pub struct Paragraph {
 pub enum ParagraphItem {
     Text {
         text: String,
-        style: CharStyle,
+        /// Index into the document's `styles.char` pool; absent = unstyled.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        char_style_index: Option<u32>,
         #[serde(skip_serializing_if = "Option::is_none")]
         hyperlink: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -572,7 +585,9 @@ pub enum ParagraphItem {
         offset: Option<InlineOffset>,
     },
     Field {
-        style: CharStyle,
+        /// Index into the document's `styles.char` pool; absent = unstyled.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        char_style_index: Option<u32>,
         #[serde(skip_serializing_if = "Option::is_none")]
         value: Option<String>,
         field: FieldKind,
@@ -931,6 +946,10 @@ pub struct TableModel {
     /// Distinct number formats used by this table, deduped; cells reference
     /// them by `TableCell.formatIndex`.
     pub formats: Vec<CellFormat>,
+    /// Distinct per-cell looks used by this table, deduped (same pooling
+    /// pattern as the document-wide text-style pools); cells reference by
+    /// `TableCell.cellStyleIndex`, absent = table default style.
+    pub cell_styles: Vec<TableCellStyle>,
     pub merges: Vec<TableMerge>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub style: Option<TableStyle>,
@@ -949,8 +968,9 @@ pub struct RowColInfo {
 #[serde(rename_all = "camelCase")]
 pub struct TableCell {
     pub value: CellValue,
+    /// Index into `TableModel.cellStyles`; absent = table default look.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub style: Option<CellStyle>,
+    pub cell_style_index: Option<u32>,
     /// Index into `TableModel.formats`; absent = unformatted.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub format_index: Option<u32>,
@@ -978,7 +998,7 @@ pub enum CellValue {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct CellStyle {
+pub struct TableCellStyle {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fill: Option<Fill>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1063,13 +1083,13 @@ pub struct TableStyle {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub banded_fill: Option<Fill>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub body_cell_style: Option<CellStyle>,
+    pub body_cell_style: Option<TableCellStyle>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub header_row_cell_style: Option<CellStyle>,
+    pub header_row_cell_style: Option<TableCellStyle>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub header_column_cell_style: Option<CellStyle>,
+    pub header_column_cell_style: Option<TableCellStyle>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub footer_row_cell_style: Option<CellStyle>,
+    pub footer_row_cell_style: Option<TableCellStyle>,
 }
 
 // --- charts (TSCH) ---
@@ -1297,6 +1317,7 @@ pub struct KeynoteDocument {
     pub warnings: Vec<Warning>,
     pub fonts: FontList,
     pub media: Vec<MediaAsset>,
+    pub styles: StylePools,
     pub slide_size: Size,
     pub slides: Vec<Slide>,
     pub masters: Vec<MasterSlide>,
@@ -1429,6 +1450,7 @@ pub struct NumbersDocument {
     pub warnings: Vec<Warning>,
     pub fonts: FontList,
     pub media: Vec<MediaAsset>,
+    pub styles: StylePools,
     pub sheets: Vec<Sheet>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub page_size: Option<Size>,
@@ -1541,6 +1563,7 @@ pub struct PagesDocument {
     pub warnings: Vec<Warning>,
     pub fonts: FontList,
     pub media: Vec<MediaAsset>,
+    pub styles: StylePools,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub page_size: Option<Size>,
     #[serde(skip_serializing_if = "Option::is_none")]
