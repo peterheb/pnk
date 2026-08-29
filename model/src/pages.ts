@@ -148,6 +148,16 @@ export interface PagesDocument extends DocumentEnvelope {
    * styled paragraphs with inline objects/fields resolved.
    */
   body?: StyledText;
+  /**
+   * Page-layout flavor only: a live, findable body flow that Pages never
+   * renders (same shape as `body`). Present ONLY when the source storage
+   * carries a body with at least one non-empty paragraph; omitted when empty
+   * (absence = no hidden content). Preserved rather than dropped — viewers
+   * ignore it.
+   * [fixture-verified: Pages 26.3 layout docs keep the body storage; the
+   *  Convert-to-Layout "body discarded" warning is rendering-level only]
+   */
+  hiddenBody?: StyledText;
   /** Footnotes for the body (word-processing flavor). */
   footnotes?: Footnote[];
 

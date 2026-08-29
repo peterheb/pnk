@@ -73,6 +73,7 @@ positions, no `null` inside unions where a variant string works. Verified by
 | `TP.DocumentArchive` [10000] + `TSA./TSK.DocumentArchive` (pages.md) | `PagesDocument` |
 | `TP.DocumentArchive.body_storage` → `TSWP.StorageArchive` | `PagesDocument.body: StyledText` (word-processing flavor) |
 | `TP.DocumentArchive.section` [10011] | `PagesDocument.sections` +, in page-layout flavor, the canvas in `floating[]` |
+| body flow in page-layout docs | `PagesDocument.hiddenBody?: StyledText` — present only when the storage has ≥1 non-empty body paragraph; Pages 26.3 layout docs keep a live, findable body flow Apple never renders `[fixture-verified: Peter's G2 + UI screenshot; Convert-to-Layout's "body discarded" warning is rendering-level only]` — preserved rather than dropped, viewer ignores the field |
 | `TP.FloatingDrawablesArchive` page_groups | `PagesDocument.floating: FloatingPage[]` |
 | `TP.DrawablesZOrderArchive` [10015] | paint order of `floating[].drawables` |
 | `TP.PageTemplateArchive` (masters) | `PagesDocument.pageTemplates` |
