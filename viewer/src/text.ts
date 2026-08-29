@@ -64,14 +64,110 @@ function fieldPlaceholderText(item: Extract<ParagraphItem, { type: "field" }>): 
   }
 }
 
-/** One paragraph, styled from the hydrated pools. Headings by outlineLevel. */
-export function renderParagraph(p: Paragraph, doc: HydratedDoc, ctx: ViewerCtx): HTMLElement {
+/** Numbering counters shared by a consecutive run of list paragraphs. */
+export interface ListNumberingState {
+  counters: Map<string, number>;
+  lastKey: string | null;
+}
+
+export function newListNumberingState(): ListNumberingState {
+  return { counters: new Map(), lastKey: null };
+}
+
+function toRoman(n: number, upper: boolean): string {
+  const pairs: [number, string][] = [[1000, "m"], [900, "cm"], [500, "d"], [400, "cd"], [100, "c"], [90, "xc"], [50, "l"], [40, "xl"], [10, "x"], [9, "ix"], [5, "v"], [4, "iv"], [1, "i"]];
+  let out = "";
+  let rest = n;
+  for (const [v, sym] of pairs) while (rest >= v) { out += sym; rest -= v; }
+  return upper ? out.toUpperCase() : out;
+}
+
+/** Marker text for a numbered list position. */
+function numberMarker(n: number, kind: string | undefined): string {
+  switch (kind) {
+    case "alpha-upper": return `${toAlpha(n, true)}.`;
+    case "alpha-lower": return `${toAlpha(n, false)}.`;
+    case "roman-upper": return `${toRoman(n, true)}.`;
+    case "roman-lower": return `${toRoman(n, false)}.`;
+    default: return `${n}.`;
+  }
+}
+
+function toAlpha(n: number, upper: boolean): string {
+  let out = "";
+  let rest = n;
+  while (rest > 0) {
+    rest -= 1;
+    out = String.fromCharCode((upper ? 65 : 97) + (rest % 26)) + out;
+    rest = Math.floor(rest / 26);
+  }
+  return out;
+}
+
+/**
+ * One paragraph, styled from the hydrated pools. Headings by outlineLevel;
+ * list membership renders a marker (• / 1. …) with restart-aware numbering
+ * tracked in the shared ListNumberingState.
+ */
+export function renderParagraph(
+  p: Paragraph,
+  doc: HydratedDoc,
+  ctx: ViewerCtx,
+  listState: ListNumberingState = newListNumberingState(),
+): HTMLElement {
   const style = paraStyleOf(doc, p.paraStyleIndex);
+  const list = style?.list;
+  const hasMarker = !!list && list.markerKind !== "none" &&
+    (list.markerKind === "string" ? !!list.markerText : list.markerKind === "number");
+
   const level = style?.outlineLevel ?? 0;
   const el = level >= 1 && level <= 5
     ? document.createElement(`h${level}`)
     : document.createElement("p");
-  if (style) applyParaStyle(el, style);
+
+  if (!hasMarker) {
+    listState.lastKey = null;
+    if (style) applyParaStyle(el, style);
+  } else {
+    // numbering: same list key as the previous paragraph continues its
+    // counter; a new key (or an explicit start) restarts it
+    const key = `${list!.level}:${list!.markerKind}:${list!.markerKind === "number" ? list!.numberKind : list!.markerText}`;
+    if (listState.lastKey !== key) {
+      listState.counters.set(key, list!.start ?? 1);
+      listState.lastKey = key;
+    } else {
+      listState.counters.set(key, (listState.counters.get(key) ?? 0) + 1);
+    }
+    const n = listState.counters.get(key) ?? 1;
+    const markerText = list!.markerKind === "number"
+      ? numberMarker(n, list!.numberKind)
+      : (list!.markerText ?? "•");
+
+    // marker hangs in a flex row; paragraph margins live on the wrapper
+    const wrap = document.createElement("div");
+    wrap.className = "list-item";
+    if (style) {
+      applyParaStyle(wrap, style);
+      el.style.marginTop = "0";
+      el.style.marginBottom = "0";
+      el.style.marginLeft = "0";
+    }
+    const marker = document.createElement("span");
+    marker.className = "list-marker";
+    marker.textContent = markerText;
+    marker.style.minWidth = `${Math.max(16, (list!.markerIndentPt ?? 0) + 12)}px`;
+    wrap.appendChild(marker);
+    wrap.appendChild(el);
+    renderParagraphContent(el, p, doc, ctx);
+    return wrap;
+  }
+
+  renderParagraphContent(el, p, doc, ctx);
+  return el;
+}
+
+/** Items of a paragraph into the given element. */
+function renderParagraphContent(el: HTMLElement, p: Paragraph, doc: HydratedDoc, ctx: ViewerCtx): void {
   for (const item of p.items) {
     if (item.type === "text") {
       const span = document.createElement(item.hyperlink ? "a" : "span");
@@ -101,13 +197,13 @@ export function renderParagraph(p: Paragraph, doc: HydratedDoc, ctx: ViewerCtx):
       el.appendChild(renderFlowDrawable(item.drawable, doc, ctx));
     }
   }
-  return el;
 }
 
 /** A whole text block (body, notes, cell rich text…). */
 export function renderStyledText(t: StyledText | undefined, doc: HydratedDoc, ctx: ViewerCtx): HTMLElement {
   const div = document.createElement("div");
   div.className = "styled-text";
-  if (t) for (const p of t.paragraphs) div.appendChild(renderParagraph(p, doc, ctx));
+  const listState = newListNumberingState();
+  if (t) for (const p of t.paragraphs) div.appendChild(renderParagraph(p, doc, ctx, listState));
   return div;
 }

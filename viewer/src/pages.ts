@@ -5,7 +5,7 @@
 import type { PagesDocument } from "../../model/src/pages";
 import type { ViewerCtx } from "./ctx";
 import type { Drawable } from "../../model/src/shared";
-import { renderParagraph, renderStyledText } from "./text";
+import { newListNumberingState, renderParagraph, renderStyledText } from "./text";
 import { renderCanvasDrawable } from "./drawables";
 import type { HydratedDoc } from "./hydrate";
 
@@ -87,7 +87,8 @@ export function renderPages(doc: PagesDocument, hdoc: HydratedDoc, ctx: ViewerCt
   if (wordProcessing && doc.body) {
     const flow = document.createElement("article");
     flow.className = "pages-flow";
-    for (const p of doc.body.paragraphs) flow.appendChild(renderParagraph(p, hdoc, ctx));
+    const listState = newListNumberingState();
+    for (const p of doc.body.paragraphs) flow.appendChild(renderParagraph(p, hdoc, ctx, listState));
     view.appendChild(flow);
 
     if (doc.footnotes?.length) {

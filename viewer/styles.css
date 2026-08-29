@@ -212,3 +212,9 @@ table.sheet-table td.cell-error { color: #b03030; font-style: italic; }
 .footnote { margin: 3px 0; }
 .footnote .mark { font-weight: 600; margin-right: 6px; }
 .pages-page + .pages-page { margin-top: 22px; }
+/* ---- list markers ---------------------------------------------------------- */
+
+.list-item { display: flex; align-items: baseline; }
+.list-item > p, .list-item > h1, .list-item > h2, .list-item > h3,
+.list-item > h4, .list-item > h5, .list-item > h6 { flex: 1; }
+.list-marker { flex: 0 0 auto; white-space: pre; }
