@@ -492,6 +492,8 @@ export interface TableModel {
  * One present cell (a non-null `grid` slot).
  */
 export interface TableCell {
+  /** Cell content. */
+  value: CellValue;
   /** Index into `TableModel.formats`; absent = unformatted. */
   formatIndex?: number;
   /** Index into `TableModel.cellStyles`; absent = table default look. */
