@@ -11,78 +11,7 @@
     "documentId": "5DDB465D-FA8D-4FDB-9525-573E8DAE92CE",
     "locale": "en_US"
   },
-  "warnings": [
-    {
-      "code": "unknown-object-type",
-      "message": "2 object(s) with type id 219 (0xdb) have no trusted registry entry; payloads skipped",
-      "detail": "0xdb"
-    },
-    {
-      "code": "unknown-object-type",
-      "message": "1 object(s) with type id 222 (0xde) have no trusted registry entry; payloads skipped",
-      "detail": "0xde"
-    },
-    {
-      "code": "unknown-object-type",
-      "message": "1 object(s) with type id 258 (0x102) have no trusted registry entry; payloads skipped",
-      "detail": "0x102"
-    },
-    {
-      "code": "unknown-object-type",
-      "message": "1 object(s) with type id 2411 (0x96b) have no trusted registry entry; payloads skipped",
-      "detail": "0x96b"
-    },
-    {
-      "code": "unknown-object-type",
-      "message": "1 object(s) with type id 3091 (0xc13) have no trusted registry entry; payloads skipped",
-      "detail": "0xc13"
-    },
-    {
-      "code": "unknown-object-type",
-      "message": "2 object(s) with type id 4008 (0xfa8) have no trusted registry entry; payloads skipped",
-      "detail": "0xfa8"
-    },
-    {
-      "code": "unknown-object-type",
-      "message": "1 object(s) with type id 4009 (0xfa9) have no trusted registry entry; payloads skipped",
-      "detail": "0xfa9"
-    },
-    {
-      "code": "unknown-object-type",
-      "message": "1 object(s) with type id 4011 (0xfab) have no trusted registry entry; payloads skipped",
-      "detail": "0xfab"
-    },
-    {
-      "code": "unknown-object-type",
-      "message": "6 object(s) with type id 5030 (0x13a6) have no trusted registry entry; payloads skipped",
-      "detail": "0x13a6"
-    },
-    {
-      "code": "unknown-object-type",
-      "message": "1 object(s) with type id 6366 (0x18de) have no trusted registry entry; payloads skipped",
-      "detail": "0x18de"
-    },
-    {
-      "code": "unknown-object-type",
-      "message": "7 object(s) with type id 10024 (0x2728) have no trusted registry entry; payloads skipped",
-      "detail": "0x2728"
-    },
-    {
-      "code": "unknown-object-type",
-      "message": "1 object(s) with type id 11011 (0x2b03) have no trusted registry entry; payloads skipped",
-      "detail": "0x2b03"
-    },
-    {
-      "code": "unknown-object-type",
-      "message": "4 object(s) with type id 11014 (0x2b06) have no trusted registry entry; payloads skipped",
-      "detail": "0x2b06"
-    },
-    {
-      "code": "unknown-object-type",
-      "message": "1 object(s) with type id 11015 (0x2b07) have no trusted registry entry; payloads skipped",
-      "detail": "0x2b07"
-    }
-  ],
+  "warnings": [],
   "fonts": [],
   "media": [],
   "styles": {
