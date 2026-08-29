@@ -75,16 +75,21 @@ test("keynote fixture renders slides with positioned content + notes", async ({ 
   const items = page.locator(".slide-list-item");
   await expect(items.count()).resolves.toBeGreaterThanOrEqual(2);
   await expect(page.locator(".notes-panel")).toBeVisible();
-  // slide switching works; walk the deck until a slide with a real photo is
-  // up, then confirm it decoded from local blob bytes
+  // slide switching works; walk the deck until a slide carries a raster
+  // image that decoded from local blob bytes (some master art is vector
+  // PDF — those render blank in <img> and are skipped)
   let sawImage = false;
-  for (let i = 0; i < Math.min(await items.count(), 8) && !sawImage; i++) {
+  const total = Math.min(await items.count(), 12);
+  for (let i = 0; i < total && !sawImage; i++) {
     await items.nth(i).click();
-    const img = page.locator(".slide-stage .canvas-drawable img");
-    if ((await img.count()) > 0) {
-      await expect(img.first()).toBeVisible();
-      await expect.poll(async () => img.first().evaluate((node) => (node as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
-      sawImage = true;
+    const imgs = page.locator(".slide-stage .canvas-drawable img");
+    for (let k = 0; k < (await imgs.count()); k++) {
+      const w = await imgs.nth(k).evaluate((node) => (node as HTMLImageElement).naturalWidth);
+      if (w > 0) {
+        await expect(imgs.nth(k)).toBeVisible();
+        sawImage = true;
+        break;
+      }
     }
   }
   expect(sawImage).toBe(true);

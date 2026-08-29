@@ -203,7 +203,8 @@ function shapeSvg(g: ShapeGeometry, w: number, h: number, style: DrawableCommon[
 
 function imageEl(dataId: string | undefined, fileName: string | undefined, ctx: ViewerCtx, alt?: string): HTMLElement {
   const url = dataId ? ctx.url(dataId) : undefined;
-  if (url) {
+  const isPdf = /\.pdf$/i.test(fileName ?? "");
+  if (url && !isPdf) {
     const img = document.createElement("img");
     img.src = url;
     img.alt = alt ?? fileName ?? "image";
@@ -212,8 +213,12 @@ function imageEl(dataId: string | undefined, fileName: string | undefined, ctx: 
     img.style.objectFit = "fill";
     return img;
   }
+  // <img> cannot rasterize PDFs — Apple's vector logo art shows as a broken
+  // glyph, so a labeled placeholder is the honest render
   const miss = el("div", "media-missing");
-  miss.textContent = fileName ? `${fileName} (media missing)` : "media missing";
+  miss.textContent = fileName
+    ? isPdf ? `vector art: ${fileName.replace(/\.pdf$/i, "")} (PDF)` : `${fileName} (media missing)`
+    : "media missing";
   return miss;
 }
 
