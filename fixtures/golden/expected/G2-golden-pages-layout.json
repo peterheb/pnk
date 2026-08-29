@@ -136,12 +136,9 @@
   "hiddenBody": {
     "paragraphs": [
       {
-        "paraStyleIndex": 0,
+        "pStyle": 0,
         "items": [
-          {
-            "type": "text",
-            "text": "[where is this mystery text]"
-          }
+          "[where is this mystery text]"
         ]
       }
     ]
@@ -176,40 +173,28 @@
           "text": {
             "paragraphs": [
               {
-                "paraStyleIndex": 0,
+                "pStyle": 0,
                 "items": [
-                  {
-                    "type": "text",
-                    "text": "Shapes can hold text too."
-                  }
+                  "Shapes can hold text too."
                 ]
               },
               {
-                "paraStyleIndex": 1,
+                "pStyle": 1,
                 "items": [
+                  "Paragraphs ",
                   {
-                    "type": "text",
-                    "text": "Paragraphs "
-                  },
-                  {
-                    "type": "text",
                     "text": "a",
-                    "charStyleIndex": 0
+                    "cStyle": 0
                   },
                   {
-                    "type": "text",
                     "text": "n",
-                    "charStyleIndex": 1
+                    "cStyle": 1
                   },
                   {
-                    "type": "text",
                     "text": "d",
-                    "charStyleIndex": 2
+                    "cStyle": 2
                   },
-                  {
-                    "type": "text",
-                    "text": " spans"
-                  }
+                  " spans"
                 ]
               }
             ]
@@ -249,7 +234,7 @@
           "text": {
             "paragraphs": [
               {
-                "paraStyleIndex": 2,
+                "pStyle": 2,
                 "items": []
               }
             ]
@@ -380,7 +365,7 @@
           "text": {
             "paragraphs": [
               {
-                "paraStyleIndex": 2,
+                "pStyle": 2,
                 "items": []
               }
             ]
@@ -461,7 +446,7 @@
           "text": {
             "paragraphs": [
               {
-                "paraStyleIndex": 2,
+                "pStyle": 2,
                 "items": []
               }
             ]
@@ -496,12 +481,9 @@
           "text": {
             "paragraphs": [
               {
-                "paraStyleIndex": 2,
+                "pStyle": 2,
                 "items": [
-                  {
-                    "type": "text",
-                    "text": "Text"
-                  }
+                  "Text"
                 ]
               }
             ]
@@ -586,7 +568,7 @@
           "text": {
             "paragraphs": [
               {
-                "paraStyleIndex": 2,
+                "pStyle": 2,
                 "items": []
               }
             ]
@@ -676,7 +658,7 @@
           "text": {
             "paragraphs": [
               {
-                "paraStyleIndex": 2,
+                "pStyle": 2,
                 "items": []
               }
             ]
@@ -820,7 +802,7 @@
           "text": {
             "paragraphs": [
               {
-                "paraStyleIndex": 2,
+                "pStyle": 2,
                 "items": []
               }
             ]
@@ -914,7 +896,7 @@
           "text": {
             "paragraphs": [
               {
-                "paraStyleIndex": 2,
+                "pStyle": 2,
                 "items": []
               }
             ]
@@ -1106,7 +1088,7 @@
           "text": {
             "paragraphs": [
               {
-                "paraStyleIndex": 2,
+                "pStyle": 2,
                 "items": []
               }
             ]
@@ -1138,21 +1120,17 @@
           "text": {
             "paragraphs": [
               {
-                "paraStyleIndex": 0,
+                "pStyle": 0,
                 "items": [
-                  {
-                    "type": "text",
-                    "text": "Source (CC0):"
-                  }
+                  "Source (CC0):"
                 ]
               },
               {
-                "paraStyleIndex": 1,
+                "pStyle": 1,
                 "items": [
                   {
-                    "type": "text",
                     "text": "https://commons.wikimedia.org/wiki/File:Tabby_cat_with_blue_eyes-3336579.jpg",
-                    "charStyleIndex": 3
+                    "cStyle": 3
                   }
                 ]
               }
@@ -1265,7 +1243,7 @@
               "text": {
                 "paragraphs": [
                   {
-                    "paraStyleIndex": 2,
+                    "pStyle": 2,
                     "items": []
                   }
                 ]
@@ -1320,7 +1298,7 @@
               "text": {
                 "paragraphs": [
                   {
-                    "paraStyleIndex": 0,
+                    "pStyle": 0,
                     "items": []
                   }
                 ]
@@ -1354,12 +1332,9 @@
           "text": {
             "paragraphs": [
               {
-                "paraStyleIndex": 3,
+                "pStyle": 3,
                 "items": [
-                  {
-                    "type": "text",
-                    "text": "Page 2"
-                  }
+                  "Page 2"
                 ]
               }
             ]
@@ -1391,12 +1366,9 @@
           "text": {
             "paragraphs": [
               {
-                "paraStyleIndex": 0,
+                "pStyle": 0,
                 "items": [
-                  {
-                    "type": "text",
-                    "text": "Once upon a time, in a GitHub repo far away, there was a project that got vibed into existence by an agent. And the project was OK but not great, but it had tests so we went with it anyway!…"
-                  }
+                  "Once upon a time, in a GitHub repo far away, there was a project that got vibed into existence by an agent. And the project was OK but not great, but it had tests so we went with it anyway!…"
                 ]
               }
             ]

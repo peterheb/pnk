@@ -47,7 +47,17 @@ fn diff(a: &serde_json::Value, b: &serde_json::Value, path: &str, out: &mut Vec<
 
 fn short(v: &serde_json::Value) -> String {
     let s = v.to_string();
-    if s.len() > 70 { format!("{}…", &s[..70]) } else { s }
+    if s.len() > 70 {
+        // byte-safe truncation: back up to a char boundary so multi-byte
+        // chars (emoji, CJK) in mismatch snippets never panic
+        let mut end = 70.min(s.len());
+        while end > 0 && !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        format!("{}…", &s[..end])
+    } else {
+        s
+    }
 }
 
 #[test]

@@ -107,134 +107,88 @@
   "body": {
     "paragraphs": [
       {
-        "paraStyleIndex": 0,
+        "pStyle": 0,
         "items": [
-          {
-            "type": "text",
-            "text": "Plain opening paragraph."
-          }
+          "Plain opening paragraph."
         ]
       },
       {
-        "paraStyleIndex": 1,
+        "pStyle": 1,
         "items": [
-          {
-            "type": "text",
-            "text": "   a\tb  c d"
-          }
+          "   a\tb  c\u00a0d"
         ]
       },
       {
-        "paraStyleIndex": 1,
+        "pStyle": 1,
         "items": [
-          {
-            "type": "text",
-            "text": "café ﬁle 日本語テキスト مرحبا 👨‍👩‍👧 “quotes” …"
-          }
+          "café ﬁle 日本語テキスト مرحبا 👨\u200d👩\u200d👧 “quotes” …"
         ]
       },
       {
-        "paraStyleIndex": 1,
+        "pStyle": 1,
         "items": [
-          {
-            "type": "text",
-            "text": "trailing spaces.   "
-          }
+          "trailing spaces.   "
         ]
       },
       {
-        "paraStyleIndex": 1,
+        "pStyle": 1,
         "items": [
+          "normal ",
           {
-            "type": "text",
-            "text": "normal "
-          },
-          {
-            "type": "text",
             "text": "bold",
-            "charStyleIndex": 0
+            "cStyle": 0
           },
+          " normal ",
           {
-            "type": "text",
-            "text": " normal "
-          },
-          {
-            "type": "text",
             "text": "italic",
-            "charStyleIndex": 1
+            "cStyle": 1
           },
+          " normal ",
           {
-            "type": "text",
-            "text": " normal "
-          },
-          {
-            "type": "text",
             "text": "green",
-            "charStyleIndex": 2
+            "cStyle": 2
           },
+          " ",
           {
-            "type": "text",
-            "text": " "
-          },
-          {
-            "type": "text",
             "text": "large",
-            "charStyleIndex": 3
+            "cStyle": 3
           }
         ]
       },
       {
-        "paraStyleIndex": 2,
+        "pStyle": 2,
         "items": [
-          {
-            "type": "text",
-            "text": "One"
-          }
+          "One"
         ]
       },
       {
-        "paraStyleIndex": 3,
+        "pStyle": 3,
         "items": [
-          {
-            "type": "text",
-            "text": "Two"
-          }
+          "Two"
         ]
       },
       {
-        "paraStyleIndex": 3,
+        "pStyle": 3,
         "items": [
-          {
-            "type": "text",
-            "text": "Three"
-          }
+          "Three"
         ]
       },
       {
-        "paraStyleIndex": 4,
+        "pStyle": 4,
         "items": [
-          {
-            "type": "text",
-            "text": "Bullet Level 1"
-          }
+          "Bullet Level 1"
         ]
       },
       {
-        "paraStyleIndex": 5,
+        "pStyle": 5,
         "items": [
-          {
-            "type": "text",
-            "text": "Bullet Level 2"
-          }
+          "Bullet Level 2"
         ]
       },
       {
-        "paraStyleIndex": 1,
+        "pStyle": 1,
         "items": [
-          {
-            "type": "text",
-            "text": "Soft line\u2028break"
-          }
+          "Soft line\u2028break"
         ]
       }
     ]
