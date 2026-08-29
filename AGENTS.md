@@ -58,12 +58,10 @@ email, no upload.
    incl. shared subobjects (picture/chart/table). Gate: iwadump output maps onto it cleanly.
 3. **iwadump (Rust CLI)** ✅ — `crates/iwadump` lib+bin, 22 tests; gate: 964/968 modern dump exit-0 (4 encrypted clean-reject), 280/280 legacy clean-reject, 0 panics, 7.5s wall.
    fixture without panicking.
-4. **pnk2json (Rust, wasm-friendly)** — typed JSON model; builds natively AND for
-   `wasm32-unknown-unknown`. Gate: `cargo test` green + wasm build emits JSON for fixtures.
-5. **Fallback: dump-to-text / dump-to-markdown** in pnk2json. Gate: readable markdown for
-   every fixture. This is the shippable fallback if the viewer gets too ambitious.
-6. **Viewer (TS + pnk2json.wasm)** — drag-drop file, render pages/sheets/slides.
-   Gate: Playwright screenshot of a rendered fixture.
+4. **pnk2json (Rust, wasm-friendly)** ✅ — typed JSON model, native + wasm32 builds; conformance harness (`scripts/conformance.py`): 1,248 files × JSON+markdown = 2,488 ok + 8 controlled encrypted rejects, 0 defects. Docs: `docs/CONFORMANCE.md`.
+5. **Fallback: dump-to-text / dump-to-markdown** ✅ — 964/968 modern fixtures convert in both modes; markdown verified per-app (slides/bullets/tables/paragraphs).
+6. **Viewer (TS + pnk2json.wasm)** ✅ — drag-drop → parse → render in `viewer/` (vanilla TS + esbuild, no framework). Run: `cd viewer && npm install && npm run build && npm run serve`; gate `npm test` = 6/6 Playwright (one real fixture per app, encrypted + legacy error cards, zero non-blob network requests asserted). Screenshots under `/tmp/pnk-gate/`.
+   Schema note: TableModel v2 (2026-08-28) — tables emit row-major `grid` + per-table `formats` pool (`model/src/shared.ts`, commit 045052a/2df6316); JSON output is compact (`--pretty` opt-in).
 
 ## Cross-validation
 
