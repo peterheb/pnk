@@ -44,7 +44,9 @@ export function fillToCss(f: Fill | undefined): string | undefined {
     const a = f.gradient.kind === "linear" ? (f.gradient.angleDeg ?? 0) : 0;
     return `linear-gradient(${90 - a}deg, ${stops})`;
   }
-  return "#d9d9de";
+  // A tinted image fill (tile/pattern textures): the tint is the visible
+  // color modulating a near-white texture — paint it when bytes are absent.
+  return f.tint ?? "#d9d9de";
 }
 
 function svgStrokeAttrs(e: SVGElement, stroke: Stroke | undefined, scale: number): void {
