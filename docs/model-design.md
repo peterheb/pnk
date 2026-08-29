@@ -62,6 +62,47 @@ camelCase fields; enums are string unions; discriminated unions carry a
 positions, no `null` inside unions where a variant string works. Verified by
 `tsc --strict` (see §6).
 
+### 1.5 Reading the envelope — cheat block
+
+Three rules cover every compact spot in the JSON:
+
+1. **Text items** (`Paragraph.items`): bare `string` = plain unstyled run;
+   `{ text, cStyle?, hyperlink?, language? }` = styled run; `{ type:
+   "inline-object" | "field", … }` = tagged rare items.
+2. **Grid cells** (`grid[r][c]`): bare `string | number | boolean` =
+   unformatted value (position implies row/col); `null` = no cell; object =
+   anything more (`{ v, type?, fmt?, cellStyleIndex?, formula? }`).
+3. **Styles are pooled**: `pStyle`/`cStyle`/`fmt`/`cellStyleIndex` index into
+   `styles.para` / `styles.char` / per-table `formats` / per-table
+   `cellStyles`; an absent index means unstyled/unformatted/default.
+
+Glossary: **`v`** = the cell's value (plain scalar, `StyledText`, or `null`
+for a present-but-valueless cell); **`fmt`** = index into the table's
+`formats` pool; **`cStyle`** = index into `styles.char`; **`pStyle`** = index
+into `styles.para`; **`cur`** = ISO 4217 currency code when
+`type: "currency"`.
+
+Rust reference (serde untagged enums — the real impl lives in
+`crates/pnk2json/src/model.rs`; pattern shown for copy-paste):
+
+```rust
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum ParagraphItem { Plain(String), Styled(StyledRun), Field(FieldRun) }   // Styled has no tag: text key matches first
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum GridCell { Scalar(serde_json::Value), Cell(TableCell) }                // cell object = has "v" key
+```
+
+Caveats, honestly stated: static consumers WITHOUT untagged support (Go
+`encoding/json`, Swift `Codable`) need one small custom unmarshaler per union
+(string-or-object, scalar-or-cell) — ~10 lines each, same pattern; and
+serde's `untagged` probing re-parses fallback branches, so on very dense
+files prefer `GridCell` first-branch `Scalar` hit-rate (most cells are
+scalars) or deserialize the grid column as `serde_json::Value` and match
+manually. JSON emission stays compact (LS/PS escaping stays).
+
 ---
 
 ## 2. Mapping table (proto → model)
@@ -91,14 +132,18 @@ positions, no `null` inside unions where a variant string works. Verified by
 | proto | model |
 |---|---|
 | `TSWP.StorageArchive.text[0]` (single string; newlines split paragraphs) | `StyledText.paragraphs[]` |
-| `table_para_style` entries (`character_index` → ParagraphStyleArchive) | `Paragraph.paraStyleIndex` into the document's `styles.para` pool (resolved through the TSS parent chain; absent = default) |
-| `table_char_style` entries | `TextRun`s with `charStyleIndex` into the `styles.char` pool |
+| `table_para_style` entries (`character_index` → ParagraphStyleArchive) | `Paragraph.pStyle` index into the document's `styles.para` pool (resolved through the TSS parent chain; absent = default) |
+| `table_char_style` entries | `TextRun`s with `cStyle` index into the `styles.char` pool; plain runs collapse to a bare JSON string item |
 | null `object` entry = "keep previous" [parser: iwork2html.go:290] | splitter carries the previous style forward |
 | `table_attachment` + U+FFFC | `InlineObjectRun { drawable }` — the drawable is embedded |
 | `DrawableAttachmentArchive` h/v offsets | `InlineObjectRun.offset` |
 | textual attachments (page number/count/footmark), smart fields | `FieldRun` |
 | footnotes (`table_footnote` → contained storage) | `PagesDocument.footnotes[]` |
 
+**Compact text items:** `Paragraph.items` entries are a bare JSON string
+(plain unstyled run) or an object — `{ text, cStyle?, hyperlink?, language? }`
+for styled runs (no `type` key; the `text` key is self-evident) and
+`{ type: "inline-object" | "field", … }` for the rare tagged items.
 **Offset semantics:** attribute-table indexes are **UTF-16 code units**, not
 code points (docs/format/text.md §Unicode handling). The splitter must count
 UTF-16 units; this is the #1 way astral-plane emoji text gets mis-sliced.
@@ -167,10 +212,10 @@ The tile/offset-buffer machinery is fully flattened:
 |---|---|
 | `TableModelArchive` dimensions, header counts, frozen flags | `TableModel` scalar fields |
 | `DataStore.rowHeaders/columnHeaders` buckets | `rows[]/columns[]` (index, sizePt, hidden) |
-| tile `cell_storage_buffer` + packed offsets (BNC v5) | `grid[row][column]` — dense row-major, `null` for absent cells |
-| cell type byte → payload flags | `CellValue` tagged union (dates → ISO, currency kept separate) |
-| `TableDataList` STRING/RICH_TEXT_PAYLOAD entries | `CellValue` "text"/"richtext" |
-| `TableDataList` FORMAT/CUSTOM_FORMAT | `formats[]` deduped pool, referenced by `TableCell.formatIndex` (custom formats degrade to `kind:"custom"` + raw string) |
+| tile `cell_storage_buffer` + packed offsets (BNC v5) | `grid[row][column]` — dense row-major; plain string/number/boolean scalars for unformatted cells, `null` for absent cells |
+| cell type byte → payload flags | scalar cells stay bare; ambiguous values get a `type` tag on the cell object (`date`/`duration`/`currency`/`richtext`/`error` — dates → ISO, duration → seconds) |
+| `TableDataList` STRING/RICH_TEXT_PAYLOAD entries | cell `v` string / `{ v: StyledText, type: "richtext" }` |
+| `TableDataList` FORMAT/CUSTOM_FORMAT | `formats[]` deduped pool, referenced by `TableCell.fmt` (custom formats degrade to `kind:"custom"` + raw string) |
 | `merge_region_map` CellRanges (col<<16|row packedData) | `merges[]` anchor + span |
 | `TableStyleNetworkArchive` role slots | `TableStyle` defaults; per-cell `cell_style`/`text_style` overrides resolved on top |
 | `TST.CellStylePropertiesArchive` fills/strokes/vertical alignment/padding | `cellStyles: TableCellStyle[]` deduped per-table pool, referenced by `TableCell.cellStyleIndex` |
@@ -281,10 +326,10 @@ Every document root carries:
 - `media: MediaAsset[]` — the Data/ inventory (kind inferred from extension
   per docs/format/media.md).
 - `styles: { para: ParaStyle[]; char: CharStyle[] }` — document-wide deduped
-  text-style pools, ordered first-use; paragraphs/runs reference entries by
-  index (absent index = unstyled/default). Tables carry their own deduped
-  `cellStyles` pool per table. Drawable styles stay inline (measured: not
-  worth pooling — §2.2).
+  text-style pools, ordered first-use; `Paragraph.pStyle` / run `cStyle`
+  reference entries by index (absent index = unstyled/default). Tables carry
+  their own deduped `cellStyles` pool per table. Drawable styles stay inline
+  (measured: not worth pooling — §2.2).
 
 ---
 

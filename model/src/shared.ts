@@ -140,10 +140,10 @@ export interface DocumentEnvelope {
   media: MediaAsset[];
   /**
    * Document-wide style pools, deduped and ordered first-use. Text nodes
-   * reference entries by index (`Paragraph.paraStyleIndex`,
-   * `TextRun.charStyleIndex`); absent index = unstyled/default. Drawable
-   * styles stay INLINE on purpose (measured: pooling them is not worth the
-   * churn — docs/model-design.md §2).
+   * reference entries by index (`Paragraph.pStyle` → `styles.para`,
+   * `TextRun`/`FieldRun` `.cStyle` → `styles.char`); absent index =
+   * unstyled/default. Drawable styles stay INLINE on purpose (measured:
+   * pooling them is not worth the churn — docs/model-design.md §2).
    */
   styles: StylePools;
 }
@@ -176,18 +176,24 @@ export interface StyledText {
 
 export interface Paragraph {
   /** Index into the document's `styles.para` pool; absent = default/unstyled. */
-  paraStyleIndex?: number;
+  pStyle?: number;
   /** Content items in visual order. */
   items: ParagraphItem[];
 }
 
-export type ParagraphItem = TextRun | InlineObjectRun | FieldRun;
+/**
+ * One content item. A bare JSON string is a plain unstyled text run (the
+ * common case); objects are used only when there is more to say:
+ *  - `{ text, cStyle?, hyperlink?, language? }` — a styled run (no `type`
+ *    key needed: the `text` key is self-evident);
+ *  - `{ type: "inline-object", … }` / `{ type: "field", … }` — rare, tagged.
+ */
+export type ParagraphItem = string | TextRun | InlineObjectRun | FieldRun;
 
 export interface TextRun {
-  type: "text";
   text: string;
   /** Index into the document's `styles.char` pool; absent = unstyled. */
-  charStyleIndex?: number;
+  cStyle?: number;
   /** Hyperlink target when the run is a link. [proto: HyperlinkFieldArchive] */
   hyperlink?: string;
   /** Language override for this run (rare; usually on style). */
@@ -215,7 +221,7 @@ export interface InlineObjectRun {
 export interface FieldRun {
   type: "field";
   /** Index into the document's `styles.char` pool; absent = unstyled. */
-  charStyleIndex?: number;
+  cStyle?: number;
   /** Current rendered value as stored, when present. */
   value?: string;
   field:
@@ -467,13 +473,17 @@ export interface TableModel {
   defaultColumnWidthPt?: number;
   /**
    * Cell grid, row-major: exactly `rowCount` rows of `columnCount` entries.
-   * `null` = no cell stored for that position (sparse tables); every other
-   * slot carries the cell's LAST-CALCULATED value.
+   * `null` = no cell stored for that position (sparse tables). A present
+   * cell is a plain JSON string/number/boolean (unformatted simple value) or
+   * a `TableCell` object when there is more to say — see the glossary in
+   * docs/model-design.md §Reading the envelope. Values are the LAST
+   * CALCULATED results; the model never re-evaluates formulas
+   * (docs/format/calcengine.md).
    */
-  grid: (TableCell | null)[][];
+  grid: (GridCell | null)[][];
   /**
    * Distinct number formats used by this table, deduped; cells reference a
-   * format by index (`TableCell.formatIndex`), absent = unformatted.
+   * format by index (`TableCell.fmt`), absent = unformatted.
    */
   formats: CellFormat[];
   /**
@@ -489,13 +499,30 @@ export interface TableModel {
 }
 
 /**
- * One present cell (a non-null `grid` slot).
+ * One grid slot: a plain unformatted value or an explicit cell object.
+ * The position in `grid` implies row/column, so plain values need no keys.
+ */
+export type GridCell = string | number | boolean | TableCell;
+
+/**
+ * A grid cell that needs more than a bare value: formatted, typed
+ * (date/duration/currency/richtext/error), styled, or formula-bearing.
  */
 export interface TableCell {
-  /** Cell content. */
-  value: CellValue;
+  /** The cell's value; `null` = present-but-valueless (style/merge only). */
+  v: string | number | boolean | StyledText | null;
+  /**
+   * Value type tag — REQUIRED when the JSON type of `v` is ambiguous
+   * (an ISO string could be text, a number could be seconds), omitted for
+   * plain text/number/bool. `date` v = ISO 8601 UTC string; `duration`
+   * v = seconds; `currency` v = amount (+ optional `cur` code);
+   * `richtext` v = StyledText; `error` v = stored error string.
+   */
+  type?: "date" | "duration" | "currency" | "richtext" | "error";
+  /** Currency code when type = "currency" (e.g. "USD"). */
+  cur?: string;
   /** Index into `TableModel.formats`; absent = unformatted. */
-  formatIndex?: number;
+  fmt?: number;
   /** Index into `TableModel.cellStyles`; absent = table default look. */
   cellStyleIndex?: number;
   /** Formula placeholder when the cell computes its value. */
@@ -508,20 +535,6 @@ export interface RowColInfo {
   hidden?: boolean;
 }
 
-
-/** Tagged cell value. Dates/durations are pre-converted (ISO / seconds). */
-export type CellValue =
-  | { type: "empty" }
-  | { type: "number"; value: number }
-  | { type: "text"; value: string }
-  | { type: "bool"; value: boolean }
-  | { type: "date"; value: IsoDateString }
-  | { type: "duration"; value: number }
-  | { type: "currency"; value: number; currencyCode?: string }
-  /** Rich text inside a cell. */
-  | { type: "richtext"; text: StyledText }
-  /** Stored formula error. */
-  | { type: "error"; value: string };
 
 /** Resolved per-cell look (TST.CellStylePropertiesArchive + text style); pooled per table. */
 export interface TableCellStyle {
