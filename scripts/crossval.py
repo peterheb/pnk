@@ -74,6 +74,7 @@ def rasterize_pdf(pdf: Path, out: Path, max_pages: int = 3, dpi: int = 110) -> l
     url = Quartz.CFURLCreateFromFileSystemRepresentation(None, str(pdf).encode(), len(str(pdf).encode()), False)
     doc = Quartz.CGPDFDocumentCreateWithURL(url)
     n = min(Quartz.CGPDFDocumentGetNumberOfPages(doc), max_pages)
+    out.mkdir(parents=True, exist_ok=True)
     scale = dpi / 72.0
     written = []
     for i in range(1, n + 1):
