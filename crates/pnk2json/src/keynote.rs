@@ -39,6 +39,20 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> KeynoteDocument {
         .and_then(|t| t.msg(1))
         .and_then(|base| base.string(3)); // TSS.ThemeArchive.theme_identifier
 
+    // Theme.templates entries are KN.SlideNodeArchive NAVIGATOR wrappers
+    // (type 4) in current documents — the actual master slide is the node's
+    // `slide` (field 2) target. Older documents point straight at
+    // KN.SlideArchive; deref only when the target is a node.
+    let template_ids: Vec<u64> = template_ids
+        .into_iter()
+        .map(|tid| {
+            match ctx.loaded.record(tid).map(|r| r.type_id) {
+                Some(4) => ctx.loaded.msg(tid).and_then(|n| n.reference(2)).unwrap_or(tid),
+                _ => tid,
+            }
+        })
+        .collect();
+
     let mut masters: Vec<MasterSlide> = Vec::new();
     let mut master_names: HashMap<u64, String> = HashMap::new();
     for (i, tid) in template_ids.iter().enumerate() {
@@ -246,7 +260,15 @@ fn convert_slide_raw(ctx: &mut Ctx, slide_id: u64, is_master: bool) -> (Slide, O
         return (empty_slide(), None);
     };
 
-    let name = m.string(10).filter(|s| !s.is_empty());
+    // name = field 10 (KN.SlideArchive.name). Guard the contract: a string
+    // that decodes but contains binary junk (control/NUL bytes — e.g. a
+    // geometry payload mis-read as a name) is treated as absent.
+    let name = m
+        .string(10)
+        .filter(|s| {
+            !s.is_empty()
+                && !s.chars().any(|c| c.is_control() && c != '\t' && c != '\n')
+        });
 
     let drawable_ids = if !is_master {
         let z = m.references(42);
@@ -424,7 +446,16 @@ fn inherit_placeholders(
     slide: &mut Slide,
     master_names: &HashMap<u64, String>,
 ) {
-    let template_id = ctx.loaded.msg(slide_id).and_then(|m| m.reference(17));
+    let template_id = ctx
+        .loaded
+        .msg(slide_id)
+        .and_then(|m| m.reference(17))
+        .map(|tid| {
+            match ctx.loaded.record(tid).map(|r| r.type_id) {
+                Some(4) => ctx.loaded.msg(tid).and_then(|n| n.reference(2)).unwrap_or(tid),
+                _ => tid,
+            }
+        });
     let Some(mid) = template_id else { return };
     if let Some(mn) = master_names.get(&mid) {
         slide.master_name = Some(mn.clone());

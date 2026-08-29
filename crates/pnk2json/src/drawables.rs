@@ -57,7 +57,7 @@ fn convert_drawable_inner(
         );
         return Drawable::Unknown {
             common: None,
-            type_id: "0x0".into(),
+            type_id: format!("ref:{id}"),
             type_name: None,
             reason: "unresolved reference".into(),
         };
