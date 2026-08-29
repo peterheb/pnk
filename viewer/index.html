@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pnk viewer — iWork, locally</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <header id="app-header" class="hidden">
+      <span id="doc-filename"></span>
+      <span id="app-badge" class="badge"></span>
+      <span id="doc-meta" class="muted"></span>
+      <span class="spacer"></span>
+      <button id="reset-btn" type="button" title="Open another file">Open another…</button>
+    </header>
+
+    <div id="panel-fonts" class="panel hidden">
+      <details>
+        <summary>Fonts <span class="pill" id="fonts-count">0</span></summary>
+        <div id="fonts-list" class="chips"></div>
+      </details>
+    </div>
+
+    <div id="panel-warnings" class="panel hidden">
+      <details>
+        <summary>Warnings <span class="pill" id="warnings-count">0</span></summary>
+        <div id="warnings-list"></div>
+      </details>
+    </div>
+
+    <div id="drop-zone">
+      <div id="drop-card">
+        <h1>pnk</h1>
+        <p class="tagline">Open a Pages, Numbers or Keynote file — <strong>entirely in this browser</strong>.<br>
+        No accounts, no upload, no backend: the file is parsed locally and never leaves your machine.</p>
+        <div id="drop-target">Drop a <code>.pages</code>, <code>.numbers</code> or <code>.key</code> file here<br>
+          <span class="muted">or</span><br>
+          <button id="pick-btn" type="button">Choose a file…</button>
+        </div>
+        <p class="muted" id="drop-hint">Encrypted (password-protected) and legacy pre-iWork&nbsp;'13 files are politely refused — nothing about them leaves the browser either.</p>
+      </div>
+    </div>
+
+    <main id="view" class="hidden"></main>
+  </div>
+
+  <input type="file" id="file-input" class="hidden"
+         accept=".pages,.numbers,.key,.pages.zip,.numbers.zip,.key.zip,application/vnd.apple.pages,application/vnd.apple.numbers,application/vnd.apple.keynote">
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>
