@@ -340,7 +340,7 @@ def composite_rows(shot: Path, work: Path, log) -> list[Path]:
     """
     from PIL import Image
 
-    apple_pages = sorted((work / "apple").glob("page-*.png"))
+    apple_pages = sorted((work / "apple").glob("page-*.png"), key=lambda p: int(p.stem.split("-")[-1]))
     if not apple_pages:
         return []
     out_dir = work / "composites"
@@ -484,7 +484,7 @@ def crop_regions(pdf: Path | None, preview: Path | None, shot: Path,
     written = []
 
     apple_pages = {i + 1: Image.open(p).convert("RGB")
-                   for i, p in enumerate(sorted((work / "apple").glob("page-*.png")))}
+                   for i, p in enumerate(sorted((work / "apple").glob("page-*.png"), key=lambda p: int(p.stem.split("-")[-1])))}
     if preview is not None and preview.suffix == ".pdf" and not apple_pages:
         for i, p in enumerate(rasterize_pdf(preview, work / "apple", dpi=dpi, max_pages=1)):
             apple_pages[i + 1] = Image.open(p).convert("RGB")
@@ -721,7 +721,7 @@ def run_one(app: str, fixture: Path, work: Path, args, log) -> bool:
         else:
             log(f"fallback: preview.{preview.suffix}, page 1 only")
 
-    apple_pages = sorted((work / "apple").glob("page-*.png"))
+    apple_pages = sorted((work / "apple").glob("page-*.png"), key=lambda p: int(p.stem.split("-")[-1]))
     log(f"apple pages: {len(apple_pages)}")
 
     # Our side
