@@ -82,10 +82,30 @@ pub fn convert_ctx(ctx: &mut ctx::Ctx) -> Result<PnkDocument, iwadump::Error> {
 
 /// Serialize a document to pretty JSON.
 pub fn to_json(doc: &PnkDocument) -> String {
-    serde_json::to_string_pretty(doc).unwrap_or_else(|_| "{}".to_string())
+    escape_ls_ps(&serde_json::to_string_pretty(doc).unwrap_or_else(|_| "{}".to_string()))
 }
 
 /// Serialize a document to compact JSON.
 pub fn to_json_compact(doc: &PnkDocument) -> String {
-    serde_json::to_string(doc).unwrap_or_else(|_| "{}".to_string())
+    escape_ls_ps(&serde_json::to_string(doc).unwrap_or_else(|_| "{}".to_string()))
+}
+
+/// Escape U+2028 (LINE SEPARATOR) / U+2029 (PARAGRAPH SEPARATOR) as
+/// \u2028 / \u2029. They are spec-legal raw inside JSON strings and
+/// JSON.parse-safe, but raw LS/PS trip editor "unusual line terminator"
+/// warnings that mask real bugs (gotchas #15). Safe as a whole-text replace:
+/// in valid JSON those code points only occur inside string literals.
+fn escape_ls_ps(json: &str) -> String {
+    if !json.contains('\u{2028}') && !json.contains('\u{2029}') {
+        return json.to_string();
+    }
+    let mut out = String::with_capacity(json.len() + 24);
+    for c in json.chars() {
+        match c {
+            '\u{2028}' => out.push_str("\\u2028"),
+            '\u{2029}' => out.push_str("\\u2029"),
+            other => out.push(other),
+        }
+    }
+    out
 }

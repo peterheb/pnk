@@ -7,7 +7,7 @@
 //! textual/smart fields to FieldRuns. No offsets survive.
 
 use crate::ctx::Ctx;
-use crate::styles::{resolve_char_style, resolve_para_style};
+use crate::styles::{resolve_char_style, resolve_list_format_minimal, resolve_para_style};
 use crate::model::*;
 use crate::pb::Msg;
 
@@ -88,6 +88,17 @@ pub fn extract_from_msg(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText> {
     let attach_entries = entries_of(storage.msg(9));
     let smart_entries = entries_of(storage.msg(11));
 
+    // List membership + levels + restart flags (fixture-verified against
+    // G1-golden: gotchas #14):
+    // - table_list_style (7): paragraph → list-style ranges (the style's
+    //   label_type per level carries marker kind).
+    // - table_para_data (6).first = list LEVEL (0-based) for the para.
+    // - table_para_starts (14).first = list RESTART flag (numbering restarts
+    //   at this paragraph).
+    let list_entries = entries_of(storage.msg(7));
+    let para_data = para_table(storage.msg(6));
+    let para_starts = para_table(storage.msg(14));
+
     let mut footnotes: Vec<(u32, StyledText)> = Vec::new();
 
     // Paragraph boundaries: newlines in the character buffer (text.md
@@ -103,6 +114,28 @@ pub fn extract_from_msg(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText> {
             }
         }
         para_ranges.push((start_char, text.chars().count()));
+    }
+
+    // Per-paragraph list info: (list style id, level, restart). An entry at
+    // paragraph start applies from there until the next entry.
+    let mut list_by_para: Vec<Option<(u64, u32, bool)>> = vec![None; para_ranges.len()];
+    {
+        let mut cur: Option<u64> = None;
+        let mut ei = 0usize;
+        for (pi, (start, _)) in para_ranges.iter().enumerate() {
+            let p_start_u16 = map[*start];
+            while ei < list_entries.len() && list_entries[ei].utf16_off <= p_start_u16 {
+                let e = &list_entries[ei];
+                cur = e.object_id; // None = list membership cleared
+                ei += 1;
+            }
+            // Level + restart are PER-PARAGRAPH tables, read at each
+            // paragraph start (G1: "Two"/"Three" continue the numbering
+            // started at "One" — restart=true only at the entry paragraph).
+            list_by_para[pi] = cur.map(|lid| {
+                (lid, para_level(&para_data, p_start_u16), para_restart(&para_starts, p_start_u16))
+            });
+        }
     }
 
     let mut paragraphs: Vec<Paragraph> = Vec::new();
@@ -243,10 +276,21 @@ pub fn extract_from_msg(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText> {
             }
         }
 
-        let pstyle = match style_ref {
+        let mut pstyle = match style_ref {
             Some(sid) => resolve_para_style(ctx, sid),
             None => ParaStyle::default(),
         };
+        // Overlay list membership/level/restart from the storage tables
+        // (gotchas #14). The theme list style carries the marker vocabulary;
+        // the storage tables carry WHO is in a list, at WHAT level, and
+        // whether numbering restarts — decodable without theme resolution.
+        if let Some((lid, level, restart)) = list_by_para[pi] {
+            let mut lf = resolve_list_format_minimal(ctx, lid, level);
+            if restart && lf.marker_kind == ListMarkerKind::Number {
+                lf.start = Some(1.0);
+            }
+            pstyle.list = Some(lf);
+        }
         let para_style_index = ctx.para_pool.intern(pstyle);
         paragraphs.push(Paragraph { para_style_index, items });
     }
@@ -367,4 +411,48 @@ fn resolve_attachment(
             )
         }
     }
+}
+
+/// ParaDataAttributeTable (fields 6/14/24): entries {idx, first, second}.
+fn para_table(table: Option<Msg>) -> Vec<(usize, u64, u64)> {
+    let Some(table) = table else { return Vec::new() };
+    table
+        .msgs(1)
+        .into_iter()
+        .map(|e| {
+            (
+                e.varint(1).unwrap_or(0) as usize,
+                e.varint(2).unwrap_or(0),
+                e.varint(3).unwrap_or(0),
+            )
+        })
+        .collect()
+}
+
+/// List LEVEL for the paragraph starting at `utf16_off`: the last
+/// table_para_data entry at or before it carries `.first` (0-based level).
+fn para_level(para_data: &[(usize, u64, u64)], utf16_off: usize) -> u32 {
+    let mut level = 0;
+    for (idx, first, _) in para_data {
+        if *idx <= utf16_off {
+            level = *first as u32;
+        } else {
+            break;
+        }
+    }
+    level.min(8)
+}
+
+/// List RESTART flag: the last table_para_starts entry at or before the
+/// paragraph start carries `.first` (1 = numbering restarts here).
+fn para_restart(para_starts: &[(usize, u64, u64)], utf16_off: usize) -> bool {
+    let mut restart = false;
+    for (idx, first, _) in para_starts {
+        if *idx <= utf16_off {
+            restart = *first != 0;
+        } else {
+            break;
+        }
+    }
+    restart
 }

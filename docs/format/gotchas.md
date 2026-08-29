@@ -147,3 +147,40 @@ v5-only walker; after v4 support, 11 remain — all genuinely blank
 `[fixture-verified: layout against cdx-00006-5 + QuickLook; parser side
 unverified — numbers-parser refuses the variant and libetonyek was not
 checked]`
+
+
+## 14. List membership/level/restart ride in storage tables — theme not required
+
+Paragraph list membership is decodable WITHOUT theme resolution, per
+G1-golden-pages-wp.pages (Pages 26.3.1 fixture) [fixture-verified]:
+
+- `table_list_style` (field 7) holds paragraph → list-style ranges: an entry
+  at character offset X applies its `TSWP.ListStyleArchive` from paragraph X
+  onward until the next entry; a null object clears membership.
+- `table_para_data` (field 6) `.first` at a paragraph start = that
+  paragraph's list LEVEL (0-based).
+- `table_para_starts` (field 14) `.first` = list RESTART flag (1 = numbering
+  restarts at this paragraph).
+- The `label_types` value discriminates the marker: 0 = none, 2 = string
+  bullet (`strings` holds the glyph, e.g. "•"), 3 = number.
+
+G1 example: "One/Two/Three" = one numbered segment (restart flag on "One"
+only; "Two"/"Three" continue); "Bullet Level 1" level 0, "Bullet Level 2"
+level 1 via `para_data`. Renderer numbering must also accumulate across
+non-restarting paragraphs (the converter emits `start` only on restarts).
+
+## 15. Trailing paragraph whitespace is not persisted; LS/PS need JSON escaping
+
+Two independent editor-layer behaviors verified against the same fixture:
+
+- Pages 26.3.1 does NOT store trailing paragraph whitespace: the saved
+  `TSWP.StorageArchive` text buffer for a paragraph typed as
+  `"   a\tb  c\u00a0d  "` ends at `d` (bytes `... 63 c2 a0 64`). The paste
+  source has the spaces; the saved storage does not [fixture-verified]. A
+  converter preserves byte-exact what the storage says — trailing spaces
+  beyond that are un-recoverable.
+- U+2028/U+2029 occur raw in storage text (soft line breaks). They are
+  spec-legal raw in JSON strings but trip editor "unusual line terminator"
+  warnings that mask real review signals — pnk2json escapes them as
+  `\u2028`/`\u2029` in JSON output [inferred: policy; decode semantics
+  unchanged]. Dumpers render them as spaces (text) / markdown hard breaks.

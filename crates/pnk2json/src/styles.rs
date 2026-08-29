@@ -432,3 +432,21 @@ pub fn resolve_cell_style(ctx: &mut Ctx, id: u64) -> Option<TableCellStyle> {
     }
     Some(s)
 }
+
+/// Minimal list format for storage-driven list membership (gotchas #14):
+/// marker kind comes from the list style's `label_types` at the level —
+/// without theme resolution the marker TEXT is not recoverable, so string
+/// bullets degrade to `marker_text` from `strings` when present.
+pub fn resolve_list_format_minimal(ctx: &mut Ctx, list_id: u64, level: u32) -> ListFormat {
+    let full = resolve_list_format(ctx, list_id, level)
+        .unwrap_or(ListFormat {
+            level,
+            marker_kind: ListMarkerKind::None,
+            marker_text: None,
+            number_kind: None,
+            marker_image: None,
+            start: None,
+            marker_indent_pt: None,
+        });
+    ListFormat { level, ..full }
+}

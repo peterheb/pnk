@@ -37,7 +37,12 @@ fn para_plain(p: &Paragraph) -> String {
     let mut s = String::new();
     for item in &p.items {
         match item {
-            ParagraphItem::Text { text, .. } => s.push_str(text),
+            ParagraphItem::Text { text, .. } => {
+                // Soft breaks render as spaces in the flat dumpers (the
+                // paragraph block is one line); raw LS/PS would confuse
+                // line-oriented tooling (gotchas #15).
+                s.push_str(&text.replace('\u{2028}', " ").replace('\u{2029}', " "))
+            }
             ParagraphItem::InlineObject { .. } => s.push(' '), // object placeholder
             ParagraphItem::Field { value, field, .. } => match (value, field) {
                 (Some(v), _) => s.push_str(v),
@@ -57,6 +62,12 @@ fn para_markdown(p: &Paragraph, char_styles: &[CharStyle]) -> String {
         match item {
             ParagraphItem::Text { text, char_style_index, .. } => {
                 let style = char_style_index.and_then(|i| char_styles.get(i as usize));
+                // Soft break → markdown hard line break inside the paragraph.
+                let text = if text.contains('\u{2028}') || text.contains('\u{2029}') {
+                    text.replace('\u{2028}', "  \n").replace('\u{2029}', "  \n")
+                } else {
+                    text.clone()
+                };
                 let t = text.replace('\t', "    ");
                 let bold = style.and_then(|s| s.bold) == Some(true);
                 let italic = style.and_then(|s| s.italic) == Some(true);

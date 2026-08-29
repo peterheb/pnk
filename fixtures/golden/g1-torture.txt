@@ -9,3 +9,7 @@ whitespace paragraph (leading 3sp, tab between a/b, 2 trailing sp, NBSP between 
 ---WS-BEGIN---
    a	b  c d  
 ---WS-END---
+
+NOTE (verified against saved storage): Pages 26.3.1 strips trailing
+paragraph whitespace at save time. The paste source above has the 2 trailing
+spaces after "d"; the saved TSWP.StorageArchive text buffer ends at "d".
