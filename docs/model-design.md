@@ -90,8 +90,8 @@ positions, no `null` inside unions where a variant string works. Verified by
 | proto | model |
 |---|---|
 | `TSWP.StorageArchive.text[0]` (single string; newlines split paragraphs) | `StyledText.paragraphs[]` |
-| `table_para_style` entries (`character_index` → ParagraphStyleArchive) | per-paragraph `ParaStyle`, resolved through the TSS parent chain |
-| `table_char_style` entries | `TextRun`s, resolved `CharStyle` inlined |
+| `table_para_style` entries (`character_index` → ParagraphStyleArchive) | `Paragraph.paraStyleIndex` into the document's `styles.para` pool (resolved through the TSS parent chain; absent = default) |
+| `table_char_style` entries | `TextRun`s with `charStyleIndex` into the `styles.char` pool |
 | null `object` entry = "keep previous" [parser: iwork2html.go:290] | splitter carries the previous style forward |
 | `table_attachment` + U+FFFC | `InlineObjectRun { drawable }` — the drawable is embedded |
 | `DrawableAttachmentArchive` h/v offsets | `InlineObjectRun.offset` |
@@ -101,6 +101,14 @@ positions, no `null` inside unions where a variant string works. Verified by
 **Offset semantics:** attribute-table indexes are **UTF-16 code units**, not
 code points (docs/format/text.md §Unicode handling). The splitter must count
 UTF-16 units; this is the #1 way astral-plane emoji text gets mis-sliced.
+
+Text styles are **pooled, not inlined** (same precedent as the formats pool):
+document-wide `styles: { para, char }` deduped pools, ordered first-use.
+Measured rationale: Zen book (1,539 paragraphs) = 9 distinct para shapes + 5
+char shapes — 168 KB inline (31% of the envelope) collapses to ~21 KB pooled
+(−87%); pages-717KB-1 = 2 shapes across 59 paragraphs, −32% envelope.
+Drawable styles stay INLINE by design (measured: 59 nodes / 3 KB on the
+biggest Keynote sample — pooling them is not worth the churn).
 
 ### 2.3 Colors — `TSP.Color`
 
@@ -164,13 +172,14 @@ The tile/offset-buffer machinery is fully flattened:
 | `TableDataList` FORMAT/CUSTOM_FORMAT | `formats[]` deduped pool, referenced by `TableCell.formatIndex` (custom formats degrade to `kind:"custom"` + raw string) |
 | `merge_region_map` CellRanges (col<<16|row packedData) | `merges[]` anchor + span |
 | `TableStyleNetworkArchive` role slots | `TableStyle` defaults; per-cell `cell_style`/`text_style` overrides resolved on top |
-| `TST.CellStylePropertiesArchive` fills/strokes/vertical alignment/padding | `CellStyle` |
+| `TST.CellStylePropertiesArchive` fills/strokes/vertical alignment/padding | `cellStyles: TableCellStyle[]` deduped per-table pool, referenced by `TableCell.cellStyleIndex` |
 
-Cell layout is a **dense row-major `grid` with a deduped `formats` pool** instead
-of a flat sparse cell list: measured on the dense 28881×59 Numbers fixture, the
-flat `cells` design (pretty-printed JSON + a `CellFormat` object duplicated per
-cell) pushed the envelope to 474 MB; `grid` + format-pool + compact emission
-lands at ~70–90 MB, and row-major maps 1:1 onto `<tr>` rendering.
+Cell layout is a **dense row-major `grid` with deduped `formats` and
+`cellStyles` pools** instead of a flat sparse cell list: measured on the dense
+28881×59 Numbers fixture, the flat `cells` design (pretty-printed JSON + a
+`CellFormat` object duplicated per cell) pushed the envelope to 474 MB;
+`grid` + format-pool + compact emission lands at ~70–90 MB, and row-major
+maps 1:1 onto `<tr>` rendering.
 
 Formulas: the cell's stored value **is** the last calculated result
 (docs/format/calcengine.md) — the model never re-evaluates. The presence of a
@@ -270,6 +279,11 @@ Every document root carries:
   the viewer wants the font list before first paint.
 - `media: MediaAsset[]` — the Data/ inventory (kind inferred from extension
   per docs/format/media.md).
+- `styles: { para: ParaStyle[]; char: CharStyle[] }` — document-wide deduped
+  text-style pools, ordered first-use; paragraphs/runs reference entries by
+  index (absent index = unstyled/default). Tables carry their own deduped
+  `cellStyles` pool per table. Drawable styles stay inline (measured: not
+  worth pooling — §2.2).
 
 ---
 
@@ -336,7 +350,7 @@ warning. If a fourth bucket appears, extend the model or §6 — don't guess.
    missing targets → `unresolved-reference` warnings, content continues.
 4. Resolve styles (§3.1), placeholders (§3.2), text (§3.3) during the walk —
    one pass, no id survives.
-5. Collect fonts (dedupe/sort), serialize with serde. Field names here ARE
+5. Collect fonts (dedupe/sort) and dedupe resolved text styles into the document-wide `styles.para`/`styles.char` pools (first-use order) and per-table `cellStyles`, then serialize with serde. Field names here ARE
    the serde names — keep them in sync (this file + `#[serde(rename_all =
    "camelCase")]` + variant renames for unions).
 

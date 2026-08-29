@@ -138,6 +138,22 @@ export interface DocumentEnvelope {
   fonts: FontList;
   /** All embedded media assets (the `Data/` inventory), for one-pass fetching. */
   media: MediaAsset[];
+  /**
+   * Document-wide style pools, deduped and ordered first-use. Text nodes
+   * reference entries by index (`Paragraph.paraStyleIndex`,
+   * `TextRun.charStyleIndex`); absent index = unstyled/default. Drawable
+   * styles stay INLINE on purpose (measured: pooling them is not worth the
+   * churn — docs/model-design.md §2).
+   */
+  styles: StylePools;
+}
+
+/** The two text-style pools. [proto payload: TSWP.ParagraphStylePropertiesArchive / CharacterStylePropertiesArchive] */
+export interface StylePools {
+  /** Resolved paragraph styles, deduped, first-use order. */
+  para: ParaStyle[];
+  /** Resolved character styles, deduped, first-use order. */
+  char: CharStyle[];
 }
 
 // ---------------------------------------------------------------------------
@@ -148,8 +164,9 @@ export interface DocumentEnvelope {
  * A block of rich text. Source is a `TSWP.StorageArchive`: one character
  * buffer + attribute tables mapping UTF-16 offsets to styles/attachments.
  * The converter SPLITS the buffer at paragraph boundaries (newlines) and at
- * character-style entry offsets, inlining the resolved style on each run
- * — no character indexes survive (docs/model-design.md §Flattening).
+ * character-style entry offsets, resolving styles into the document's
+ * `styles` pools — no character indexes and no inline style objects survive
+ * (docs/model-design.md §Flattening).
  * [proto: .scratch/otorp/Keynote/TSWPArchives.proto → TSWP.StorageArchive;
  *  splitting verified in docs/format/text.md]
  */
@@ -158,7 +175,8 @@ export interface StyledText {
 }
 
 export interface Paragraph {
-  style: ParaStyle;
+  /** Index into the document's `styles.para` pool; absent = default/unstyled. */
+  paraStyleIndex?: number;
   /** Content items in visual order. */
   items: ParagraphItem[];
 }
@@ -168,8 +186,8 @@ export type ParagraphItem = TextRun | InlineObjectRun | FieldRun;
 export interface TextRun {
   type: "text";
   text: string;
-  /** Resolved character style; all-optional fields. */
-  style: CharStyle;
+  /** Index into the document's `styles.char` pool; absent = unstyled. */
+  charStyleIndex?: number;
   /** Hyperlink target when the run is a link. [proto: HyperlinkFieldArchive] */
   hyperlink?: string;
   /** Language override for this run (rare; usually on style). */
@@ -196,7 +214,8 @@ export interface InlineObjectRun {
  */
 export interface FieldRun {
   type: "field";
-  style: CharStyle;
+  /** Index into the document's `styles.char` pool; absent = unstyled. */
+  charStyleIndex?: number;
   /** Current rendered value as stored, when present. */
   value?: string;
   field:
@@ -457,6 +476,12 @@ export interface TableModel {
    * format by index (`TableCell.formatIndex`), absent = unformatted.
    */
   formats: CellFormat[];
+  /**
+   * Distinct per-cell looks used by this table, deduped (same pooling pattern
+   * as the document-wide text-style pools); cells reference by
+   * `TableCell.cellStyleIndex`, absent = table default style.
+   */
+  cellStyles: TableCellStyle[];
   /** Merged regions; only the anchor cell carries content in `grid`. */
   merges: TableMerge[];
   /** Resolved table-level look. */
@@ -467,12 +492,10 @@ export interface TableModel {
  * One present cell (a non-null `grid` slot).
  */
 export interface TableCell {
-  /** The cell value, tagged. */
-  value: CellValue;
   /** Index into `TableModel.formats`; absent = unformatted. */
   formatIndex?: number;
-  /** Resolved look of this cell (fill, per-side borders, padding, wrap). */
-  style?: CellStyle;
+  /** Index into `TableModel.cellStyles`; absent = table default look. */
+  cellStyleIndex?: number;
   /** Formula placeholder when the cell computes its value. */
   formula?: TsceFormulaRef;
 }
@@ -498,8 +521,8 @@ export type CellValue =
   /** Stored formula error. */
   | { type: "error"; value: string };
 
-/** Resolved per-cell look (TST.CellStylePropertiesArchive + text style). */
-export interface CellStyle {
+/** Resolved per-cell look (TST.CellStylePropertiesArchive + text style); pooled per table. */
+export interface TableCellStyle {
   fill?: Fill;
   /** Per-side borders; undefined side = no explicit border. */
   borders?: {
@@ -539,11 +562,11 @@ export interface TableStyle {
   bandedRows?: boolean;
   bandedFill?: Fill;
   /** Default look for body cells (per-cell style overrides this). */
-  bodyCellStyle?: CellStyle;
+  bodyCellStyle?: TableCellStyle;
   /** Default look for header-row / header-column cells. */
-  headerRowCellStyle?: CellStyle;
-  headerColumnCellStyle?: CellStyle;
-  footerRowCellStyle?: CellStyle;
+  headerRowCellStyle?: TableCellStyle;
+  headerColumnCellStyle?: TableCellStyle;
+  footerRowCellStyle?: TableCellStyle;
 }
 
 // ---------------------------------------------------------------------------
