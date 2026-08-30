@@ -312,16 +312,54 @@ fn convert_slide_raw(ctx: &mut Ctx, slide_id: u64, is_master: bool) -> (Slide, O
         .collect();
     attach_builds(ctx, slide_id, &mut converted);
 
-    // Slides may carry title/body/slide-number/object placeholders outside
-    // the paint lists (SlideArchive fields 5/6/20/30) — decode those too,
-    // appended after the painted drawables.
+    // SlideArchive fields 5/6/30 (title/body/object placeholder refs) are
+    // bookkeeping pointers, NOT paint instructions: a placeholder paints only
+    // when it is ALSO in drawables_z_order/owned_drawables — Keynote's
+    // layout checkboxes (Title/Body/…) add and remove it from the paint
+    // lists (fixture-verified: 2406adf5 slide 1 keeps body text
+    // "Constraining isomer" referenced at field 6 but out of both lists, and
+    // Apple hides it; 0f9df553 lists title+body in both field 7 and 42 and
+    // Apple paints them). The slide-number placeholder (20) is the
+    // exception: it lives outside the lists and is gated by
+    // slideNumberVisible downstream.
     let painted: std::collections::HashSet<u64> = converted.iter().map(|(id, _)| *id).collect();
-    for pid in [5u32, 6, 20, 30].iter().flat_map(|f| m.references(*f)) {
+    for pid in m.references(20) {
         if !painted.contains(&pid) {
             converted.push((pid, crate::drawables::convert_drawable(ctx, pid)));
         }
     }
     let drawables: Vec<Drawable> = converted.into_iter().map(|(_, d)| d).collect();
+
+    // Placeholder visibility: Keynote's per-layout "Title/Body/Object/Slide
+    // Number" checkboxes live on the slide STYLE, not the placeholder —
+    // KN.SlideStylePropertiesArchive { titlePlaceholderVisibility = 4,
+    // bodyPlaceholderVisibility = 5, slideNumberPlaceholderVisibility = 6,
+    // objectPlaceholderVisibility = 7 } [proto: KNArchives.proto:479-487],
+    // resolved through the TSS.StyleArchive parent chain like the background
+    // fill. A placeholder whose role resolves to visible=false never paints
+    // (fixture 2406adf5: slide 1 stores body text "Constraining isomer" that
+    // Apple hides — bodyPlaceholderVisibility=false on the slide style).
+    let drawables: Vec<Drawable> = if is_master {
+        drawables
+    } else {
+        let vis = m
+            .reference(1)
+            .map(|sid| placeholder_visibility(ctx, sid))
+            .unwrap_or_default();
+        drawables
+            .into_iter()
+            .filter(|d| {
+                let hidden = match drawable_role(d) {
+                    Some("title") => vis.title == Some(false),
+                    Some("body") => vis.body == Some(false),
+                    Some("object") => vis.object == Some(false),
+                    Some("slide-number") => vis.slide_number == Some(false),
+                    _ => false,
+                };
+                !hidden
+            })
+            .collect()
+    };
 
     // Notes: KN.NoteArchive { containedStorage = 1 } → TSWP.StorageArchive.
     let notes = m
@@ -589,6 +627,49 @@ fn apply_inherited(master: &DrawableCommon) -> DrawableCommon {
         placeholder: master.placeholder.clone(),
         ..Default::default()
     }
+}
+
+/// Per-role placeholder visibility resolved through the slide style chain;
+/// each flag resolves independently at its nearest present level.
+#[derive(Default, Clone, Copy)]
+struct PlaceholderVisibility {
+    title: Option<bool>,
+    body: Option<bool>,
+    slide_number: Option<bool>,
+    object: Option<bool>,
+}
+
+/// KN.SlideStylePropertiesArchive placeholder visibility flags (fields 4-7)
+/// off `KN.SlideStyleArchive.slide_properties (11)`, walking the
+/// `TSS.StyleArchive.parent (3)` chain. Bounded depth.
+fn placeholder_visibility(ctx: &Ctx, style_id: u64) -> PlaceholderVisibility {
+    let mut v = PlaceholderVisibility::default();
+    let mut sid = style_id;
+    for _ in 0..16 {
+        let Some(m) = ctx.loaded.msg(sid) else { return v };
+        if let Some(props) = m.msg(11) {
+            if v.title.is_none() {
+                v.title = props.boolean(4);
+            }
+            if v.body.is_none() {
+                v.body = props.boolean(5);
+            }
+            if v.slide_number.is_none() {
+                v.slide_number = props.boolean(6);
+            }
+            if v.object.is_none() {
+                v.object = props.boolean(7);
+            }
+        }
+        if v.title.is_some() && v.body.is_some() && v.slide_number.is_some() && v.object.is_some() {
+            return v;
+        }
+        match m.msg(1).and_then(|base| base.reference(3)) {
+            Some(p) => sid = p,
+            None => return v,
+        }
+    }
+    v
 }
 
 /// Slide/master background fill: `KN.SlideStyleArchive.slide_properties(11)
