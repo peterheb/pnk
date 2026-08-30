@@ -37,6 +37,14 @@ properties payload plus `override_count = 10` (`[proto]` paths as noted):
   (`super` here is `TSD.ShapeStyleArchive`, which itself wraps `TSS.StyleArchive`),
   `TSWP.TOCEntryStyleArchive { super = 1 (TSWP.ParagraphStyleArchive), toc_properties = 2 }`
   — same file.
+- Text-frame fit: `TSWP.ShapeStylePropertiesArchive.shrink_to_fit = 1` (bool,
+  Keynote's "shrink text on overflow"; `vertical_alignment = 2`) on the TSWP
+  wrapper's OWN `shape_properties = 11`; the older `TSWP.ColumnStyleArchive`
+  keeps the same pair in `column_properties = 11` at `shrink_to_fit = 2` /
+  `vertical_alignment = 5` [proto: TSWPArchives.proto:495-513 + 468-493].
+  Both resolve through the TSS parent chain; theme presets carry the flag on
+  ancestors (fixture: f99b78dd's 78pt title shrinks into its 150pt box in
+  Apple's render).
 - Tables: `TST.TableStyleArchive { super = 1 (TSS.StyleArchive), table_properties = 11 }`
   and `TST.CellStyleArchive { super = 1, cell_properties = 11 }` —
   `.scratch/otorp/Keynote/TSTArchives.proto`.
