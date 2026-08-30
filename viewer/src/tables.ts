@@ -287,6 +287,7 @@ export function renderTable(model: TableModel): HTMLTableElement {
   if (allWidthsKnown && totalW > 0) {
     table.style.tableLayout = "fixed";
     table.style.width = `${totalW}px`;
+    table.classList.add("exact-cols"); // lifts the base min-width guard
   }
 
   let sectionEl: HTMLTableSectionElement | null = null;
@@ -300,7 +301,10 @@ export function renderTable(model: TableModel): HTMLTableElement {
     }
     const tr = document.createElement("tr");
     const info = model.rows?.[r];
-    if (info?.sizePt) tr.style.height = `${info.sizePt}px`;
+    // stored height wins; 0/absent means the table default (CSS height on
+    // a <tr> is a minimum, so content can still grow it like Apple does)
+    const rowH = info?.sizePt || model.defaultRowHeightPt;
+    if (rowH) tr.style.height = `${rowH}px`;
     for (const c of visCols) {
       if (covered.has(cellKey(r, c))) continue;
       const cell: GridCell | null = grid[r]?.[c] ?? null;

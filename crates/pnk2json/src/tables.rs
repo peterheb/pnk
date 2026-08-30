@@ -918,12 +918,22 @@ fn decode_cell(
             .and_then(|e| e.reference)
             .and_then(|cid| styles::resolve_cell_style(ctx, cid))
     });
-    if let Some(s) = style.as_mut() {
-        if let Some(tid) = text_style_id {
-            if let Some(e) = style_table.entries.get(&tid) {
-                if let Some(tref) = e.reference {
-                    s.text = Some(styles::resolve_char_style(ctx, tref));
-                }
+    if let Some(tref) = text_style_id
+        .and_then(|tid| style_table.entries.get(&tid))
+        .and_then(|e| e.reference)
+    {
+        // The per-cell TEXT style carries char props AND paragraph props —
+        // alignment lives in the latter (lafs title centers via the text
+        // style). A text style with no cell style still counts.
+        let text = crate::ctx::strip_char_defaults(styles::resolve_char_style(ctx, tref));
+        let para = crate::ctx::strip_para_defaults(styles::resolve_para_style(ctx, tref));
+        if text != CharStyle::default() || para != ParaStyle::default() {
+            let s = style.get_or_insert_with(TableCellStyle::default);
+            if text != CharStyle::default() {
+                s.text = Some(text);
+            }
+            if para != ParaStyle::default() {
+                s.paragraph = Some(para);
             }
         }
     }
@@ -1294,12 +1304,22 @@ fn decode_cell_v4(
             .and_then(|e| e.reference)
             .and_then(|cid| styles::resolve_cell_style(ctx, cid))
     });
-    if let Some(s) = style.as_mut() {
-        if let Some(tid) = text_style_id {
-            if let Some(e) = style_table.entries.get(&tid) {
-                if let Some(tref) = e.reference {
-                    s.text = Some(styles::resolve_char_style(ctx, tref));
-                }
+    if let Some(tref) = text_style_id
+        .and_then(|tid| style_table.entries.get(&tid))
+        .and_then(|e| e.reference)
+    {
+        // The per-cell TEXT style carries char props AND paragraph props —
+        // alignment lives in the latter (lafs title centers via the text
+        // style). A text style with no cell style still counts.
+        let text = crate::ctx::strip_char_defaults(styles::resolve_char_style(ctx, tref));
+        let para = crate::ctx::strip_para_defaults(styles::resolve_para_style(ctx, tref));
+        if text != CharStyle::default() || para != ParaStyle::default() {
+            let s = style.get_or_insert_with(TableCellStyle::default);
+            if text != CharStyle::default() {
+                s.text = Some(text);
+            }
+            if para != ParaStyle::default() {
+                s.paragraph = Some(para);
             }
         }
     }
