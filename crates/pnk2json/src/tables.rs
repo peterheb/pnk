@@ -543,6 +543,7 @@ fn convert_tile(
                     string_table,
                     style_table,
                     format_table,
+                    rich_text_table,
                     cell_pool,
                 )
             } else {
@@ -898,13 +899,18 @@ fn decode_cell_v4(
     ctx: &mut Ctx,
     row: u32,
     col: u32,
+
     buf: &[u8],
     string_table: &DataList,
     style_table: &DataList,
     format_table: &DataList,
+    rich_text_table: &DataList,
     cell_pool: &mut StylePool<TableCellStyle>,
 ) -> Option<(u32, u32, TableCell, Option<CellFormat>)> {
-    if buf.len() < 28 {
+    if std::env::var("PNK_DEBUG").is_ok() {
+        eprintln!("v4 r{row}c{col} len={} type={}", buf.len(), buf.get(1).copied().unwrap_or(255));
+    }
+    if buf.len() < 24 {
         return None;
     }
     let cell_type = buf[1];
@@ -944,15 +950,37 @@ fn decode_cell_v4(
         5 => CellValue::Date { value: crate::colors::iso_from_apple_seconds(f64_at(3)?) },
         2 => CellValue::Number { value: f64_at(3)? },
         9 => {
-            // Rich-text slot unverified for v4; resolve via the string table
-            // fallback, else drop with a warning.
-            let sid = u32s.get(6).map(|v| *v as i32)?;
-            match string_table.entries.get(&sid).and_then(|e| e.string.clone()) {
-                Some(s) => CellValue::Text { value: s },
+            // v4 rich-text cells: the rich-text table key is at slot 5
+            // (byte 20-23), fixture-verified on IVS doc bc5e6bd1 — cells map
+            // to rich_text_table entries containing IVS sequences.
+            let rid = u32s.get(5).map(|v| *v as i32)?;
+            if std::env::var("PNK_DEBUG").is_ok() {
+                eprintln!("v4 richtext r{row}c{col} rid={rid:?} found={:?}",
+                    rid.and_then(|id| rich_text_table.entries.get(&id)).map(|e| e.reference));
+            }
+            match rich_text_table.entries.get(&rid).and_then(|e| e.reference) {
+                Some(rtp_id) => {
+                    // RichTextPayloadArchive { storage = 1, range = 2, cellid = 3 }
+                    let storage_id = ctx
+                        .loaded
+                        .msg(rtp_id)
+                        .and_then(|p| p.reference(1));
+                    match storage_id.and_then(|sid| crate::text::extract(ctx, sid)) {
+                        Some(ex) => CellValue::Richtext { text: ex.text },
+                        None => {
+                            ctx.warn_detail(
+                                WarningCode::TableDegraded,
+                                format!("v4 rich-text payload {rtp_id} not decodable; cell r{row}c{col} dropped"),
+                                format!("r{row}c{col}"),
+                            );
+                            return None;
+                        }
+                    }
+                }
                 None => {
                     ctx.warn_detail(
                         WarningCode::TableDegraded,
-                        format!("v4 rich-text cell r{row}c{col} not resolvable; dropped"),
+                        format!("v4 rich-text key {rid} not in the rich-text table; cell r{row}c{col} dropped"),
                         format!("r{row}c{col}"),
                     );
                     return None;
