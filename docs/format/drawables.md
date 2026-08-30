@@ -81,6 +81,11 @@ container object)]. Canvases are owned by app-level objects:
   TNArchives.proto, so the Go proto is the citation for Numbers sheets.
 - Groups: `TSD.GroupArchive.children` (repeated `TSP.Reference`) nest drawables
   recursively; each child's `DrawableArchive.parent` points back up. [proto]
+  Child geometry is stored in GROUP-LOCAL coordinates (origin = the group's
+  own `geometry.position`), NOT canvas-absolute. [inferred→fixture-verified:
+  G2-golden-pages-layout.pages plus 6 crawl .key decks — every raw child
+  position lands inside [0, group size]; subtracting the group origin again
+  visibly threw G2's grouped block arrow to the canvas corner.]
 
 A table on a Numbers sheet is itself a drawable: `TST.TableInfoArchive.super`
 is a required `TSD.DrawableArchive` — see [tables.md](tables.md).
@@ -237,7 +242,10 @@ closeSubpath = 5 }`. This is what `bezier_path_source.path` carries and what
   (`TSD.StrokePatternArchive`: type TSDSolidPattern=1/TSDEmptyPattern=2,
   `phase`, `count`, repeated float `pattern` = the dash array),
   `smart_stroke` (named texture stroke with a parameter dictionary), `frame`,
-  `patterned_stroke`.
+  `patterned_stroke`. A stroke whose pattern type is TSDEmptyPattern=2 draws
+  NOTHING (not solid): theme preset styles ship a fully-parameterized 1pt
+  black stroke with an empty pattern and Apple paints no border
+  [inferred→fixture-verified: G2 'captions-0-shapestyle' textbox presets].
 - `TSD.LineEndArchive` (210-216): `path` (TSP.Path), `line_join` (default
   MiterJoin), `end_point`, `is_filled`, `identifier` (string) — preset
   arrowhead identity + optional explicit outline.
@@ -249,7 +257,13 @@ default **5**, `radius` **int32** default 1, `opacity` default 1,
 `is_enabled` default true, `type`: TSDDropShadow=0/TSDContactShadow=1/
 TSDCurvedShadow=2, plus per-type payloads: `TSD.DropShadowArchive` (empty),
 `TSD.ContactShadowArchive { height = 2 default 0.2, offset = 4 default 0 }`,
-`TSD.CurvedShadowArchive { curve = 1 default 0.6 }`.
+`TSD.CurvedShadowArchive { curve = 1 default 0.6 }`. Preset styles carry
+disabled shadows with `is_enabled = 0` — honor the flag before painting
+[fixture: G2 caption presets]. Drop-shadow angle renders as dx=cos(θ),
+dy=sin(θ) with screen y-down (angle 45 + offset 5 = down-right in Apple's
+raster) [fixture: G2 pentagon]. An EMPTY `TSD.ReflectionArchive` in a preset
+means "no reflection"; a real reflection stores `opacity` explicitly even at
+the 0.5 default [fixture: G2 pentagon vs caption presets].
 
 ### Other style payloads [proto] TSDArchives.proto
 
