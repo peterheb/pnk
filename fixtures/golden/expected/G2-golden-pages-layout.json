@@ -1284,7 +1284,7 @@
                   "width": 57.045833587646484,
                   "height": 0.0
                 },
-                "angleDeg": 10313.240312354817,
+                "angleDeg": 180.0,
                 "locked": false,
                 "textWrap": {
                   "kind": "largest",
@@ -1350,7 +1350,7 @@
                     {
                       "type": "line",
                       "points": [
-                        141.42135620117188,
+                        57.045833587646484,
                         0.0
                       ]
                     }
@@ -1475,5 +1475,15 @@
       "headersFootersMatchPreviousPage": true
     }
   ],
-  "sections": []
+  "sections": [
+    {
+      "name": "Blank",
+      "pageNumbering": {
+        "restart": false,
+        "startAt": 1.0,
+        "firstPageNumberKind": "continue"
+      },
+      "inheritPreviousHeaderFooter": true
+    }
+  ]
 }

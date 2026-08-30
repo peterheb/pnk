@@ -7,7 +7,8 @@
   "scripts": {
     "build": "bash ../scripts/build_viewer.sh",
     "serve": "node_modules/.bin/esbuild --servedir=dist --serve=127.0.0.1:8123 --log-level=warning",
-    "test": "playwright test"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "npm run typecheck && playwright test"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",
