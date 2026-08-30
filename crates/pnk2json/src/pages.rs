@@ -263,11 +263,46 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
             } else {
                 sec.odd_page_template.as_deref()
             };
-            let Some(t) = name.and_then(|n| by_name.get(n)) else { continue };
-            let mut td: Vec<Drawable> = t.drawables.clone();
-            for ph in &t.placeholders {
-                if !fp.drawables.iter().any(|d| same_geometry(d, &ph.drawable)) {
-                    td.push(ph.drawable.clone());
+            let t = name.and_then(|n| by_name.get(n));
+            let mut td: Vec<Drawable> = Vec::new();
+            // Page background, resolved: the template's own fill wins, else
+            // the section's (Labothek covers: section background_fill
+            // #297000 paints the full green page under white title text).
+            // Baked as a full-page rect at the bottom of the underlay so the
+            // viewer stays a verbatim painter (model-review §3c).
+            let bg = t
+                .and_then(|t| t.background_fill.clone())
+                .or_else(|| sec.background_fill.clone());
+            if let (Some(fill), Some(size)) = (bg, page_size.as_ref()) {
+                td.push(Drawable::Shape {
+                    common: DrawableCommon {
+                        position: Some(Point { x: 0.0, y: 0.0 }),
+                        size: Some(*size),
+                        style: Some(DrawableStyle {
+                            fill: Some(fill),
+                            ..DrawableStyle::default()
+                        }),
+                        ..DrawableCommon::default()
+                    },
+                    geometry: ShapeGeometry {
+                        preset: Some("rect".into()),
+                        scalar: None,
+                        natural_size: None,
+                        path: None,
+                        callout: None,
+                    },
+                    text: None,
+                    vertical_alignment: None,
+                    text_insets: None,
+                    text_fit: None,
+                });
+            }
+            if let Some(t) = t {
+                td.extend(t.drawables.iter().cloned());
+                for ph in &t.placeholders {
+                    if !fp.drawables.iter().any(|d| same_geometry(d, &ph.drawable)) {
+                        td.push(ph.drawable.clone());
+                    }
                 }
             }
             if !td.is_empty() {

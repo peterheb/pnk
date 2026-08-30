@@ -362,3 +362,9 @@ table.sheet-table.own-strokes td, table.sheet-table.own-strokes th { border: non
   display: inline-block; vertical-align: text-bottom;
   background: #d4d4d8; border-radius: 2px; min-width: 8px; min-height: 8px;
 }
+/* Canvas drawable text needs the same TAB treatment as the print area:
+   Labothek heading bands store "\t Arbeitsmaterialien" and Apple jumps the
+   default 36pt tab stop past the deco square — collapsed tabs overlap it. */
+.drawable-text p, .drawable-text h1, .drawable-text h2, .drawable-text h3,
+.drawable-text h4, .drawable-text h5, .drawable-text h6,
+.drawable-text .list-item { white-space: pre-wrap; tab-size: 36px; }
