@@ -384,6 +384,29 @@ fn shape_info_drawable(
         d
     };
 
+    // Classic-import anchored geometry: Keynote-'09-converted decks (format
+    // 1.5) store some text shapes' geometry with flags == 0 and position =
+    // the shape's CENTER, not its top-left. 0d5851c0 slide 1: the title
+    // stores (512, 638) — the slide's horizontal center — and Apple lays the
+    // 500×36 rect out at 262..762 with its centered text on x=512; modern
+    // archives (G2, 0f9df553) always write flags 3 (7 when rotated).
+    // Re-anchor to top-left here so the model's geometry contract holds and
+    // the viewer never learns about the flag. A 0×0 anchored label is
+    // unaffected (shift of half-zero), and rotation is left alone — no
+    // rotated flags==0 sample exists to verify against. [inferred: flag-bit
+    // semantics are undocumented; behavior verified against Apple's own
+    // render of 0d5851c0 slides 1/27/28]
+    if shape.msg(1).and_then(|d| d.msg(1)).and_then(|g| g.varint(3)) == Some(0) {
+        if let Drawable::Shape { common, .. } | Drawable::Textbox { common, .. } = &mut drawable {
+            if common.angle_deg.unwrap_or(0.0) == 0.0 {
+                if let (Some(p), Some(s)) = (common.position.as_mut(), common.size.as_ref()) {
+                    p.x -= s.width / 2.0;
+                    p.y -= s.height / 2.0;
+                }
+            }
+        }
+    }
+
     // Distinguish a bare empty textbox: if the shape has no pathsource and no
     // style at all it is still a textbox; nothing more to do here.
     let _ = id;
