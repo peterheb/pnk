@@ -268,29 +268,47 @@ pub fn extract_from_msg(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText> {
                 }
             }
 
-            // Smart fields overlapping this segment: date fields or hyperlinks.
+            // Smart fields overlapping this segment: date fields or
+            // hyperlinks. Dispatch on the record's registry NAME — field
+            // sniffing misfired on TSWP.PlaceholderSmartFieldArchive, whose
+            // field 2 (localizable bool) turned whole template paragraphs
+            // into garbage links (00C Textbook fixture).
             let mut hyperlink: Option<String> = None;
             let mut field_kind: Option<FieldKind> = None;
             for se in &smart_entries {
                 if se.utf16_off >= b0 && se.utf16_off < b1 {
                     if let Some(sid) = se.object_id {
+                        let type_name = ctx
+                            .loaded
+                            .record(sid)
+                            .and_then(|r| r.name.clone())
+                            .unwrap_or_default();
                         if let Some(sm) = ctx.loaded.msg(sid).cloned() {
-                            // DateTimeSmartFieldArchive: update_plan = 6
-                            if sm.has(6) && sm.string(1).is_none() {
-                                let plan = match sm.varint(6).unwrap_or(1) {
-                                    0 => DateUpdatePlan::Never,
-                                    2 => DateUpdatePlan::Once,
-                                    _ => DateUpdatePlan::Auto,
-                                };
-                                field_kind = Some(FieldKind::Date { update_plan: plan });
-                            } else if sm.has(2) {
-                                // HyperlinkFieldArchive: url_ref = 2. The URL
-                                // itself usually lives in a referenced object
-                                // (field 1 or 3 there); resolve best effort.
-                                hyperlink = sm
-                                    .reference(2)
-                                    .and_then(|u| ctx.loaded.msg(u))
-                                    .and_then(|um| um.string(1).or_else(|| um.string(3)));
+                            match type_name.as_str() {
+                                "TSWP.DateTimeSmartFieldArchive" => {
+                                    // update_plan = 6 [proto]
+                                    let plan = match sm.varint(6).unwrap_or(1) {
+                                        0 => DateUpdatePlan::Never,
+                                        2 => DateUpdatePlan::Once,
+                                        _ => DateUpdatePlan::Auto,
+                                    };
+                                    field_kind = Some(FieldKind::Date { update_plan: plan });
+                                }
+                                "TSWP.HyperlinkFieldArchive"
+                                | "TSWP.UnsupportedHyperlinkFieldArchive" => {
+                                    // url_ref is a plain STRING field 2 [proto:
+                                    // TSWPArchives.proto:782]; older writers may
+                                    // store a reference to a URL object instead.
+                                    hyperlink = sm.string(2).filter(|u| valid_url(u)).or_else(|| {
+                                        sm.reference(2)
+                                            .and_then(|u| ctx.loaded.msg(u))
+                                            .and_then(|um| um.string(1).or_else(|| um.string(3)))
+                                            .filter(|u| valid_url(u))
+                                    });
+                                }
+                                // Placeholder/bookmark/TOC smart fields: plain
+                                // text, no decoration.
+                                _ => {}
                             }
                         }
                     }
@@ -340,6 +358,14 @@ pub fn extract_from_msg(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText> {
     }
 
     Some(ExtractedText { text: StyledText { paragraphs }, footnotes })
+}
+
+/// A plausible hyperlink target: printable, and either scheme-qualified or
+/// an anchor/mail target — rejects protobuf bytes misread as strings.
+fn valid_url(u: &str) -> bool {
+    !u.is_empty()
+        && !u.chars().any(|c| (c as u32) < 0x20 || c == '\u{FFFD}')
+        && (u.contains("://") || u.starts_with("mailto:") || u.starts_with('#'))
 }
 
 enum AttachmentResult {

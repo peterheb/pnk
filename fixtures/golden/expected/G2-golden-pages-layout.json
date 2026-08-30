@@ -210,7 +210,8 @@
                 ]
               }
             ]
-          }
+          },
+          "verticalAlignment": "top"
         },
         {
           "type": "shape",
@@ -267,7 +268,8 @@
                 "items": []
               }
             ]
-          }
+          },
+          "verticalAlignment": "middle"
         },
         {
           "type": "shape",
@@ -387,7 +389,8 @@
                 "items": []
               }
             ]
-          }
+          },
+          "verticalAlignment": "middle"
         },
         {
           "type": "shape",
@@ -477,7 +480,8 @@
                 "items": []
               }
             ]
-          }
+          },
+          "verticalAlignment": "middle"
         },
         {
           "type": "shape",
@@ -529,7 +533,8 @@
                 ]
               }
             ]
-          }
+          },
+          "verticalAlignment": "middle"
         },
         {
           "type": "shape",
@@ -625,7 +630,8 @@
                 "items": []
               }
             ]
-          }
+          },
+          "verticalAlignment": "middle"
         },
         {
           "type": "shape",
@@ -722,7 +728,8 @@
                 "items": []
               }
             ]
-          }
+          },
+          "verticalAlignment": "middle"
         },
         {
           "type": "shape",
@@ -836,7 +843,8 @@
                 "items": []
               }
             ]
-          }
+          },
+          "verticalAlignment": "middle"
         },
         {
           "type": "shape",
@@ -928,7 +936,8 @@
                 "items": []
               }
             ]
-          }
+          },
+          "verticalAlignment": "middle"
         },
         {
           "type": "shape",
@@ -1084,7 +1093,8 @@
                 "items": []
               }
             ]
-          }
+          },
+          "verticalAlignment": "top"
         },
         {
           "type": "textbox",
@@ -1144,12 +1154,14 @@
                 "items": [
                   {
                     "text": "https://commons.wikimedia.org/wiki/File:Tabby_cat_with_blue_eyes-3336579.jpg",
-                    "cStyle": 6
+                    "cStyle": 6,
+                    "hyperlink": "https://commons.wikimedia.org/wiki/File:Tabby_cat_with_blue_eyes-3336579.jpg"
                   }
                 ]
               }
             ]
-          }
+          },
+          "verticalAlignment": "top"
         },
         {
           "type": "image",
@@ -1271,7 +1283,8 @@
                     "items": []
                   }
                 ]
-              }
+              },
+              "verticalAlignment": "middle"
             },
             {
               "type": "shape",
@@ -1363,7 +1376,8 @@
                     "items": []
                   }
                 ]
-              }
+              },
+              "verticalAlignment": "top"
             }
           ]
         }
@@ -1402,7 +1416,8 @@
                 ]
               }
             ]
-          }
+          },
+          "verticalAlignment": "middle"
         },
         {
           "type": "textbox",
@@ -1459,7 +1474,8 @@
                 ]
               }
             ]
-          }
+          },
+          "verticalAlignment": "top"
         }
       ]
     }

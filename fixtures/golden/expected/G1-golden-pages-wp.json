@@ -219,6 +219,176 @@
     ]
   },
   "floating": [],
-  "pageTemplates": [],
-  "sections": []
+  "pageTemplates": [
+    {
+      "name": "Template 1",
+      "drawables": [],
+      "placeholders": [],
+      "headers": [
+        {
+          "paragraphs": [
+            {
+              "items": []
+            }
+          ]
+        },
+        {
+          "paragraphs": [
+            {
+              "items": []
+            }
+          ]
+        },
+        {
+          "paragraphs": [
+            {
+              "items": []
+            }
+          ]
+        }
+      ],
+      "footers": [
+        {
+          "paragraphs": [
+            {
+              "items": []
+            }
+          ]
+        },
+        {
+          "paragraphs": [
+            {
+              "items": []
+            }
+          ]
+        },
+        {
+          "paragraphs": [
+            {
+              "items": []
+            }
+          ]
+        }
+      ],
+      "headersFootersMatchPreviousPage": false
+    },
+    {
+      "name": "Template 2",
+      "drawables": [],
+      "placeholders": [],
+      "headers": [
+        {
+          "paragraphs": [
+            {
+              "items": []
+            }
+          ]
+        },
+        {
+          "paragraphs": [
+            {
+              "items": []
+            }
+          ]
+        },
+        {
+          "paragraphs": [
+            {
+              "items": []
+            }
+          ]
+        }
+      ],
+      "footers": [
+        {
+          "paragraphs": [
+            {
+              "items": []
+            }
+          ]
+        },
+        {
+          "paragraphs": [
+            {
+              "items": []
+            }
+          ]
+        },
+        {
+          "paragraphs": [
+            {
+              "items": []
+            }
+          ]
+        }
+      ],
+      "headersFootersMatchPreviousPage": false
+    },
+    {
+      "name": "Template 3",
+      "drawables": [],
+      "placeholders": [],
+      "headers": [
+        {
+          "paragraphs": [
+            {
+              "items": []
+            }
+          ]
+        },
+        {
+          "paragraphs": [
+            {
+              "items": []
+            }
+          ]
+        },
+        {
+          "paragraphs": [
+            {
+              "items": []
+            }
+          ]
+        }
+      ],
+      "footers": [
+        {
+          "paragraphs": [
+            {
+              "items": []
+            }
+          ]
+        },
+        {
+          "paragraphs": [
+            {
+              "items": []
+            }
+          ]
+        },
+        {
+          "paragraphs": [
+            {
+              "items": []
+            }
+          ]
+        }
+      ],
+      "headersFootersMatchPreviousPage": false
+    }
+  ],
+  "sections": [
+    {
+      "name": "Blank",
+      "firstPageTemplate": "Template 1",
+      "evenPageTemplate": "Template 2",
+      "oddPageTemplate": "Template 3",
+      "pageNumbering": {
+        "restart": false,
+        "startAt": 1.0,
+        "firstPageNumberKind": "continue"
+      },
+      "inheritPreviousHeaderFooter": true
+    }
+  ]
 }

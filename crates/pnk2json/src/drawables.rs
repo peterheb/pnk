@@ -446,10 +446,20 @@ fn image_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
     common.style = style;
     merge_extras(&mut common, extras);
 
-    let image = m
-        .reference(11)
-        .or_else(|| m.reference(2))
-        .map(|id| ctx.media_ref(id));
+    // Display data pick (agent P): prefer the primary data, but when its
+    // bytes are absent from the package fall back to a materialized
+    // alternative — template packages ship only the `-small` preview
+    // (00C Textbook: cover references the full-size jpg that is not in
+    // Data/, only its -small sibling is).
+    let main_id = m.reference(11).or_else(|| m.reference(2));
+    let thumb_id = m.reference(12).or_else(|| m.reference(6));
+    let orig_id = m.reference(13).or_else(|| m.reference(8));
+    let display_id = [main_id, thumb_id, orig_id]
+        .into_iter()
+        .flatten()
+        .find(|id| ctx.data_available(*id))
+        .or(main_id);
+    let image = display_id.map(|id| ctx.media_ref(id));
     let image = match image {
         Some(r) => r,
         None => {

@@ -379,6 +379,25 @@ impl Ctx {
         r
     }
 
+    /// Are the bytes for this DataInfo actually reachable (Data/ member
+    /// present, or a remote URL recorded)? Template packages ship only
+    /// `-small` preview variants; callers use this to pick a materialized
+    /// alternative (agent P, 00C Textbook fixture).
+    pub fn data_available(&self, data_id: u64) -> bool {
+        self.datas
+            .get(&data_id)
+            .map(|e| {
+                e.remote_url.is_some()
+                    || e
+                        .file_name
+                        .as_deref()
+                        .or(e.preferred_file_name.as_deref())
+                        .map(|n| self.members.data_file(n).is_some())
+                        .unwrap_or(false)
+            })
+            .unwrap_or(false)
+    }
+
     /// The envelope `media[]`: every referenced DataInfo (dead formats are
     /// dropped per docs/model-design.md §6). Assets whose Data/ bytes are
     /// absent get a `media-missing` warning.

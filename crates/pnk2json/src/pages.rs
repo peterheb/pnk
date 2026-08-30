@@ -190,6 +190,42 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
         ));
     }
 
+    // Page-layout: resolve each canvas's template UNDERLAY into
+    // FloatingPage.template_drawables (docs/model-review.md §3c) — the
+    // section's first/even/odd template drawables plus placeholder drawables
+    // not superseded by a same-geometry drawable already on the page.
+    if matches!(flavor, PagesFlavor::PageLayout) && !sections.is_empty() {
+        let by_name: std::collections::HashMap<String, PageTemplate> = page_templates
+            .iter()
+            .filter_map(|t| t.name.clone().map(|n| (n, t.clone())))
+            .collect();
+        for (i, fp) in floating.iter_mut().enumerate() {
+            let page = fp.page_index.map(|v| v as usize).unwrap_or(i);
+            let sec = &sections[page.min(sections.len() - 1)];
+            let name = if page == 0 {
+                sec.first_page_template
+                    .as_deref()
+                    .or(sec.odd_page_template.as_deref())
+            } else if (page + 1) % 2 == 0 {
+                sec.even_page_template
+                    .as_deref()
+                    .or(sec.odd_page_template.as_deref())
+            } else {
+                sec.odd_page_template.as_deref()
+            };
+            let Some(t) = name.and_then(|n| by_name.get(n)) else { continue };
+            let mut td: Vec<Drawable> = t.drawables.clone();
+            for ph in &t.placeholders {
+                if !fp.drawables.iter().any(|d| same_geometry(d, &ph.drawable)) {
+                    td.push(ph.drawable.clone());
+                }
+            }
+            if !td.is_empty() {
+                fp.template_drawables = Some(td);
+            }
+        }
+    }
+
     PagesDocument {
         kind: "pages".to_string(),
         flavor,
@@ -211,6 +247,27 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
         table_of_contents: None,
     }
     .with_locale(locale)
+}
+
+/// A page drawable supersedes a template placeholder when it sits at the
+/// same position with the same size (±1pt) [inferred heuristic — the format
+/// links them via UUIDs we do not model].
+fn same_geometry(a: &Drawable, b: &Drawable) -> bool {
+    fn common(d: &Drawable) -> Option<&DrawableCommon> {
+        match d {
+            Drawable::Shape { common, .. } | Drawable::Textbox { common, .. } => Some(common),
+            _ => None,
+        }
+    }
+    let (Some(ca), Some(cb)) = (common(a), common(b)) else { return false };
+    let close = |x: f64, y: f64| (x - y).abs() <= 1.0;
+    match (&ca.position, &cb.position, &ca.size, &cb.size) {
+        (Some(pa), Some(pb), Some(sa), Some(sb)) => {
+            close(pa.x, pb.x) && close(pa.y, pb.y)
+                && close(sa.width, sb.width) && close(sa.height, sb.height)
+        }
+        _ => false,
+    }
 }
 
 impl PagesDocument {
@@ -242,11 +299,18 @@ fn convert_page_template(ctx: &mut Ctx, tid: u64, index: usize) -> (PageTemplate
         .filter(|s| !s.is_empty())
         .filter(|s| !s.chars().any(|c| (c as u32) < 0x20 || c == '\u{FFFD}'));
 
-    let drawables: Vec<Drawable> = m
-        .references(2)
-        .into_iter()
-        .map(|d| crate::drawables::convert_drawable(ctx, d))
-        .collect();
+    // On the PageMasterArchive layout fields 1/2 are header/footer STORAGE
+    // refs, not drawables — leave drawables/placeholders empty there.
+    let is_master = ctx.loaded.record(tid).map(|r| r.type_id) == Some(10143);
+
+    let drawables: Vec<Drawable> = if is_master {
+        Vec::new()
+    } else {
+        m.references(2)
+            .into_iter()
+            .map(|d| crate::drawables::convert_drawable(ctx, d))
+            .collect()
+    };
 
     let mut placeholders = Vec::new();
     for pair in m.msgs(3) {
@@ -269,7 +333,6 @@ fn convert_page_template(ctx: &mut Ctx, tid: u64, index: usize) -> (PageTemplate
     // three column storages each — left/center/right [inferred, fixture G5]).
     // For the TP.PageTemplateArchive layout, headers/footers are at f>=8
     // [inferred]. Dispatch on the record's type id.
-    let is_master = ctx.loaded.record(tid).map(|r| r.type_id) == Some(10143);
     let (headers, footers) = if !is_master {
         // Headers/footers via template_headers_footers (PageTemplateArchive)
         template_headers_footers(ctx, &m)
