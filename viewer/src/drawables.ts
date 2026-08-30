@@ -830,9 +830,11 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
     // them as canvas drawables inside this positioned container
     for (const child of d.children) div.appendChild(renderCanvasDrawable(child, doc, ctx));
   } else if (d.type === "connection-line") {
-    const svg = shapeSvg({ path: d.path }, w, h, c.style);
-    svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
-    div.appendChild(svg);
+    // NOTE: shapeSvg pins the viewBox to >=1 per axis — vertical/horizontal
+    // connection lines have a 0-width/0-height frame, and a zero (or 1e-7)
+    // viewBox dimension either disables rendering or blows the stroke up by
+    // the reciprocal (a 6.8e-7pt-wide frame painted a full-slide black band).
+    div.appendChild(shapeSvg({ path: d.path }, w, h, c.style));
   } else if (d.type === "table") {
     const wrap = el("div", "canvas-table-wrap");
     wrap.appendChild(renderTable(d.table, ctx));

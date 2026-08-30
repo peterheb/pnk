@@ -354,3 +354,11 @@ table.sheet-table.own-strokes td, table.sheet-table.own-strokes th { border: non
 }
 .media-vector-caption { font-size: 9px; color: #71717a; padding: 2px 4px; max-width: 100%;
   white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+
+/* === drawables specialist === */
+/* Inline vector attachment (PDF/AI/EPS with no raster twin): a quiet tile
+   instead of a broken-image icon; sized by the drawable, tiny by nature. */
+.inline-vector-tile {
+  display: inline-block; vertical-align: text-bottom;
+  background: #d4d4d8; border-radius: 2px; min-width: 8px; min-height: 8px;
+}

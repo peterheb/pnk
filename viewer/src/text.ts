@@ -306,8 +306,26 @@ function renderParagraphContent(
 
 /** An inline-attachment image: flows with the sentence, baseline-aligned. */
 function inlineImageEl(d: ImageDrawable, ctx: ViewerCtx): HTMLElement {
-  const url = ctx.url(d.image.dataId);
+  let url = ctx.url(d.image.dataId);
   const size = d.common?.size;
+  // Vector art (PDF/AI/EPS) cannot be an <img> src: fall back to a raster
+  // thumbnail twin when one ships, else a small neutral tile — a broken-image
+  // icon per attachment turned the kcsrk equation-dense deck into noise.
+  const isVec = (n?: string) => /\.(pdf|ai|eps)$/i.test(n ?? "");
+  if (isVec(d.image.preferredFileName ?? d.image.fileName)) {
+    const thumbUrl = d.thumbnail ? ctx.url(d.thumbnail.dataId) : undefined;
+    if (thumbUrl && !isVec(d.thumbnail?.fileName ?? d.thumbnail?.preferredFileName)) {
+      url = thumbUrl;
+    } else {
+      const tile = document.createElement("span");
+      tile.className = "inline-vector-tile";
+      if (size) {
+        tile.style.width = `${size.width}px`;
+        tile.style.height = `${size.height}px`;
+      }
+      return tile;
+    }
+  }
   if (!url) {
     const miss = document.createElement("span");
     miss.className = "media-missing";

@@ -668,36 +668,203 @@ fn group_drawable(
     Drawable::Group { common, children, freehand }
 }
 
+/// Geometry (position + size) of a connection anchor drawable, whatever its
+/// wrapper depth: TSD.ShapeArchive nests DrawableArchive once,
+/// TSWP.ShapeInfoArchive twice, KN/TP placeholders three times. Walk down
+/// `super = 1` until a level parses as DrawableArchive.geometry (a nested
+/// message whose field 1/2 decode as TSP.Point + TSP.Size).
+fn anchor_geometry(ctx: &Ctx, aid: u64) -> Option<(Point, Size)> {
+    let mut cur = ctx.loaded.msg(aid)?.clone();
+    for _ in 0..4 {
+        if let Some(g) = cur.msg(1) {
+            if let (Some((x, y)), Some((w, h))) = (g.point(1), g.size(2)) {
+                return Some((Point { x, y }, Size { width: w, height: h }));
+            }
+        }
+        cur = cur.msg(1)?.clone();
+    }
+    None
+}
+
+/// Ellipse radius of the box inscribed in `s`, along unit direction (ux,uy):
+/// how far a connection line travels from the shape's center to its border.
+/// Exact for circles/ovals (the dominant connected shape), close enough for
+/// boxes (corners under-trim by <=sqrt(2), hidden under the shape itself).
+fn border_trim(s: &Size, ux: f64, uy: f64) -> f64 {
+    let hw = (s.width / 2.0).max(1e-6);
+    let hh = (s.height / 2.0).max(1e-6);
+    1.0 / ((ux / hw).powi(2) + (uy / hh).powi(2)).sqrt()
+}
+
 fn connection_line_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
     // ConnectionLineArchive { super = 1 (ShapeArchive), connected_from = 2,
     // connected_to = 3 } (drawables.md).
-    let common = match m.msg(1) {
+    let mut common = match m.msg(1) {
         Some(shape) => common_from_shape(ctx, &shape),
         None => DrawableCommon::default(),
     };
+    // A connection line is a stroke-only open path: resolved theme styles can
+    // still carry a fill, and painting it floods giant polygons (kcsrk deck
+    // slide 22 grew full-width black bands). Apple never fills these.
+    if let Some(st) = common.style.as_mut() {
+        st.fill = None;
+    }
     // Routing path: super(1).pathsource(3).connection_line_path_source(7)
     //   .super(1).path(3)
-    let path = m
-        .msg(1)
-        .and_then(|shape| shape.msg(3))
-        .and_then(|ps| ps.msg(7))
+    let cl_source = m.msg(1).and_then(|shape| shape.msg(3)).and_then(|ps| ps.msg(7));
+    let stored = cl_source
+        .as_ref()
         .and_then(|cl| cl.msg(1))
         .and_then(|bz| bz.msg(3))
         .as_ref()
         .and_then(crate::tsd::tsp_path)
         .unwrap_or(CurvePath { elements: Vec::new() });
-    let anchor = |aid: Option<u64>| -> Option<AnchorFacts> {
-        aid.and_then(|aid| ctx.loaded.msg(aid))
-            .and_then(|am| am.msg(1)) // DrawableArchive
-            .and_then(|d| d.msg(1)) // GeometryArchive
-            .map(|g| AnchorFacts {
-                position: g.point(1).map(|(x, y)| Point { x, y }),
-                size: g.size(2).map(|(w, h)| Size { width: w, height: h }),
-            })
+    let outset_from = cl_source.as_ref().and_then(|cl| cl.f32v(3)).unwrap_or(0.0) as f64;
+    let outset_to = cl_source.as_ref().and_then(|cl| cl.f32v(4)).unwrap_or(0.0) as f64;
+
+    let from_geo = m.reference(2).and_then(|aid| anchor_geometry(ctx, aid));
+    let to_geo = m.reference(3).and_then(|aid| anchor_geometry(ctx, aid));
+
+    // REBAKE from the live anchors. The stored baked path goes stale when the
+    // connected shapes are moved after baking (fixture-verified: kcsrk deck
+    // slide 22 stores fork-line endpoints (126.7, 39.0)pt away from where
+    // Apple's own PDF export draws them; the export's segments are exactly
+    // center-to-center, trimmed by each shape's border radius). The stored
+    // path still contributes its SHAPE (elbows, curvature) via a similarity
+    // map from its endpoints onto the recomputed ones.
+    let mut path = stored;
+    if let (Some((fp, fs)), Some((tp, ts))) = (&from_geo, &to_geo) {
+        let c1 = (fp.x + fs.width / 2.0, fp.y + fs.height / 2.0);
+        let c2 = (tp.x + ts.width / 2.0, tp.y + ts.height / 2.0);
+        let (dx, dy) = (c2.0 - c1.0, c2.1 - c1.1);
+        let dist = (dx * dx + dy * dy).sqrt();
+        if dist > 1e-6 {
+            let (ux, uy) = (dx / dist, dy / dist);
+            let t1 = border_trim(fs, ux, uy) + outset_from;
+            let t2 = border_trim(ts, ux, uy) + outset_to;
+            if t1 + t2 < dist - 1.0 {
+                let start = (c1.0 + ux * t1, c1.1 + uy * t1);
+                let end = (c2.0 - ux * t2, c2.1 - uy * t2);
+                path = rebaked_connection_path(&path, start, end);
+                // Rebase to a fresh local frame: position = path bbox origin.
+                let (bb_min, bb_max) = curve_path_bounds(&path).unwrap_or(((0.0, 0.0), (0.0, 0.0)));
+                offset_curve_path(&mut path, -bb_min.0, -bb_min.1);
+                common.position = Some(Point { x: bb_min.0, y: bb_min.1 });
+                common.size = Some(Size {
+                    width: bb_max.0 - bb_min.0,
+                    height: bb_max.1 - bb_min.1,
+                });
+                common.angle_deg = None;
+            }
+        }
+    }
+
+    let facts = |g: &Option<(Point, Size)>| {
+        g.as_ref().map(|(p, s)| AnchorFacts { position: Some(*p), size: Some(*s) })
     };
-    let from = anchor(m.reference(2));
-    let to = anchor(m.reference(3));
+    let from = facts(&from_geo);
+    let to = facts(&to_geo);
     Drawable::ConnectionLine { common, path, from, to }
+}
+
+fn points_of(e: &mut CurveElement) -> &mut Vec<f64> {
+    match e {
+        CurveElement::Move { points }
+        | CurveElement::Line { points }
+        | CurveElement::Quad { points }
+        | CurveElement::Cubic { points }
+        | CurveElement::Close { points } => points,
+    }
+}
+
+fn curve_path_bounds(p: &CurvePath) -> Option<((f64, f64), (f64, f64))> {
+    let mut min = (f64::INFINITY, f64::INFINITY);
+    let mut max = (f64::NEG_INFINITY, f64::NEG_INFINITY);
+    let mut any = false;
+    for e in &p.elements {
+        let pts = match e {
+            CurveElement::Move { points }
+            | CurveElement::Line { points }
+            | CurveElement::Quad { points }
+            | CurveElement::Cubic { points }
+            | CurveElement::Close { points } => points,
+        };
+        for xy in pts.chunks(2) {
+            if xy.len() == 2 {
+                any = true;
+                min.0 = min.0.min(xy[0]);
+                min.1 = min.1.min(xy[1]);
+                max.0 = max.0.max(xy[0]);
+                max.1 = max.1.max(xy[1]);
+            }
+        }
+    }
+    any.then_some((min, max))
+}
+
+fn offset_curve_path(p: &mut CurvePath, dx: f64, dy: f64) {
+    for e in p.elements.iter_mut() {
+        let pts = points_of(e);
+        for xy in pts.chunks_mut(2) {
+            if xy.len() == 2 {
+                xy[0] += dx;
+                xy[1] += dy;
+            }
+        }
+    }
+}
+
+/// Map the stored connection path onto recomputed endpoints with the 2D
+/// similarity (rotate + uniform scale + translate) that carries its first
+/// point to `start` and its last to `end` — a straight stored path stays
+/// straight, an elbowed/curved one keeps its proportions. Degenerate stored
+/// paths are replaced by a plain segment.
+fn rebaked_connection_path(stored: &CurvePath, start: (f64, f64), end: (f64, f64)) -> CurvePath {
+    let mut flat: Vec<(f64, f64)> = Vec::new();
+    for e in &stored.elements {
+        let pts = match e {
+            CurveElement::Move { points }
+            | CurveElement::Line { points }
+            | CurveElement::Quad { points }
+            | CurveElement::Cubic { points }
+            | CurveElement::Close { points } => points,
+        };
+        for xy in pts.chunks(2) {
+            if xy.len() == 2 {
+                flat.push((xy[0], xy[1]));
+            }
+        }
+    }
+    let straight = || CurvePath {
+        elements: vec![
+            CurveElement::Move { points: vec![start.0, start.1] },
+            CurveElement::Line { points: vec![end.0, end.1] },
+        ],
+    };
+    let (Some(s0), Some(s2)) = (flat.first().copied(), flat.last().copied()) else {
+        return straight();
+    };
+    let vs = (s2.0 - s0.0, s2.1 - s0.1);
+    let ls2 = vs.0 * vs.0 + vs.1 * vs.1;
+    if ls2 < 1e-9 {
+        return straight();
+    }
+    let vn = (end.0 - start.0, end.1 - start.1);
+    // complex ratio vn / vs
+    let a = (vn.0 * vs.0 + vn.1 * vs.1) / ls2;
+    let b = (vn.1 * vs.0 - vn.0 * vs.1) / ls2;
+    let mut out = stored.clone();
+    for e in out.elements.iter_mut() {
+        let pts = points_of(e);
+        for xy in pts.chunks_mut(2) {
+            if xy.len() == 2 {
+                let (px, py) = (xy[0] - s0.0, xy[1] - s0.1);
+                xy[0] = start.0 + a * px - b * py;
+                xy[1] = start.1 + b * px + a * py;
+            }
+        }
+    }
+    out
 }
 
 fn table_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
