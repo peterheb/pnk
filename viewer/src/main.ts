@@ -44,6 +44,34 @@ function showLanding(): void {
 // the tab. Plain <pre> text stays fast at any size.
 const HIGHLIGHT_LIMIT = 3 * 1024 * 1024;
 
+// Pretty-print with compaction: any object/array whose one-line form fits
+// the line budget stays on one line ({"x": 511.5, "y": 728.5} instead of
+// four lines), which is how a person would write it. Built bottom-up so
+// every node is stringified exactly once — no quadratic restringify on
+// multi-MB envelopes.
+const LINE_BUDGET = 76;
+
+function prettyJson(v: unknown, indent = ""): { s: string; flat: boolean } {
+  if (v === null || typeof v !== "object") {
+    const s = JSON.stringify(v) ?? "null";
+    return { s, flat: true };
+  }
+  const isArr = Array.isArray(v);
+  const kids: { head: string; r: { s: string; flat: boolean } }[] = isArr
+    ? (v as unknown[]).map((x) => ({ head: "", r: prettyJson(x, indent + "  ") }))
+    : Object.entries(v as Record<string, unknown>).map(([k, x]) => ({
+        head: `${JSON.stringify(k)}: `,
+        r: prettyJson(x, indent + "  "),
+      }));
+  if (kids.length === 0) return { s: isArr ? "[]" : "{}", flat: true };
+  if (kids.every(({ r }) => r.flat)) {
+    const one = (isArr ? "[" : "{ ") + kids.map(({ head, r }) => head + r.s).join(", ") + (isArr ? "]" : " }");
+    if (indent.length + one.length <= LINE_BUDGET) return { s: one, flat: true };
+  }
+  const inner = kids.map(({ head, r }) => indent + "  " + head + r.s).join(",\n");
+  return { s: (isArr ? "[" : "{") + "\n" + inner + "\n" + indent + (isArr ? "]" : "}"), flat: false };
+}
+
 function highlightJson(pretty: string): string {
   const esc = pretty.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return esc.replace(
@@ -72,7 +100,7 @@ function toggleJsonView(): void {
   }
   if (!jsonRendered) {
     jsonRendered = true;
-    const pretty = JSON.stringify(JSON.parse(lastJson.text), null, 2);
+    const pretty = prettyJson(JSON.parse(lastJson.text)).s;
     const kb = pretty.length / 1024;
     $("json-size").textContent = `${lastJson.filename} · ${kb >= 1024 ? (kb / 1024).toFixed(1) + " MB" : Math.ceil(kb) + " KB"} pretty-printed`;
     const pre = $("json-pre");

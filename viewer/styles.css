@@ -76,6 +76,13 @@ body {
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
+#gh-link {
+  color: var(--muted); text-decoration: none; font-size: 12px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  padding: 2px 8px; border-radius: 6px;
+}
+#gh-link:hover { color: var(--ink); background: var(--card); }
+
 /* subtle warnings indicator + dropdown */
 #warnings-dd { position: relative; }
 #warnings-dd summary {
@@ -234,6 +241,23 @@ button:hover { border-color: var(--muted); }
   .j-str { color: #5fd39a; }
   .j-num { color: #6cb4f5; }
 }
+
+/* ---- footer --------------------------------------------------------------- */
+
+#app-footer {
+  margin: 40px 0 8px; padding-top: 14px; border-top: 1px solid var(--line);
+  font-size: 11.5px; color: var(--muted); text-align: center;
+}
+#app-footer p { margin: 4px 0; }
+#app-footer a { color: var(--muted); }
+#legal { margin-top: 2px; }
+#legal summary {
+  cursor: pointer; user-select: none; display: inline-block; list-style: none;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+#legal summary::-webkit-details-marker { display: none; }
+#legal summary:hover { color: var(--ink); }
+#legal p { max-width: 620px; margin: 6px auto; }
 
 /* ---- error card ---------------------------------------------------------- */
 
