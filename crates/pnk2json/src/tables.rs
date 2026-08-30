@@ -1032,6 +1032,7 @@ fn convert_tile(
                     style_table,
                     format_table,
                     rich_text_table,
+                    formula_table,
                     cell_pool,
                 )
             } else {
@@ -1701,12 +1702,13 @@ fn decode_cell_v4(
     style_table: &DataList,
     format_table: &DataList,
     rich_text_table: &DataList,
+    formula_table: &DataList,
     cell_pool: &mut StylePool<TableCellStyle>,
 ) -> Option<(u32, u32, TableCell, Option<CellFormat>)> {
     if std::env::var("PNK_DEBUG").is_ok() {
         eprintln!("v4 r{row}c{col} len={} type={}", buf.len(), buf.get(1).copied().unwrap_or(255));
     }
-    if buf.len() < 24 {
+    if buf.len() < 16 {
         return None;
     }
     let cell_type = buf[1];
@@ -1715,23 +1717,87 @@ fn decode_cell_v4(
         .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
         .collect();
 
-    // Style ids (fixture-verified positions: u32[3] varies per cell type =
-    // cell style; u32[4] varies per column = text style).
-    let cell_style_id = u32s.get(3).copied().map(|v| v as i32);
-    let text_style_id = u32s.get(4).copied().map(|v| v as i32);
+    // Slot 1 is a v3-style presence bitfield for the LEADING fields, laid out
+    // from slot 3 in fixed order: cell style (bit 1), text style (bit 7),
+    // format (bit 2), two unknown ids (bits 10/11), formula key (bit 3),
+    // string key (bit 4). Fixture-verified across every shape in the corpus:
+    // 0x14 {2,4} = [fmt, str] (budget County Tax Rates headers, previously
+    // dropped), 0x96 {1,2,4,7} = [cs, ts, fmt, str] (= the old fixed slots),
+    // 0xc9e adds b10/b11 before the formula key (match-score doc), 0x8c
+    // {2,3,7} = [ts, fmt, formula] (type-8 cells).
+    let flags1 = u32s.get(1).copied().unwrap_or(0);
+    let mut lead_idx = 3usize;
+    macro_rules! lead {
+        ($bit:expr) => {
+            if flags1 & (1 << $bit) != 0 {
+                let v = u32s.get(lead_idx).map(|v| *v as i32);
+                lead_idx += 1;
+                v
+            } else {
+                None
+            }
+        };
+    }
+    let cell_style_id = lead!(1);
+    let text_style_id = lead!(7);
+    let fmt_lead = lead!(2);
+    let _f10 = lead!(10);
+    let _f11 = lead!(11);
+    let formula_key = lead!(3);
+    let string_key = lead!(4);
+    let _ = lead_idx;
 
-    // Value at fixed slots: text key = slot 6; numeric value = f64 at
-    // [len-12..len-4] (the 8 bytes before the trailing slot).
-    let f64_at = |i: usize| -> Option<f64> {
-        let b = buf.get(i * 8..i * 8 + 8)?;
-        Some(f64::from_le_bytes(b.try_into().unwrap()))
-    };
+    // Value position: text key = slot 6; the numeric f64 sits right before a
+    // TRAILING block of format keys — one u32 per set bit among flag bits
+    // 16-23 of slot 2 (the v4 analogue of v5's per-kind trailing format ids;
+    // lafs durations carry bit 18 -> one key, the budget doc's 0x90013
+    // records bits 16+19 -> two, the match-score doc's 0x910451 bits
+    // 16+20+23 -> three). Corpus-validated: 294k v4 numeric cells across all
+    // 158 .numbers fixtures place a sane f64 here with zero violations
+    // (the old fixed slot-3 read produced denormal garbage on multi-key
+    // records). The format id = first trailing key found in the FORMAT list.
+    let flags2 = u32s.get(2).copied().unwrap_or(0);
+    let ntrail = (flags2 & 0x00FF_0000).count_ones() as usize;
+    let val_off = buf.len().checked_sub(8 + 4 * ntrail);
+    let f64_value = val_off
+        .and_then(|o| buf.get(o..o + 8))
+        .map(|b| f64::from_le_bytes(b.try_into().unwrap()));
+    let trailing_keys: Vec<i32> = (0..ntrail)
+        .filter_map(|i| {
+            let o = val_off? + 8 + 4 * i;
+            Some(i32::from_le_bytes(buf.get(o..o + 4)?.try_into().ok()?))
+        })
+        .collect();
+    // The leading bit-2 key is the cell's display format (County Tax Rates
+    // currency); the trailing keys are per-kind fallbacks like v5's — probe
+    // the leading key first.
+    let fmt_key = fmt_lead
+        .filter(|k| format_table.entries.contains_key(k))
+        .or_else(|| {
+            trailing_keys.iter().copied().find(|k| format_table.entries.contains_key(k))
+        })
+        .or(fmt_lead)
+        .or_else(|| trailing_keys.first().copied());
+
+    // v4 formula cells cache no computed value in the record — the key in the
+    // FORMULA list is all there is (budget doc e138671a: type-8 cells; text
+    // doc 021084ac: type-3 cells whose slot-6 key lives in the formula list,
+    // not the string list). Emit an empty cell carrying the formula ref.
+    let mut formula: Option<TsceFormulaRef> = None;
 
     let value = match cell_type {
         3 => {
-            let sid = u32s.get(6).map(|v| *v as i32)?;
+            // string key from the leading bitfield (bit 4); older fixed-slot
+            // fallback (slot 6) kept as a safety net.
+            let sid = string_key.or_else(|| u32s.get(6).map(|v| *v as i32))?;
             match string_table.entries.get(&sid).and_then(|e| e.string.clone()) {
                 Some(s) => CellValue::Text { value: s },
+                None if formula_key.is_some_and(|k| formula_table.entries.contains_key(&k)) => {
+                    // Formula-driven text cell; the result is not cached in
+                    // pre-BNC storage, so the value stays empty.
+                    formula = formula_key.map(|k| TsceFormulaRef::unparsed(k.to_string()));
+                    CellValue::Empty
+                }
                 None => {
                     ctx.warn_detail(
                         WarningCode::TableDegraded,
@@ -1742,10 +1808,32 @@ fn decode_cell_v4(
                 }
             }
         }
-        7 => CellValue::Duration { value: f64_at(3)? },
-        5 => CellValue::Date { value: crate::colors::iso_from_apple_seconds(f64_at(3)?) },
-        2 => CellValue::Number { value: f64_at(3)? },
-        6 => CellValue::Bool { value: f64_at(3)? > 0.0 },
+        8 => {
+            // Formula/error cell: no cached result in pre-BNC storage; keep
+            // the formula reference so the cell exists (styled, empty).
+            match formula_key {
+                Some(k) => {
+                    formula = Some(TsceFormulaRef::unparsed(k.to_string()));
+                    CellValue::Empty
+                }
+                None => {
+                    ctx.warn_detail(
+                        WarningCode::TableDegraded,
+                        format!("v4 formula cell without a formula key; cell r{row}c{col} dropped"),
+                        format!("r{row}c{col}"),
+                    );
+                    return None;
+                }
+            }
+        }
+        0 | 1 if cell_style_id.is_some() || text_style_id.is_some() => {
+            // Style-only cell (colored empty cells: County Tax Rates bands).
+            CellValue::Empty
+        }
+        7 => CellValue::Duration { value: f64_value? },
+        5 => CellValue::Date { value: crate::colors::iso_from_apple_seconds(f64_value?) },
+        2 => CellValue::Number { value: f64_value? },
+        6 => CellValue::Bool { value: f64_value? > 0.0 },
         9 => {
             // v4 rich-text cells: the rich-text table key sits in the
             // TRAILING u32 slot — 24-byte blocks carry it at slot 5 (IVS
@@ -1825,11 +1913,14 @@ fn decode_cell_v4(
         }
     }
     let cell_style_index = style.and_then(|s| cell_pool.intern(crate::ctx::strip_cell_defaults(s)));
+    if matches!(value, CellValue::Empty) && cell_style_index.is_none() && formula.is_none() {
+        return None;
+    }
 
-    // Format id (fixture-verified: duration/date cells carry it at slot 5;
-    // the FORMAT list holds those keys).
+    // Format id: first trailing key found in the FORMAT list, else the
+    // leading bit-2 field (equals the old slot-5 read on lafs).
     let format = match cell_type {
-        2 | 5 | 7 => u32s.get(5).map(|v| *v as i32).and_then(|id| {
+        2 | 5 | 7 => fmt_key.and_then(|id| {
             format_table.entries.get(&id).and_then(|e| {
                 e.format.clone().map(|f| CellFormat {
                     kind: match f.varint(1).unwrap_or(0) {
@@ -1869,7 +1960,7 @@ fn decode_cell_v4(
     Some((
         row,
         col,
-        TableCell { v, r#type: type_tag, cur, fmt: None, cell_style_index, formula: None },
+        TableCell { v, r#type: type_tag, cur, fmt: None, cell_style_index, formula },
         format,
     ))
 }
