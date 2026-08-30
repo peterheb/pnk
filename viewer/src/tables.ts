@@ -105,6 +105,9 @@ function applyCellStyle(td: HTMLTableCellElement, style: TableCellStyle | undefi
     if (b.left) s.borderLeft = `${b.left.widthPt}px solid ${b.left.color}`;
   }
   if (style?.text) applyCharStyle(td, style.text);
+  if (style?.paragraph?.horizontalAlignment && style.paragraph.horizontalAlignment !== "auto") {
+    td.style.textAlign = style.paragraph.horizontalAlignment;
+  }
   if (style?.verticalAlignment) s.verticalAlign = style.verticalAlignment === "middle" ? "middle" : style.verticalAlignment === "bottom" ? "bottom" : "top";
   if (style?.padding) s.padding = `${style.padding.top ?? 4}px ${style.padding.right ?? 8}px ${style.padding.bottom ?? 4}px ${style.padding.left ?? 8}px`;
   if (style?.textWrap) s.whiteSpace = "normal";
@@ -170,9 +173,16 @@ export function renderTable(model: TableModel): HTMLTableElement {
         if (merge.columnSpan > 1) td.colSpan = merge.columnSpan;
       }
       const norm = cell !== null ? asCell(cell) : null;
-      applyCellStyle(td, cellStyleOf(model, norm?.cellStyleIndex), header, footer);
+      const style = cellStyleOf(model, norm?.cellStyleIndex);
+      applyCellStyle(td, style, header, footer);
       if (norm) {
         const format = norm.fmt !== undefined ? formats[norm.fmt] : undefined;
+        // Apple convention: numeric-formatted values right-align; an
+        // explicit paragraph alignment (already applied) wins over the auto
+        const formatAligns = format !== undefined && ["number", "currency", "percent", "date", "duration"].includes(format.kind);
+        const typedAligns = norm.type === "date" || norm.type === "duration" || norm.type === "currency";
+        const numeric = typeof norm.v === "number" || typedAligns || (norm.type === undefined && formatAligns && typeof norm.v !== "string" && typeof norm.v !== "boolean");
+        if (!td.style.textAlign && numeric && norm.type !== "error") td.style.textAlign = "right";
         if (norm.type === "error") td.classList.add("cell-error");
         td.textContent = valueToText(norm, format);
       }
