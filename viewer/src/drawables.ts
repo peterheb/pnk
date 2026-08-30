@@ -234,6 +234,11 @@ function shapeSvg(g: ShapeGeometry, w: number, h: number, style: DrawableCommon[
   if (w < 1 || h < 1) {
     svg.style.width = `${vw}px`;
     svg.style.height = `${vh}px`;
+    // An inline-level svg sits on the text BASELINE of its 0-height div, which
+    // shoves the painted line ~13px down (24_Briefing master rules) — and for
+    // rotated ticks that offset turns into a sideways shift. Block layout pins
+    // it to the div's top-left, where the geometry says it belongs.
+    svg.style.display = "block";
   }
   // Stroke-width scale: average of the finite axis ratios (degenerate
   // 0-height/0-width rules would otherwise divide 0/0 into a NaN width).
