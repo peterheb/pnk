@@ -125,9 +125,16 @@ body {
 #drop-target {
   border: 2px dashed var(--line);
   border-radius: 12px;
-  padding: 36px 20px;
+  padding: 28px 20px;
   transition: border-color .15s, background .15s;
+  color: var(--muted);
 }
+#pick-btn {
+  margin-top: 12px;
+  background: var(--accent); color: #fff; border-color: var(--accent);
+  font-weight: 600;
+}
+#pick-btn:hover { background: #b73632; border-color: #b73632; }
 #drop-target.dragover { border-color: var(--accent); background: #fdf1f0; }
 #drop-target code { background: var(--surface); padding: 1px 5px; border-radius: 4px; }
 

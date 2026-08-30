@@ -21,7 +21,8 @@ const $ = (id: string) => document.getElementById(id)!;
 function showLanding(): void {
   ctx?.dispose();
   ctx = null;
-  for (const id of ["doc-filename", "app-badge", "doc-meta", "warnings-dd", "json-btn"]) {
+  // the landing card's own CTA is the only "open" on the landing screen
+  for (const id of ["doc-filename", "app-badge", "doc-meta", "warnings-dd", "json-btn", "reset-btn"]) {
     $(id).classList.add("hidden");
   }
   $("view").classList.add("hidden");
@@ -38,7 +39,7 @@ function renderHeader(doc: PnkDocument, filename: string): void {
   if (doc.meta.fileFormatVersion) meta.push(`v${doc.meta.fileFormatVersion}`);
   if (doc.meta.locale) meta.push(doc.meta.locale);
   $("doc-meta").textContent = meta.join(" · ");
-  for (const id of ["doc-filename", "app-badge", "doc-meta", "json-btn"]) {
+  for (const id of ["doc-filename", "app-badge", "doc-meta", "json-btn", "reset-btn"]) {
     $(id).classList.remove("hidden");
   }
 }
@@ -82,6 +83,7 @@ function showError(err: unknown, filename: string): void {
   badge.textContent = "rejected";
   delete badge.dataset.app;
   badge.classList.remove("hidden");
+  $("reset-btn").classList.remove("hidden");
   $("doc-meta").textContent = "";
   $("doc-meta").classList.add("hidden");
   const view = $("view");
@@ -178,8 +180,7 @@ function wireEvents(): void {
 async function boot(): Promise<void> {
   await init("wasm/pnk2json_wasm_bg.wasm");
   wireEvents();
-  $("drop-hint").textContent =
-    "Encrypted (password-protected) and legacy pre-iWork '13 files are politely refused — nothing about them leaves the browser either.";
+  $("drop-hint").textContent = "encrypted and pre-2013 files are refused.";
 }
 
 boot().catch((err) => {

@@ -18,25 +18,23 @@
       <div id="warnings-list"></div>
     </details>
     <button id="json-btn" type="button" class="hidden" title="Download the converted JSON model">json</button>
-    <button id="reset-btn" type="button" title="Open a file">open…</button>
+    <button id="reset-btn" type="button" class="hidden" title="Open a file">open…</button>
   </nav>
 
   <div id="app">
     <div id="drop-zone">
       <div id="drop-card">
         <h1>pnk<span class="brand-tld">.vu</span></h1>
-        <p class="tagline">a client-side viewer for Apple iWork files.<br>
-        <strong>everything runs in this browser</strong> — no account, no upload, no backend.</p>
+        <p class="tagline">view iWork files in your browser. nothing is uploaded.</p>
         <div class="fmt-chips">
           <span class="fmt-chip fmt-pages"><i></i>.pages</span>
           <span class="fmt-chip fmt-numbers"><i></i>.numbers</span>
           <span class="fmt-chip fmt-keynote"><i></i>.key</span>
         </div>
         <div id="drop-target">drop a file anywhere<br>
-          <span class="muted">or</span><br>
           <button id="pick-btn" type="button">choose a file…</button>
         </div>
-        <p class="muted" id="drop-hint">Encrypted (password-protected) and legacy pre-iWork&nbsp;'13 files are politely refused — nothing about them leaves the browser either.</p>
+        <p class="muted" id="drop-hint">encrypted and pre-2013 files are refused.</p>
       </div>
     </div>
 
@@ -45,7 +43,7 @@
 
   <div id="drag-overlay" class="hidden" aria-hidden="true">
     <div class="drag-overlay-card">drop to open<br>
-      <span class="drag-overlay-sub"><code>.pages</code> · <code>.numbers</code> · <code>.key</code> — parsed locally, never uploaded</span>
+      <span class="drag-overlay-sub"><code>.pages</code> · <code>.numbers</code> · <code>.key</code></span>
     </div>
   </div>
   <div id="parse-status" class="hidden" role="status"></div>
