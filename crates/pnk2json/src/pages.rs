@@ -167,10 +167,18 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
     // [proto: TSWPArchives.proto table_section], offset → SectionArchive —
     // fixture G5: entry at offset 0 → the section carrying the page masters
     // with header/footer text).
-    let mut section_ids: Vec<u64> = root.reference(5).into_iter().collect();
-    if section_ids.is_empty() {
-        if let Some(bsid) = root.reference(4) {
-            if let Some(bs) = ctx.loaded.msg(bsid) {
+    // Entries carry the section's START as a UTF-16 offset into the body
+    // buffer; layout (column) styles live in the same offset space
+    // (table_layout_style, StorageArchive field 12 [proto: TSWPArchives.proto]
+    // → TSWP.ColumnStyleArchive).
+    let mut section_ids: Vec<(u64, u64)> =
+        root.reference(5).into_iter().map(|sid| (0u64, sid)).collect();
+    let mut layout_entries: Vec<(u64, u64)> = Vec::new();
+    let mut body_text = String::new();
+    if let Some(bsid) = root.reference(4) {
+        if let Some(bs) = ctx.loaded.msg(bsid) {
+            body_text = bs.string(3).unwrap_or_default();
+            if section_ids.is_empty() {
                 if let Some(table) = bs.msg(17) {
                     let mut entries: Vec<(u64, u64)> = table
                         .msgs(1)
@@ -180,24 +188,56 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
                         })
                         .collect();
                     entries.sort_by_key(|(off, _)| *off);
-                    for (_, sid) in entries {
-                        if !section_ids.contains(&sid) {
-                            section_ids.push(sid);
+                    for (off, sid) in entries {
+                        if !section_ids.iter().any(|(_, s)| *s == sid) {
+                            section_ids.push((off, sid));
                         }
                     }
                 }
             }
+            if let Some(table) = bs.msg(12) {
+                layout_entries = table
+                    .msgs(1)
+                    .into_iter()
+                    .filter_map(|e| Some((e.varint(1).unwrap_or(0), e.reference(2)?)))
+                    .collect();
+                layout_entries.sort_by_key(|(off, _)| *off);
+            }
         }
     }
+    // Gutter fractions resolve against the printable width (page minus the
+    // left/right margins; Pages' defaults are 1in).
+    let content_width_pt = page_size.as_ref().map(|s| {
+        let m = page_margins.as_ref();
+        s.width
+            - m.and_then(|m| m.left).unwrap_or(72.0)
+            - m.and_then(|m| m.right).unwrap_or(72.0)
+    });
     let mut sections = Vec::new();
-    for (i, sec_id) in section_ids.iter().enumerate() {
-        sections.push(convert_section(
+    for (i, (off, sec_id)) in section_ids.iter().enumerate() {
+        let mut sec = convert_section(
             ctx,
             *sec_id,
             &template_names,
             i,
             &mut page_templates,
-        ));
+        );
+        if matches!(flavor, PagesFlavor::WordProcessing) {
+            // Omit-default: the first section starts at paragraph 0.
+            sec.body_paragraph_start =
+                Some(para_index_at(&body_text, *off)).filter(|p| *p > 0);
+            // Column layout in effect at the section start: the last
+            // table_layout_style entry at or before the section's offset.
+            let layout = layout_entries
+                .iter()
+                .rev()
+                .find(|(lo, _)| *lo <= *off)
+                .map(|(_, sid)| *sid);
+            if let Some(lid) = layout {
+                sec.columns = crate::styles::resolve_section_columns(ctx, lid, content_width_pt);
+            }
+        }
+        sections.push(sec);
     }
 
     // Page-layout: resolve each canvas's template UNDERLAY into
@@ -236,8 +276,21 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
         }
     }
 
+    // Footnote placement: TP.SettingsArchive.footnote_kind (field 30 [proto:
+    // TPArchives.proto]) — 0 kFootnoteKindFootnotes (page-bottom, the
+    // default → omitted), 1 document endnotes, 2 section endnotes.
+    let footnote_placement = root
+        .reference(7)
+        .and_then(|sid| ctx.loaded.msg(sid))
+        .and_then(|s| s.varint(30))
+        .and_then(|v| match v {
+            1 => Some(FootnotePlacement::DocumentEndnotes),
+            2 => Some(FootnotePlacement::SectionEndnotes),
+            _ => None,
+        });
+
     PagesDocument {
-        footnote_placement: None,
+        footnote_placement,
         kind: "pages".to_string(),
         flavor,
         meta: ctx.meta.clone(),
@@ -258,6 +311,24 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
         table_of_contents: None,
     }
     .with_locale(locale)
+}
+
+/// Paragraph index containing a UTF-16 offset in a storage text buffer:
+/// paragraphs are newline-separated, so it is the newline count before the
+/// offset (docs/format/text.md §Paragraph model).
+fn para_index_at(text: &str, utf16_off: u64) -> u32 {
+    let mut acc = 0u64;
+    let mut para = 0u32;
+    for ch in text.chars() {
+        if acc >= utf16_off {
+            break;
+        }
+        acc += ch.len_utf16() as u64;
+        if ch == '\n' {
+            para += 1;
+        }
+    }
+    para
 }
 
 /// A page drawable supersedes a template placeholder when it sits at the

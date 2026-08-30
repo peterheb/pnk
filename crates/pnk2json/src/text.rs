@@ -87,6 +87,19 @@ pub fn extract_from_msg(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText> {
     let char_entries = entries_of(storage.msg(8));
     let attach_entries = entries_of(storage.msg(9));
     let smart_entries = entries_of(storage.msg(11));
+    // Footnote anchors live in their OWN table (table_footnote, field 16
+    // [proto: TSWPArchives.proto StorageArchive]) keyed to a U+000E anchor
+    // char in the buffer — NOT in table_attachment with U+FFFC (fixture G5:
+    // "This word\u{0E} is footnoted." with the
+    // FootnoteReferenceAttachmentArchive only reachable from field 16).
+    let footnote_entries = entries_of(storage.msg(16));
+    // Drop caps: table_drop_cap_style (28 [proto: TSWPArchives.proto
+    // StorageArchive]) keys paragraph starts to DropCapStyleArchives. Applied
+    // only to the paragraph whose start EXACTLY matches an entry with an
+    // object [inferred: G5 stores {0: null, 6366: dropcap-style-0} and Apple
+    // caps only the paragraph at 6366, not the following ones — so the
+    // usual carry-forward range semantics do not hold here].
+    let dropcap_entries = entries_of(storage.msg(28));
 
     // List membership + levels + restart flags (fixture-verified against
     // G1-golden: gotchas #14):
@@ -183,6 +196,11 @@ pub fn extract_from_msg(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText> {
                 boundaries.push(e.utf16_off);
             }
         }
+        for e in &footnote_entries {
+            if e.utf16_off > p_start_u16 && e.utf16_off < p_end_u16 {
+                boundaries.push(e.utf16_off);
+            }
+        }
         for (ci, ch) in text.chars().enumerate().skip(*start).take(end.saturating_sub(*start)) {
             if ch == '\u{FFFC}' {
                 boundaries.push(map[ci]);
@@ -219,6 +237,28 @@ pub fn extract_from_msg(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText> {
             // occupies exactly one char; remaining text in the segment falls
             // through to the text path below (G5: writers glue FFFC to body
             // words in the same run).
+            // Footnote anchor at the segment start: its U+000E char becomes
+            // the mark field; the referenced storage becomes the footnote
+            // body (table_footnote, see above).
+            if let Some(fe) = footnote_entries.iter().find(|e| e.utf16_off == b0) {
+                if let AttachmentResult::Field { style, value, field } =
+                    resolve_attachment(ctx, fe.object_id, pi as u32, &mut footnotes)
+                {
+                    items.push(ParagraphItem::Field {
+                        kind: FieldTag::Field,
+                        c_style: ctx.char_pool.intern(crate::ctx::strip_char_defaults(style)),
+                        value,
+                        field,
+                    });
+                    // The anchor occupies exactly one char; the rest of the
+                    // segment continues as text.
+                    if seg.chars().count() > 1 {
+                        items.push(ParagraphItem::Plain(seg.chars().skip(1).collect()));
+                    }
+                    continue;
+                }
+            }
+
             let seg_starts_fffc = seg.starts_with('\u{FFFC}');
             let att_at_start = seg_starts_fffc
                 .then(|| attach_entries.iter().find(|e| e.utf16_off == b0))
@@ -243,7 +283,7 @@ pub fn extract_from_msg(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText> {
                         });
                         // Remaining chars of the segment (if any) continue as
                         // a text run via the normal path below.
-                        if seg.len() > 1 {
+                        if seg.chars().count() > 1 {
                             let rest: String = seg.chars().skip(1).collect();
                             items.push(ParagraphItem::Plain(rest));
                         }
@@ -258,7 +298,7 @@ pub fn extract_from_msg(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText> {
                         });
                         // Remaining chars of the segment continue as a text
                         // run (the FFFC anchor occupies exactly one char).
-                        if seg.len() > 1 {
+                        if seg.chars().count() > 1 {
                             let rest: String = seg.chars().skip(1).collect();
                             items.push(ParagraphItem::Plain(rest));
                         }
@@ -352,6 +392,14 @@ pub fn extract_from_msg(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText> {
                 lf.start = Some(1.0);
             }
             pstyle.list = Some(lf);
+        }
+        // Drop cap for the paragraph starting exactly at a table entry.
+        if let Some(dcid) = dropcap_entries
+            .iter()
+            .find(|e| e.utf16_off == p_start_u16)
+            .and_then(|e| e.object_id)
+        {
+            pstyle.drop_cap = crate::styles::resolve_drop_cap(ctx, dcid);
         }
         let p_style = ctx.para_pool.intern(crate::ctx::strip_para_defaults(pstyle));
         paragraphs.push(Paragraph { p_style, items });

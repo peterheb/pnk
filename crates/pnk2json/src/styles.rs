@@ -441,7 +441,7 @@ pub fn resolve_list_format(ctx: &mut Ctx, list_id: u64, level: u32) -> Option<Li
         .find(|v| !v.is_empty())
         .unwrap_or_default();
     Some(ListFormat {
-        number_surround: None,
+        number_surround,
         level,
         marker_kind,
         marker_text,
@@ -449,6 +449,98 @@ pub fn resolve_list_format(ctx: &mut Ctx, list_id: u64, level: u32) -> Option<Li
         marker_image,
         start: None,
         marker_indent_pt: at_level(&indents, level).map(|v| v as f64),
+    })
+}
+
+/// Number SURROUND from the same NumberType enum value: each scheme comes in
+/// a triple ordered Decimal ("1."), DoubleParen ("(1)"), RightParen ("1)")
+/// [proto: TSWPArchives.proto TSWP.ListStyleArchive.NumberType;
+///  parser: numbers-parser bullets.py BULLET_PREFIXES/SUFFIXES]. The triples
+/// run 0..=47 from base 0 and resume at 49 (Arabian) and 62 (Hebrew biblical
+/// decimal); the two singleton kinds — circled (48) and Hebrew biblical
+/// standard (61) — carry no punctuation. Period is the default → None (the
+/// model omits it per omit-default).
+fn number_surround_of(kind: u64) -> Option<NumberSurround> {
+    let triple = |base: u64| match (kind - base) % 3 {
+        1 => Some(NumberSurround::DoubleParen),
+        2 => Some(NumberSurround::Paren),
+        _ => None, // Decimal = period = the default
+    };
+    match kind {
+        0..=47 => triple(0),
+        48 | 61 => Some(NumberSurround::None),
+        49..=60 => triple(49),
+        62..=64 => triple(62),
+        _ => None,
+    }
+}
+
+/// TSWP.ColumnStyleArchive chain → SectionColumns. Column properties ride in
+/// slot 11 like char properties (ColumnStylePropertiesArchive), with
+/// `columns_null` (6) clearing and `columns` (7) carrying a ColumnsArchive:
+/// equal_columns (1) { count = 1, gap = 2 } [proto: TSWPArchives.proto].
+/// Non-equal columns degrade to their count with a warning (model contract).
+/// The stored gap is a FRACTION of the printable width when <= 1 (fixture
+/// 16b4195d: count=2, gap=0.05 on a 612pt page) [inferred]; multiply by
+/// `content_width_pt` when available, else emit no gutter.
+pub fn resolve_section_columns(
+    ctx: &mut Ctx,
+    style_id: u64,
+    content_width_pt: Option<f64>,
+) -> Option<SectionColumns> {
+    let msgs = chain(ctx, style_id, 11);
+    let cols = take(&msgs, 7, Some(6))?.msg(7)?;
+    let (count, gap) = if let Some(eq) = cols.msg(1) {
+        (eq.varint(1).unwrap_or(1) as u32, eq.f32v(2).map(|v| v as f64))
+    } else if let Some(ne) = cols.msg(2) {
+        // first (1) + following (2, repeated GapWidthArchive) — degrade.
+        let count = 1 + ne.msgs(2).len() as u32;
+        ctx.warn(
+            WarningCode::UnsupportedFeature,
+            format!("unequal-width columns degraded to {count} equal columns"),
+        );
+        (count, None)
+    } else {
+        return None;
+    };
+    if count < 2 {
+        return None;
+    }
+    let gutter_pt = gap.map(|g| if g <= 1.0 { g * content_width_pt.unwrap_or(0.0) } else { g })
+        .filter(|g| *g > 0.0);
+    Some(SectionColumns { count, gutter_pt })
+}
+
+/// TSWP.DropCapStyleArchive → resolved DropCap [proto: TSWPArchives.proto:
+/// drop_cap_properties (12) → DropCapStylePropertiesArchive.drop_cap (1) =
+/// DropCapArchive { type=1, number_of_lines=2 (default 3),
+/// number_of_raised_lines=3, number_of_characters=10 (default 1),
+/// outdent=11, padding=12 (doubles, pt), character_scale=14 };
+/// char_properties (11) carries the cap-glyph font overrides]. Shape/image
+/// caps (type != text, or shape_enabled) degrade to the text rendering with
+/// a warning (model policy).
+pub fn resolve_drop_cap(ctx: &mut Ctx, id: u64) -> Option<DropCap> {
+    let m = ctx.loaded.msg(id)?.clone();
+    let props = m.msg(12)?;
+    let dc = props.msg(1)?;
+    if dc.varint(1).unwrap_or(0) != 0 || dc.varint(7) == Some(1) {
+        ctx.warn(
+            WarningCode::UnsupportedFeature,
+            "shape/image drop cap degraded to plain text rendering".to_string(),
+        );
+    }
+    let char_style = m.msg(11).map(|cp| {
+        let msgs = vec![cp];
+        char_style_from(ctx, &msgs)
+    });
+    Some(DropCap {
+        lines: dc.varint(2).map(|v| v as u32),
+        raised_lines: dc.varint(3).map(|v| v as u32).filter(|v| *v > 0),
+        characters: dc.varint(10).map(|v| v as u32).filter(|v| *v > 1),
+        character_scale: dc.f64v(14).filter(|v| *v != 1.0),
+        outdent_pt: dc.f64v(11).filter(|v| *v != 0.0),
+        padding_pt: dc.f64v(12).filter(|v| *v != 0.0),
+        char_style: char_style.filter(|cs| *cs != CharStyle::default()),
     })
 }
 
