@@ -403,6 +403,13 @@ export interface ListFormat {
   numberKind?: NumberKind;
   /** Marker image when markerKind = "image". */
   markerImage?: MediaRef;
+  /**
+   * Number surround when markerKind = "number": "1." (period, the default —
+   * omitted per omit-default), "1)" (paren), "(1)" (double-paren), bare "1"
+   * (none). [proto: TSWP.ListStyleArchive number_types encode scheme+surround
+   * combos; split here so NumberKind stays a pure scheme]
+   */
+  numberSurround?: "period" | "paren" | "double-paren" | "none";
   /** Where the marker text starts (continues from previous list otherwise). */
   start?: number;
   /** Indent of the marker relative to the paragraph's left indent, in points. */

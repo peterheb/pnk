@@ -90,6 +90,13 @@ export interface PagesSection {
   backgroundFill?: Fill;
   /** Word-processing only: index into `body.paragraphs` where the section starts. */
   bodyParagraphStart?: number;
+  /**
+   * Multi-column text layout for the section's pages; absent = single column.
+   * Equal-width columns (Pages' unequal-column variant degrades to `count`
+   * with an unsupported-feature warning). [proto: TP.SectionArchive column
+   * storage — verify field in docs/format/pages.md at extraction time]
+   */
+  columns?: { count: number; gutterPt?: number };
 }
 
 // ---------------------------------------------------------------------------
@@ -170,6 +177,12 @@ export interface PagesDocument extends DocumentEnvelope {
   hiddenBody?: StyledText;
   /** Footnotes for the body (word-processing flavor). */
   footnotes?: Footnote[];
+  /**
+   * Where footnote bodies render: bottom of the anchor's page (the default,
+   * omitted), or collected as endnotes per section / per document.
+   * [proto: TP.DocumentArchive footnote kind — verify field at extraction]
+   */
+  footnotePlacement?: "section-endnotes" | "document-endnotes";
 
   /**
    * Word-processing flavor: floating objects per page. Page-layout flavor:

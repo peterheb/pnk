@@ -439,6 +439,7 @@ pub fn resolve_list_format(ctx: &mut Ctx, list_id: u64, level: u32) -> Option<Li
         .find(|v| !v.is_empty())
         .unwrap_or_default();
     Some(ListFormat {
+        number_surround: None,
         level,
         marker_kind,
         marker_text,
@@ -460,9 +461,18 @@ pub fn resolve_cell_style(ctx: &mut Ctx, id: u64) -> Option<TableCellStyle> {
     let msgs = chain(ctx, id, 11);
     let mut s = TableCellStyle::default();
     // First-wins merge, most-derived first.
+    let mut fill_decided = false;
     for p in &msgs {
-        if s.fill.is_none() {
-            s.fill = p.msg(1).and_then(|f| crate::tsd::fill_of(ctx, &f));
+        if !fill_decided {
+            if let Some(fm) = p.msg(1) {
+                // A PRESENT cell_fill decides the property even when the
+                // FillArchive is empty — empty means "fill: none" and must
+                // not fall through to an ancestor's fill (01_Running_Log:
+                // the header style overrides the preset's blue with none;
+                // Apple renders white).
+                s.fill = crate::tsd::fill_of(ctx, &fm);
+                fill_decided = true;
+            }
         }
         if s.text_wrap.is_none() {
             s.text_wrap = p.boolean(3);
@@ -506,6 +516,7 @@ pub fn resolve_cell_style(ctx: &mut Ctx, id: u64) -> Option<TableCellStyle> {
 pub fn resolve_list_format_minimal(ctx: &mut Ctx, list_id: u64, level: u32) -> ListFormat {
     let full = resolve_list_format(ctx, list_id, level)
         .unwrap_or(ListFormat {
+        number_surround: None,
             level,
             marker_kind: ListMarkerKind::None,
             marker_text: None,

@@ -237,6 +237,7 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
     }
 
     PagesDocument {
+        footnote_placement: None,
         kind: "pages".to_string(),
         flavor,
         meta: ctx.meta.clone(),
@@ -500,6 +501,7 @@ fn convert_section(
         None
     };
     PagesSection {
+        columns: None,
         name: m.string(26),
         first_page_template: name_of(m.reference(23)),
         even_page_template: name_of(m.reference(24)),

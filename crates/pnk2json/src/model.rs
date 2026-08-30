@@ -412,6 +412,18 @@ pub struct ListFormat {
     pub start: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub marker_indent_pt: Option<f64>,
+    /// Number surround: "1." (period, default/omitted), "1)", "(1)", bare "1".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub number_surround: Option<NumberSurround>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum NumberSurround {
+    Period,
+    Paren,
+    DoubleParen,
+    None,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1604,6 +1616,17 @@ pub struct PagesSection {
     pub background_fill: Option<Fill>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body_paragraph_start: Option<u32>,
+    /// Multi-column layout; absent = single column (docs/model-review dispatch).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub columns: Option<SectionColumns>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SectionColumns {
+    pub count: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gutter_pt: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -1623,6 +1646,13 @@ pub enum FirstPageNumberKind {
     Continue,
     RestartAt,
     FromPrevious,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum FootnotePlacement {
+    SectionEndnotes,
+    DocumentEndnotes,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -1672,6 +1702,9 @@ pub struct PagesDocument {
     pub hidden_body: Option<StyledText>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub footnotes: Option<Vec<Footnote>>,
+    /// Endnote collection mode; absent = page-bottom footnotes (the default).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub footnote_placement: Option<FootnotePlacement>,
     pub floating: Vec<FloatingPage>,
     pub page_templates: Vec<PageTemplate>,
     pub sections: Vec<PagesSection>,
