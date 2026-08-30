@@ -29,8 +29,9 @@ Geometry lives in `TSD.GeometryArchive` (lines 21-26): `position = 1`
 `size = 2` (`TSP.Size { width = 1, height = 2 }` — `TSPMessages.proto:61-64`),
 `flags = 3` (uint32 bitfield; semantics not documented in any local proto
 [inferred: flags exist but no local source defines the bits]),
-`angle = 4` (float, radians [inferred: apps use radians for rotation; fixture
-verification pending]). [proto]
+`angle = 4` (float, **degrees** [inferred→fixture-verified 2026-08-29: the
+24_Briefing.key master's tick rules store `angle = 90.0` and Keynote's own PDF
+export renders them vertical — 90 radians would display as ≡116.6°]). [proto]
 
 Every concrete drawable embeds the base as `super` (required, field 1) — the
 Apple-protobuf subclassing idiom used throughout iWork (same pattern as

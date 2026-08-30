@@ -92,11 +92,17 @@ fn editable_bezier(m: &Msg, natural: Option<Size>) -> ShapeGeometry {
             elements.push(CurveElement::Close { points: vec![] });
         }
     }
+    // Editable-bezier nodes are unit-less too: Keynote stores e.g. the
+    // canonical 141.42-long line against a 46.8pt naturalSize (24_Briefing
+    // master ticks) — fit tight bounds to naturalSize exactly like TSP.Path.
+    // Paths authored at natural scale come through unchanged (scale ≈ 1,
+    // G5 acid line).
+    let path = normalize_path(CurvePath { elements }, natural.as_ref());
     ShapeGeometry {
         preset: None,
         scalar: None,
         natural_size: natural,
-        path: Some(CurvePath { elements }),
+        path: Some(path),
         callout: None,
     }
 }
@@ -111,9 +117,6 @@ fn editable_bezier(m: &Msg, natural: Option<Size>) -> ShapeGeometry {
 /// mapping onto the shape box.
 fn normalize_path(mut p: CurvePath, natural: Option<&Size>) -> CurvePath {
     let Some(n) = natural else { return p };
-    if n.width <= 0.0 || n.height <= 0.0 {
-        return p;
-    }
     let mut min = (f64::INFINITY, f64::INFINITY);
     let mut max = (f64::NEG_INFINITY, f64::NEG_INFINITY);
     for el in &p.elements {
@@ -136,10 +139,25 @@ fn normalize_path(mut p: CurvePath, natural: Option<&Size>) -> CurvePath {
     }
     let bw = (max.0 - min.0).max(f64::EPSILON);
     let bh = (max.1 - min.1).max(f64::EPSILON);
-    let scale = (n.width / bw).min(n.height / bh);
-    // center the scaled path in the box
-    let ox = (n.width - bw * scale) / 2.0;
-    let oy = (n.height - bh * scale) / 2.0;
+    // A degenerate axis (0-height rules, 0-width vertical rules) contributes
+    // no usable ratio — scale by the other axis alone. Both degenerate: keep
+    // the path as-is. (24_Briefing master rules store the canonical 141.42
+    // (=100√2) editable-bezier line against naturalSize 46.8×0 — Apple
+    // renders it 46.8pt long, i.e. bounds fit to naturalSize per axis.)
+    let eps = 1e-6;
+    let mut scale = f64::INFINITY;
+    if n.width > eps && bw > eps {
+        scale = scale.min(n.width / bw);
+    }
+    if n.height > eps && bh > eps {
+        scale = scale.min(n.height / bh);
+    }
+    if !scale.is_finite() {
+        return p;
+    }
+    // center the scaled path in the box (degenerate axes collapse to 0)
+    let ox = if n.width > eps { (n.width - bw * scale) / 2.0 } else { 0.0 };
+    let oy = if n.height > eps { (n.height - bh * scale) / 2.0 } else { 0.0 };
     for el in p.elements.iter_mut() {
         let pts: &mut Vec<f64> = match el {
             CurveElement::Move { points }

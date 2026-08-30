@@ -55,7 +55,9 @@ function svgStrokeAttrs(e: SVGElement, stroke: Stroke | undefined, scale: number
   e.setAttribute("stroke-width", String(Math.max(0.5, stroke.widthPt * scale)));
   e.setAttribute("stroke-linecap", stroke.cap);
   e.setAttribute("stroke-linejoin", stroke.join);
-  if (stroke.dash?.length) e.setAttribute("stroke-dasharray", stroke.dash.map((d) => d * scale).join(" "));
+  // Apple emits placeholder dash arrays of all zeros for solid strokes; SVG
+  // would render those as invisible zero-length dashes.
+  if (stroke.dash?.some((d) => d > 0)) e.setAttribute("stroke-dasharray", stroke.dash.map((d) => d * scale).join(" "));
 }
 
 function svgGradientDefs(svg: SVGSVGElement, style: DrawableCommon["style"]): void {
@@ -158,14 +160,31 @@ function presetPathD(preset: string, g: ShapeGeometry, w: number, h: number): st
 /** Explicit CurvePath (naturalSize space) -> scaled path `d`, else null. */
 function explicitPathD(g: ShapeGeometry, w: number, h: number): string | null {
   if (!g.path) return null;
-  const sx = w / (g.naturalSize?.width ?? w);
-  const sy = h / (g.naturalSize?.height ?? h);
+  const els = g.path.elements;
+  // standalone line fast path: exactly one move + one line, coordinates
+  // already in the drawable's point space (no naturalSize, no scaling)
+  if (els.length === 2 && els[0].type === "move" && els[1].type === "line") {
+    const [x1, y1] = els[0].points;
+    const [x2, y2] = els[1].points;
+    return `M${x1},${y1} L${x2},${y2}`;
+  }
+  // Degenerate natural dimensions (0-height rules) must not scale to NaN.
+  const nw = g.naturalSize?.width || w || 1;
+  const nh = g.naturalSize?.height || h || 1;
+  const sx = nw > 0 ? w / nw : 1;
+  const sy = nh > 0 ? (h > 0 ? h / nh : 1) : 1;
   const d: string[] = [];
-  for (const e of g.path.elements) {
-    if (e.type === "move" && e.points) d.push(`M${e.points[0].x * sx},${e.points[0].y * sy}`);
-    else if (e.type === "line" && e.points) d.push(`L${e.points[0].x * sx},${e.points[0].y * sy}`);
-    else if (e.type === "quad" && e.points) d.push(`Q${e.points.map((p) => `${p.x * sx},${p.y * sy}`).join(" ")}`);
-    else if (e.type === "cubic" && e.points) d.push(`C${e.points.map((p) => `${p.x * sx},${p.y * sy}`).join(" ")}`);
+  for (const e of els) {
+    // flat positional pairs: [x,y], [cx,cy,x,y], [c1x,c1y,c2x,c2y,x,y]
+    const pts = e.type === "close" ? [] : e.points;
+    const xy: string[] = [];
+    for (let i = 0; i < pts.length; i += 2) {
+      xy.push(`${(pts[i] * sx).toFixed(2)},${(pts[i + 1] * sy).toFixed(2)}`);
+    }
+    if (e.type === "move") d.push(`M${xy[0]}`);
+    else if (e.type === "line") d.push(`L${xy[0]}`);
+    else if (e.type === "quad") d.push(`Q${xy[0]} ${xy[1]}`);
+    else if (e.type === "cubic") d.push(`C${xy[0]} ${xy[1]} ${xy[2]}`);
     else d.push("Z");
   }
   return d.join(" ");
@@ -183,11 +202,28 @@ function shapePathD(g: ShapeGeometry, w: number, h: number): string {
 function shapeSvg(g: ShapeGeometry, w: number, h: number, style: DrawableCommon["style"]): SVGSVGElement {
   const NS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(NS, "svg") as SVGSVGElement;
-  svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  // Degenerate boxes are real: Keynote stores horizontal/vertical rules as
+  // 0-height/0-width stroked line shapes. A 0 viewBox dimension disables SVG
+  // rendering entirely, and the parent div's 0px also collapses the viewport —
+  // pin both to >=1 and let the stroke paint outside via overflow.
+  const vw = Math.max(w, 1);
+  const vh = Math.max(h, 1);
+  svg.setAttribute("viewBox", `0 0 ${vw} ${vh}`);
   svg.setAttribute("preserveAspectRatio", "none");
-  const nw = g.naturalSize?.width ?? w;
-  const nh = g.naturalSize?.height ?? h;
-  const scale = (w / nw + h / nh) / 2;
+  svg.style.overflow = "visible";
+  if (w < 1 || h < 1) {
+    svg.style.width = `${vw}px`;
+    svg.style.height = `${vh}px`;
+  }
+  // Stroke-width scale: average of the finite axis ratios (degenerate
+  // 0-height/0-width rules would otherwise divide 0/0 into a NaN width).
+  const ratios = [
+    [w, g.naturalSize?.width] as const,
+    [h, g.naturalSize?.height] as const,
+  ]
+    .map(([dim, nat]) => (nat && nat > 0 ? dim / nat : NaN))
+    .filter((r) => Number.isFinite(r) && r > 0);
+  const scale = ratios.length ? ratios.reduce((a, b) => a + b, 0) / ratios.length : 1;
   svgGradientDefs(svg, style);
   const path = document.createElementNS(NS, "path");
   path.setAttribute("d", shapePathD(g, w, h));
@@ -264,15 +300,11 @@ function textLayer(d: Drawable & { text?: unknown; common?: DrawableCommon }, do
   if (!("text" in d) || !d.text || (d.text as { paragraphs?: unknown[] }).paragraphs === undefined) return null;
   const layer = el("div", "drawable-text");
   layer.style.alignItems = verticalAlignStyle(d as { verticalAlignment?: string });
-  // Text styles are emitted in CSS `pt` units (text.ts), but canvas geometry
-  // renders 1 document-point = 1px; CSS makes 1pt = 4/3px, so unscaled text
-  // runs 33% oversized and overflows its box (verified vs Keynote's own PDF
-  // export: 71pt title measured 94.7 canvas px). Lay the subtree out in a
-  // 4/3-sized box and scale it down so 1pt of text = 1px of canvas.
-  layer.style.width = "133.3333%";
-  layer.style.height = "133.3333%";
-  layer.style.transform = "scale(0.75)";
-  layer.style.transformOrigin = "0 0";
+  // NOTE on units: canvas geometry renders 1 document-point = 1px, and
+  // text.ts emits sizes in CSS `px` for the same reason (commit c94861a) —
+  // together they keep 1pt of text = 1px of canvas with no extra scaling.
+  // (An earlier 0.75 layer transform compensated the old CSS-`pt` emission;
+  // both fixes active would double-shrink — keep exactly one.)
   const inner = el("div", "drawable-text-inner");
   inner.appendChild(renderStyledText(d.text as never, doc, ctx));
   layer.appendChild(inner);

@@ -119,10 +119,12 @@ fn drawable_common(ctx: &mut Ctx, m: &Msg) -> Result<DrawableCommon, ()> {
             c.size = Some(Size { width: w, height: h });
             any = true;
         }
-        if let Some(rad) = g.f32v(4) {
-            // Geometry angle is radians (docs/format/drawables.md); model
-            // wants degrees, counterclockwise.
-            c.angle_deg = Some(rad as f64 * 180.0 / std::f64::consts::PI);
+        if let Some(deg) = g.f32v(4) {
+            // Geometry angle is DEGREES, not radians — fixture-verified:
+            // 24_Briefing master ticks store 90.0 and Apple's own PDF export
+            // renders them vertical (a radians read would give 5156.6°≡117°,
+            // the diagonal we used to draw). docs/format/drawables.md updated.
+            c.angle_deg = Some(deg as f64);
             any = true;
         }
     }
