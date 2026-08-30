@@ -322,7 +322,9 @@ pub fn stroke_of(ctx: &mut Ctx, m: &Msg) -> Option<Stroke> {
     let (dash, dash_phase) = match m.msg(6) {
         Some(p) => {
             let dash: Vec<f64> = p.packed_f32s(4).into_iter().map(|v| v as f64).collect();
-            let dash = if p.varint(1) == Some(2) || dash.is_empty() { None } else { Some(dash) };
+            // All-zero patterns are Apple's "solid" placeholder, not a real
+            // dash — emitting them renders invisible zero-length dashes.
+            let dash = if p.varint(1) == Some(2) || !dash.iter().any(|d| *d > 0.0) { None } else { Some(dash) };
             (dash, p.f32v(2).map(|v| v as f64))
         }
         None => (None, None),
