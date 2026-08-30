@@ -191,6 +191,16 @@ export function renderParagraph(
     marker.className = "list-marker";
     marker.textContent = markerText;
     marker.style.minWidth = "18px";
+    // The marker inherits the first run's look (size + color): an unstyled
+    // span rendered 15px near-black bullets INVISIBLE on dark decks (RIPE
+    // slides 2/5: 28pt white body, default marker). Apple actually colors
+    // markers from the list style's own font_color/scale — not yet in the
+    // model (proposal sent) — so the run style is the faithful fallback.
+    const firstRun = p.items.find(
+      (it): it is TextRun => typeof it !== "string" && !("type" in it),
+    );
+    if (firstRun) applyCharStyle(marker, charStyleOf(doc, firstRun.cStyle));
+    marker.style.paddingRight = "0.3em"; // marker-to-text gap, scales with size
     wrap.appendChild(marker);
     wrap.appendChild(el);
     renderParagraphContent(el, p, doc, ctx, style?.dropCap);

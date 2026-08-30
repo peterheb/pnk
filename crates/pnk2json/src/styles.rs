@@ -316,7 +316,21 @@ pub fn para_style_from(ctx: &mut Ctx, msgs: &[Msg]) -> ParaStyle {
         s.background_color = crate::tsd::color_of(ctx, m, 6);
     }
     if let Some(m) = take(msgs, 32, Some(31)) {
-        s.border = m.msg(32).and_then(|st| crate::tsd::stroke_of(ctx, &st));
+        // A stroke DEFINITION (32) alone is not a border: Keynote theme
+        // presets ship a black 1-2pt stroke with the border type OFF
+        // (deprecated_borders 15 = 0, no border_positions 45 — fixture
+        // 25490542) while genuinely bordered docs set both nonzero
+        // (fixture 0c563c6d: 15 = 45 = 2). Emit only when the effective
+        // type/positions value along the chain is nonzero
+        // [proto: TSWPArchives.proto fields 15/45; inferred semantics].
+        let border_on = take(msgs, 45, None)
+            .and_then(|p| p.int(45))
+            .or_else(|| take(msgs, 15, None).and_then(|p| p.int(15)))
+            .unwrap_or(0)
+            != 0;
+        if border_on {
+            s.border = m.msg(32).and_then(|st| crate::tsd::stroke_of(ctx, &st));
+        }
     }
     if let Some(m) = take(msgs, 38, None) {
         s.writing_direction = match m.int(38) {
