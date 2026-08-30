@@ -131,6 +131,70 @@ fn strip_map_with_ctx(
     out
 }
 
+/// Per-index row/column DEFAULT styles from header buckets
+/// (HeaderStorageBucket.Header cell_style = 5 / text_style = 6, proto
+/// TSTArchives.proto:276-287). Apple's templates style entire rows this
+/// way — 07_Calendar's 48pt orange "September" row carries no per-cell
+/// style at all; the look hangs off the ROW header. Applied to cells
+/// without an explicit style (cell > row > column precedence).
+fn header_styles(
+    ctx: &mut Ctx,
+    storage: Option<&Msg>,
+    inline_field: u32,
+    ref_field: u32,
+) -> HashMap<u32, TableCellStyle> {
+    let Some(storage) = storage else { return HashMap::new() };
+    let hs = storage
+        .msg(inline_field)
+        .or_else(|| storage.reference(ref_field).and_then(|r| ctx.loaded.msg(r).cloned()));
+    let Some(hs) = hs else { return HashMap::new() };
+    let mut refs: Vec<(u32, Option<u64>, Option<u64>)> = Vec::new();
+    for bucket in header_buckets(ctx, &hs) {
+        let is_v4_header = bucket
+            .get(2)
+            .map(|v| matches!(v, iwadump::proto::Value::Fixed32(_)))
+            .unwrap_or(false);
+        if is_v4_header {
+            if let Some(idx) = bucket.varint(1) {
+                let (c, t) = (bucket.reference(5), bucket.reference(6));
+                if c.is_some() || t.is_some() {
+                    refs.push((idx as u32, c, t));
+                }
+            }
+        } else {
+            for h in bucket.msgs(2) {
+                if let Some(idx) = h.varint(1) {
+                    let (c, t) = (h.reference(5), h.reference(6));
+                    if c.is_some() || t.is_some() {
+                        refs.push((idx as u32, c, t));
+                    }
+                }
+            }
+        }
+    }
+    let mut out = HashMap::new();
+    for (idx, c, t) in refs {
+        let mut s = c
+            .and_then(|cid| styles::resolve_cell_style(ctx, cid))
+            .unwrap_or_default();
+        if let Some(tid) = t {
+            let text = crate::ctx::strip_char_defaults(styles::resolve_char_style(ctx, tid));
+            let para = crate::ctx::strip_para_defaults(styles::resolve_para_style(ctx, tid));
+            if text != CharStyle::default() && s.text.is_none() {
+                s.text = Some(text);
+            }
+            if para != ParaStyle::default() && s.paragraph.is_none() {
+                s.paragraph = Some(para);
+            }
+        }
+        let s = crate::ctx::strip_cell_defaults(s);
+        if s != TableCellStyle::default() {
+            out.insert(idx, s);
+        }
+    }
+    out
+}
+
 /// Per-index sizes/hidden flags from header buckets
 /// (HeaderStorageBucket.Header { index = 1, size = 2, hidingState = 3 }).
 fn header_info(
@@ -527,8 +591,17 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
     // decode_cell — the cell is emitted with `formatIndex` absent.
     let mut grid: Vec<Vec<Option<GridCell>>> =
         vec![vec![None; column_count as usize]; row_count as usize];
+    // Row/column DEFAULT styles (header buckets) fill in for cells with no
+    // per-cell style; row beats column.
+    let row_styles = header_styles(ctx, store.as_ref(), 1, 0);
+    let col_styles = header_styles(ctx, store.as_ref(), 0, 2);
     let mut formats: Vec<CellFormat> = Vec::new();
     for (row, col, mut cell, format) in cells {
+        if cell.cell_style_index.is_none() {
+            if let Some(s) = row_styles.get(&row).or_else(|| col_styles.get(&col)) {
+                cell.cell_style_index = cell_pool.intern(s.clone());
+            }
+        }
         if let Some(f) = format {
             let idx = match formats.iter().position(|e| *e == f) {
                 Some(i) => i,

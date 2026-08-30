@@ -301,10 +301,11 @@ export function renderTable(model: TableModel): HTMLTableElement {
     }
     const tr = document.createElement("tr");
     const info = model.rows?.[r];
-    // stored height wins; 0/absent means the table default (CSS height on
-    // a <tr> is a minimum, so content can still grow it like Apple does)
-    const rowH = info?.sizePt || model.defaultRowHeightPt;
-    if (rowH) tr.style.height = `${rowH}px`;
+    // stored height wins (CSS height on a <tr> is a minimum — content can
+    // still grow it); 0/absent rows auto-fit their content like Apple.
+    // Do NOT fall back to defaultRowHeightPt: Apple auto-fits unsized rows
+    // (mini-calendar rows render ~13px under a 25.9pt stored default).
+    if (info?.sizePt) tr.style.height = `${info.sizePt}px`;
     for (const c of visCols) {
       if (covered.has(cellKey(r, c))) continue;
       const cell: GridCell | null = grid[r]?.[c] ?? null;
