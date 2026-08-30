@@ -324,3 +324,26 @@ table.sheet-table.exact-cols td, table.sheet-table.exact-cols th { min-width: 0;
 /* A table with decoded stroke styles draws only its own borders; the base
    gridline would add lines Apple doesn't (Invoice: horizontal rules only). */
 table.sheet-table.own-strokes td, table.sheet-table.own-strokes th { border: none; }
+
+/* === keynote/drawables (agent K) === */
+/* contact-shadow: soft elliptical blob painted behind the drawable's content */
+.canvas-drawable .contact-shadow { position: absolute; pointer-events: none; z-index: 0; }
+
+/* === pages/text (agent P) === */
+/* multi-column section block (PagesSection.columns): fixed height so
+   column-fill:auto flows column-by-column like Pages, not balanced */
+.pages-cols { column-fill: auto; }
+/* page-bottom footnotes (footnotePlacement absent = Apple's default):
+   pinned inside the printable area with the separator rule Apple draws */
+.pages-footnote-area {
+  position: absolute;
+  border-top: 1px solid #555;
+  padding-top: 4px;
+  font-size: 0.85em;
+}
+.pages-footnote-area .footnote { display: flex; gap: 4px; margin: 2px 0; }
+.pages-footnote-area .styled-text p { margin: 2px 0; }
+.pages-footnote-area .field[data-field-kind="footnote-mark"] {
+  vertical-align: super;
+  font-size: 0.7em;
+}

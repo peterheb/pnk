@@ -102,6 +102,26 @@ function presetPathD(preset: string, g: ShapeGeometry, w: number, h: number): st
       return `M0,${f(h / 2)} A${f(w / 2)},${f(h / 2)} 0 1 1 ${f(w)},${f(h / 2)} A${f(w / 2)},${f(h / 2)} 0 1 1 0,${f(h / 2)} Z`;
     case "diamond":
       return `M${f(w / 2)},0 L${f(w)},${f(h / 2)} L${f(w / 2)},${f(h)} L0,${f(h / 2)} Z`;
+    case "regular-polygon": {
+      // scalar = number of sides (fixture: G2 pentagon stores 5.0), first
+      // vertex at 12 o'clock, inscribed in the w x h box like Apple draws it
+      const n = Math.round(clamp(g.scalar ?? 5, 3, 24));
+      const pts: string[] = [];
+      for (let i = 0; i < n; i++) {
+        const a = ((Math.PI * 2) / n) * i - Math.PI / 2;
+        pts.push(`${f(w / 2 + (Math.cos(a) * w) / 2)},${f(h / 2 + (Math.sin(a) * h) / 2)}`);
+      }
+      return `M${pts.join(" L")} Z`;
+    }
+    case "double-arrow": {
+      const head = w * 0.25;
+      const bar = h * 0.45;
+      const p: [number, number][] = [
+        [0, h / 2], [head, 0], [head, (h - bar) / 2], [w - head, (h - bar) / 2], [w - head, 0],
+        [w, h / 2], [w - head, h], [w - head, (h + bar) / 2], [head, (h + bar) / 2], [head, h],
+      ];
+      return "M" + p.map(([x, y]) => `${f(x)},${f(y)}`).join(" L") + " Z";
+    }
     case "star": {
       // scalar = pointiness (0..1): inner radius shrinks as it grows
       const inner = 0.5 - 0.3 * clamp(g.scalar ?? 0.4, 0, 1);
@@ -366,6 +386,44 @@ export function applyCommonGeometry(div: HTMLElement, c: DrawableCommon): void {
   }
   if (c.angleDeg) s.transform = `rotate(${-c.angleDeg}deg)`;
   if (c.opacity !== undefined) s.opacity = String(c.opacity);
+  if (c.shadow && c.shadow.kind === "drop") {
+    // Angle convention fixture-verified on G2's pentagon (angle 45, offset 5
+    // renders down-right in Apple's raster): dx = cos, dy = sin, CSS y-down.
+    const a = (c.shadow.angleDeg * Math.PI) / 180;
+    const dx = Math.cos(a) * c.shadow.offsetPt;
+    const dy = Math.sin(a) * c.shadow.offsetPt;
+    const [r, g, b] = hexRgb(c.shadow.color);
+    s.filter = `drop-shadow(${dx.toFixed(1)}px ${dy.toFixed(1)}px ${c.shadow.radiusPt}px rgba(${r},${g},${b},${c.shadow.opacity}))`;
+  }
+  if (c.reflection) {
+    // Chromium/WebKit only; other engines just skip the reflection.
+    s.setProperty(
+      "-webkit-box-reflect",
+      `below 0px linear-gradient(transparent 30%, rgba(0,0,0,${c.reflection.opacity}))`,
+    );
+  }
+}
+
+function hexRgb(hex: string): [number, number, number] {
+  const v = parseInt(hex.replace("#", "").slice(0, 6), 16);
+  return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+}
+
+/** Soft elliptical blob under the drawable for kind="contact" shadows. */
+function contactShadowEl(c: DrawableCommon): HTMLElement | null {
+  const sh = c.shadow;
+  if (!sh || sh.kind !== "contact" || !c.size) return null;
+  const hFrac = sh.contact?.height ?? 0.25;
+  const blob = el("div", "contact-shadow");
+  const bh = Math.max(c.size.height * hFrac * 0.5, 4);
+  blob.style.left = "5%";
+  blob.style.width = "90%";
+  blob.style.height = `${bh}px`;
+  blob.style.top = `${c.size.height - bh / 2 + (sh.offsetPt ?? 0) / 2}px`;
+  const [r, g, b] = hexRgb(sh.color);
+  blob.style.background = `radial-gradient(ellipse closest-side, rgba(${r},${g},${b},${sh.opacity}), transparent)`;
+  blob.style.filter = `blur(${Math.max(sh.radiusPt / 4, 2)}px)`;
+  return blob;
 }
 
 /** One drawable on a canvas: absolutely positioned inside .canvas-inner. */
@@ -382,6 +440,9 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
 
   const w = c.size?.width ?? 120;
   const h = c.size?.height ?? 60;
+
+  const contact = contactShadowEl(c);
+  if (contact) div.appendChild(contact);
 
   if (d.type === "textbox") {
     const layer = textLayer(d, doc, ctx);
