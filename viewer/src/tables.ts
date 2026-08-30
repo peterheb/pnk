@@ -22,10 +22,17 @@ import { cellStyleOf } from "./hydrate";
 const COMMA_DECIMAL_LANG = /^(de|fr|it|es|pt|nl|da|fi|nb|sv|el|pl|ru|tr)$/i;
 const COMMA_DECIMAL_REGION = /^(ee|de|fr|it|es|pt|nl|dk|fi|no|gr|pl|ru|tr|br)$/i;
 let decimalComma = false;
+let docLocale = "en";
 
 export function setTableLocale(locale: string | undefined): void {
   const [lang, region] = (locale ?? "").split(/[-_]/);
   decimalComma = COMMA_DECIMAL_LANG.test(lang) || COMMA_DECIMAL_REGION.test(region);
+  docLocale = locale ? locale.replace(/_/g, "-") : "en";
+  try {
+    new Date().toLocaleString(docLocale);
+  } catch {
+    docLocale = "en";
+  }
 }
 
 const cellKey = (r: number, c: number) => `${r}:${c}`;
@@ -60,7 +67,7 @@ function asCell(slot: NonNullable<GridCell>): TableCell {
  * rendered exactly, no trimming. Unformatted bare numbers keep the noise
  * trim (12 significant digits).
  */
-function formatNumber(v: number, decimals: number | undefined, exact: boolean): string {
+function formatNumber(v: number, decimals: number | undefined, exact: boolean, grouping?: boolean): string {
   let s: string;
   if (decimals !== undefined) {
     s = v.toFixed(Math.min(Math.max(decimals, 0), 20));
@@ -71,7 +78,86 @@ function formatNumber(v: number, decimals: number | undefined, exact: boolean): 
     s = Number(v.toPrecision(12)).toString();
   }
   if (decimalComma) s = s.replace(".", ",");
+  if (grouping) {
+    // format.grouping = show_thousands_separator: 5500 -> 5,500 (or
+    // 5.500 in comma-decimal locales, matching Apple)
+    const sep = decimalComma ? "." : ",";
+    const dec = decimalComma ? "," : ".";
+    const di = s.indexOf(dec);
+    let int = di === -1 ? s : s.slice(0, di);
+    const rest = di === -1 ? "" : s.slice(di);
+    const neg = int.startsWith("-") ? "-" : "";
+    if (neg) int = int.slice(1);
+    int = int.replace(/\B(?=(\d{3})+(?!\d))/g, sep);
+    s = neg + int + rest;
+  }
   return s;
+}
+
+/**
+ * Currency display symbol for an ISO code, Apple-style: "$100.00" not
+ * "USD 100.00". Codes without a well-known symbol keep a "CODE " prefix.
+ */
+const CURRENCY_SYMBOL: Record<string, string> = {
+  USD: "$", AUD: "$", CAD: "$", NZD: "$", HKD: "$", SGD: "$", MXN: "$",
+  EUR: "€", GBP: "£", JPY: "¥", CNY: "¥", KRW: "₩",
+  INR: "₹", RUB: "₽", TRY: "₺", ILS: "₪", PHP: "₱",
+  THB: "฿", VND: "₫", UAH: "₴", NGN: "₦", BRL: "R$",
+  ZAR: "R", CHF: "CHF ",
+};
+
+/**
+ * ICU-ish date pattern renderer (TSK.FormatStructArchive date_time_format /
+ * custom format strings such as "d", "M/d/yy", "d. MMMM yyyy"). UTC getters
+ * only — cell dates are wall-clock values stored as ...T00:00:00Z.
+ */
+function formatDatePattern(d: Date, pattern: string): string {
+  const pad = (v: number, w: number) => String(v).padStart(w, "0");
+  const loc = (opts: Intl.DateTimeFormatOptions) => {
+    try {
+      return d.toLocaleString(docLocale, { ...opts, timeZone: "UTC" });
+    } catch {
+      return d.toLocaleString("en", { ...opts, timeZone: "UTC" });
+    }
+  };
+  let out = "";
+  let i = 0;
+  while (i < pattern.length) {
+    const ch = pattern[i];
+    if (ch === "'") {
+      // quoted literal; '' inside quotes = a single quote
+      let j = i + 1;
+      let lit = "";
+      while (j < pattern.length) {
+        if (pattern[j] === "'") {
+          if (pattern[j + 1] === "'") { lit += "'"; j += 2; continue; }
+          break;
+        }
+        lit += pattern[j++];
+      }
+      out += lit === "" ? "'" : lit;
+      i = j + 1;
+      continue;
+    }
+    if (!/[A-Za-z]/.test(ch)) { out += ch; i++; continue; }
+    let n = 1;
+    while (pattern[i + n] === ch) n++;
+    switch (ch) {
+      case "y": out += n === 2 ? pad(d.getUTCFullYear() % 100, 2) : String(d.getUTCFullYear()); break;
+      case "M": out += n >= 4 ? loc({ month: "long" }) : n === 3 ? loc({ month: "short" }) : pad(d.getUTCMonth() + 1, n); break;
+      case "d": out += pad(d.getUTCDate(), n); break;
+      case "E": case "e": case "c": out += loc({ weekday: n >= 4 ? "long" : "short" }); break;
+      case "H": case "k": out += pad(d.getUTCHours(), n); break;
+      case "h": case "K": out += pad(d.getUTCHours() % 12 || 12, n); break;
+      case "m": out += pad(d.getUTCMinutes(), n); break;
+      case "s": out += pad(d.getUTCSeconds(), n); break;
+      case "a": out += d.getUTCHours() < 12 ? "AM" : "PM"; break;
+      case "G": out += "AD"; break;
+      default: break; // unsupported token: drop rather than leak letters
+    }
+    i += n;
+  }
+  return out;
 }
 
 /** Display string for a normalized cell view. */
@@ -84,17 +170,25 @@ function valueToText(cell: TableCell, format: CellFormat | undefined): string {
       const n = typeof v === "number" ? v : Number(v);
       if (format?.kind === "percent") {
         // iWork stores percent as a fraction; the format displays it ×100
-        return `${formatNumber(n * 100, format.decimals, true)}%`;
+        return `${formatNumber(n * 100, format.decimals, true, format.grouping)}%`;
       }
       // a number FORMAT with explicit decimals is the display contract:
       // render exactly what it says (no trailing-zero trim)
       const exact = format !== undefined && format.decimals !== undefined;
       const decimals = format && (format.kind === "number" || format.kind === "automatic")
         ? format.decimals : undefined;
-      return formatNumber(n, decimals, exact);
+      return formatNumber(n, decimals, exact, format?.grouping);
     }
     case "bool": return typeof v === "boolean" ? (v ? "true" : "false") : String(v);
-    case "date": return String(v).slice(0, 10);
+    case "date": {
+      // date/custom formats carry an ICU-ish pattern in formatString
+      // ("d" for calendar day numbers, "M/d/yy", ...)
+      const pattern = format && (format.kind === "date" || format.kind === "custom")
+        ? format.formatString : undefined;
+      const d = new Date(String(v));
+      if (!pattern || isNaN(d.getTime())) return String(v).slice(0, 10);
+      return formatDatePattern(d, pattern);
+    }
     case "duration": {
       // Apple duration rendering: h:mm:ss (h omitted when 0)
       const total = typeof v === "number" ? Math.round(v) : Math.round(Number(v));
@@ -103,7 +197,20 @@ function valueToText(cell: TableCell, format: CellFormat | undefined): string {
       const s = total % 60;
       return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
     }
-    case "currency": return `${cell.cur ?? "$"} ${formatNumber(typeof v === "number" ? v : Number(v), format?.decimals, format?.decimals !== undefined)}`;
+    case "currency": {
+      // Apple style: "$5,500.00" — symbol prefix, no space, 2 decimals
+      // unless the format says otherwise; unknown codes keep "CODE " prefix
+      const n = typeof v === "number" ? v : Number(v);
+      const code = cell.cur ?? format?.currencyCode ?? "";
+      const decimals = format?.decimals ?? 2;
+      // no format at all -> Apple's default currency look groups; a format
+      // without the flag explicitly does not
+      const grp = format ? (format.grouping ?? false) : true;
+      const body = formatNumber(Math.abs(n), decimals, true, grp);
+      const sym = CURRENCY_SYMBOL[code];
+      const sign = n < 0 ? "-" : "";
+      return sym !== undefined ? `${sign}${sym}${body}` : `${sign}${code ? code + " " : "$"}${body}`;
+    }
     case "error": return String(v);
     case "richtext": {
       const st = v as TableModel["grid"] extends never ? never : NonNullable<TableCell["v"]> & { paragraphs?: { items?: { type?: string; text?: string }[] }[] };
@@ -161,13 +268,26 @@ export function renderTable(model: TableModel): HTMLTableElement {
   const footStart = model.rowCount - model.footerRowCount;
 
   const cg = document.createElement("colgroup");
+  let totalW = 0;
+  let allWidthsKnown = visCols.length > 0;
   for (const c of visCols) {
     const col = document.createElement("col");
     const w = model.columns?.[c]?.sizePt ?? model.defaultColumnWidthPt;
-    if (w) col.style.width = `${w}px`;
+    if (w) {
+      col.style.width = `${w}px`;
+      totalW += w;
+    } else allWidthsKnown = false;
     cg.appendChild(col);
   }
   table.appendChild(cg);
+  // Stored column widths are exact: fixed layout + explicit table width,
+  // otherwise the auto algorithm shrink-to-fits the container and every
+  // column collapses toward min-content (lafs_playlist wrapped 3-6 lines
+  // per cell inside its drawable box).
+  if (allWidthsKnown && totalW > 0) {
+    table.style.tableLayout = "fixed";
+    table.style.width = `${totalW}px`;
+  }
 
   let sectionEl: HTMLTableSectionElement | null = null;
   let sectionKind: string | null = null;
@@ -193,6 +313,15 @@ export function renderTable(model: TableModel): HTMLTableElement {
         if (merge.columnSpan > 1) td.colSpan = merge.columnSpan;
       }
       const norm = cell !== null ? asCell(cell) : null;
+      // Section default first (header-row/header-column/footer/body look
+      // from the table style — Apple's templates keep the whole header
+      // look there and no per-cell styles), then the per-cell style
+      // overrides on top.
+      const section = r < headEnd ? model.style?.headerRowCellStyle
+        : c < model.headerColumnCount ? model.style?.headerColumnCellStyle
+        : r >= footStart ? model.style?.footerRowCellStyle
+        : model.style?.bodyCellStyle;
+      if (section) applyCellStyle(td, section, header, footer);
       const style = cellStyleOf(model, norm?.cellStyleIndex);
       applyCellStyle(td, style, header, footer);
       if (norm) {

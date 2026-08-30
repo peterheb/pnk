@@ -315,18 +315,10 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
         props.map(|p| TableStyle {
             banded_rows: p.boolean(1),
             banded_fill: p.msg(2).and_then(|f| crate::tsd::fill_of(ctx, &f)),
-            body_cell_style: m
-                .reference(18)
-                .and_then(|cid| styles::resolve_cell_style(ctx, cid)),
-            header_row_cell_style: m
-                .reference(19)
-                .and_then(|cid| styles::resolve_cell_style(ctx, cid)),
-            header_column_cell_style: m
-                .reference(20)
-                .and_then(|cid| styles::resolve_cell_style(ctx, cid)),
-            footer_row_cell_style: m
-                .reference(21)
-                .and_then(|cid| styles::resolve_cell_style(ctx, cid)),
+            body_cell_style: section_style(ctx, &m, 18, 24),
+            header_row_cell_style: section_style(ctx, &m, 19, 25),
+            header_column_cell_style: section_style(ctx, &m, 20, 26),
+            footer_row_cell_style: section_style(ctx, &m, 21, 27),
         })
     });
 
@@ -390,9 +382,13 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
 
     TableModel {
         name: {
+            // table_name_enabled (f22) defaults OFF: Apple's own templates
+            // (02_Invoice "Details") and older docs (lafs "Table 1") omit the
+            // field and render no table name; table_name_height (f33) is 0
+            // there too. Only an explicit true shows the caption.
             let n = m.string(8);
             match n {
-                Some(name) if !name.is_empty() && m.boolean(22).unwrap_or(true) => Some(name),
+                Some(name) if !name.is_empty() && m.boolean(22) == Some(true) => Some(name),
                 _ => None,
             }
         },
@@ -744,6 +740,7 @@ fn decode_cell(
     // absurd decimals, e.g. a -1 int32 sentinel) are dropped with a warning —
     // the cell is emitted unformatted rather than clamped.
     let (format, malformed_format) = pick_format(
+        ctx,
         num_format_id,
         currency_format_id,
         date_format_id,
@@ -808,7 +805,83 @@ fn unpack_decimal128(b: &[u8]) -> f64 {
     v * 10f64.powi(exp.clamp(-400, 400) as i32)
 }
 
+/// One section's default look: the cell style (TableModelArchive fields
+/// 18-21) merged with the parallel section TEXT style (fields 24-27:
+/// body/header-row/header-column/footer-row — proto TSTArchives.proto
+/// TableModelArchive). Apple's stock templates put the entire header look
+/// (bold, white font, alignment) in the section text style and leave the
+/// per-cell style pool empty (fixture-verified: 02_Invoice has zero
+/// cellStyles; its blue header text lives at field 25).
+fn section_style(
+    ctx: &mut Ctx,
+    m: &Msg,
+    cell_field: u32,
+    text_field: u32,
+) -> Option<TableCellStyle> {
+    let mut s = m
+        .reference(cell_field)
+        .and_then(|cid| styles::resolve_cell_style(ctx, cid));
+    if let Some(tid) = m.reference(text_field) {
+        let text = crate::ctx::strip_char_defaults(styles::resolve_char_style(ctx, tid));
+        let para = crate::ctx::strip_para_defaults(styles::resolve_para_style(ctx, tid));
+        let text = (text != CharStyle::default()).then_some(text);
+        let para = (para != ParaStyle::default()).then_some(para);
+        if text.is_some() || para.is_some() {
+            let st = s.get_or_insert_with(TableCellStyle::default);
+            if st.text.is_none() {
+                st.text = text;
+            }
+            if st.paragraph.is_none() {
+                st.paragraph = para;
+            }
+        }
+    }
+    s
+}
+
+/// Pattern for a custom format: the FormatStruct's inline
+/// CustomFormatArchive (field 42) or its custom_uid (field 41) resolved
+/// through the document-level TSK.CustomFormatListArchive (registry type
+/// 222), where uuids (f1) pair with custom_formats (f2) by index; the
+/// pattern is default_format.custom_format_string (f3 → f18). [proto:
+/// TSKArchives.proto CustomFormatArchive/CustomFormatListArchive;
+/// fixture-verified: 07_Calendar "Day Only" → "d"]
+fn custom_pattern(ctx: &Ctx, f: &Msg) -> Option<String> {
+    if let Some(s) = f
+        .msg(42)
+        .and_then(|cf| cf.msg(3))
+        .and_then(|df| df.string(18))
+        .filter(|s| !s.is_empty())
+    {
+        return Some(s);
+    }
+    let uid = f.msg(41)?;
+    let key = (uid.varint(1)?, uid.varint(2)?);
+    for rec in ctx.loaded.records.values() {
+        if rec.type_id != 222 {
+            continue;
+        }
+        let Some(list) = rec.msg.as_ref() else { continue };
+        let uuids = list.msgs(1);
+        let formats = list.msgs(2);
+        for (i, u) in uuids.iter().enumerate() {
+            if (u.varint(1), u.varint(2)) == (Some(key.0), Some(key.1)) {
+                if let Some(s) = formats
+                    .get(i)
+                    .and_then(|cf| cf.msg(3))
+                    .and_then(|df| df.string(18))
+                    .filter(|s| !s.is_empty())
+                {
+                    return Some(s);
+                }
+            }
+        }
+    }
+    None
+}
+
 fn pick_format(
+    ctx: &Ctx,
     num: Option<i32>,
     currency: Option<i32>,
     date: Option<i32>,
@@ -864,13 +937,24 @@ fn pick_format(
         }).or_else(|| match (ft, f.string(44)) {
             (Some(259), Some(pattern)) if !pattern.is_empty() => Some(pattern),
             _ => None,
+        }).or_else(|| match ft {
+            // stock date/time formats persist their ICU-ish pattern in
+            // date_time_format (f14), e.g. "d. MMMM yyyy" / "d"
+            Some(261) => f.string(14).filter(|s| !s.is_empty()),
+            _ => None,
+        }).or_else(|| match ft {
+            // custom formats (270-274): pattern lives behind the inline
+            // CustomFormatArchive or the document custom-format list
+            Some(270..=274) => custom_pattern(ctx, &f),
+            _ => None,
         });
         return (
             Some(CellFormat {
                 kind,
                 decimals,
                 currency_code: f.string(3),
-                grouping: None,
+                // show_thousands_separator (f5); omit-default: only `true`
+                grouping: f.boolean(5).filter(|b| *b),
                 format_string,
             }),
             false,
@@ -885,7 +969,9 @@ fn pick_format(
             decimals: None,
             currency_code: None,
             grouping: None,
-            format_string: cf.string(3).or_else(|| cf.string(18)),
+            // CustomFormatArchive: the pattern is default_format (f3)
+            // .custom_format_string (f18) — f3 is a message, not a string
+            format_string: cf.msg(3).and_then(|df| df.string(18)),
         });
     (custom, false)
 }
@@ -1035,8 +1121,11 @@ fn decode_cell_v4(
                     },
                     decimals: f.varint(2).filter(|v| *v <= 20).map(|v| v as u32),
                     currency_code: f.string(3),
-                    grouping: None,
-                    format_string: f.string(18),
+                    // show_thousands_separator (f5); omit-default: only `true`
+                    grouping: f.boolean(5).filter(|b| *b),
+                    format_string: f
+                        .string(18)
+                        .or_else(|| f.string(14).filter(|s| !s.is_empty())),
                 })
             })
         }),
