@@ -165,54 +165,100 @@ fn drawable_common(ctx: &mut Ctx, m: &Msg) -> Result<DrawableCommon, ()> {
 }
 
 /// Style from TSD.ShapeStyleArchive (shape_properties = 11) or
-/// TSD.MediaStyleArchive (media_properties = 11).
+/// TSD.MediaStyleArchive (media_properties = 11), resolved through the
+/// TSS.StyleArchive `parent = 3` chain (docs/format/styles.md): a shape
+/// inserted with the theme's default look stores an EMPTY local property
+/// bag — its fill/stroke live in the parent preset (fixture:
+/// G2-golden-pages-layout.pages pentagon/oval/parallelogram, whose style
+/// carries only shadow+reflection locally, fill+stroke on parent
+/// "shape-2-shapestyle"). Field PRESENCE at a nearer level wins even when
+/// the decoder yields None (present-but-empty = "explicitly cleared",
+/// stopping inheritance).
 fn drawable_style(ctx: &mut Ctx, style_ref: Option<u64>, is_media: bool) -> (Option<DrawableStyle>, Option<DrawableCommon>) {
     let mut style = DrawableStyle::default();
     let mut extras = DrawableCommon::default();
     let mut any = false;
-    if let Some(sid) = style_ref {
-        if let Some(sm) = ctx.loaded.msg(sid).cloned() {
-            // TSWP.ShapeStyleArchive (text shapes) wraps the TSD.ShapeStyleArchive
-            // as `super` (1); the fill/stroke/opacity properties live on the TSD
-            // level's field 11, while the wrapper's own field 11 holds text
-            // layout properties. Prefer the super's properties when present.
-            let tsd_super = sm.msg(1).filter(|s| s.has(11));
-            let props_msg = tsd_super.as_ref().unwrap_or(&sm);
-            // shape_properties / media_properties = 11
-            if let Some(props) = props_msg.msg(11) {
-                if !is_media {
-                    style.fill = props.msg(1).and_then(|f| crate::tsd::fill_of(ctx, &f));
-                    style.stroke = props.msg(2).and_then(|st| crate::tsd::stroke_of(ctx, &st));
-                    let head = props.msg(6).and_then(|le| crate::tsd::line_end_of(ctx, &le));
-                    let tail = props.msg(7).and_then(|le| crate::tsd::line_end_of(ctx, &le));
-                    if head.is_some() || tail.is_some() {
-                        style.line_ends = Some(LineEnds { head, tail });
-                    }
-                    extras.opacity = props.f32v(3).map(|v| v as f64);
-                } else {
-                    style.stroke = props.msg(1).and_then(|st| crate::tsd::stroke_of(ctx, &st));
-                    extras.opacity = props.f32v(2).map(|v| v as f64);
-                }
-                extras.shadow = props.msg(if is_media { 3 } else { 4 })
-                    .and_then(|sh| crate::tsd::shadow_of(ctx, &sh));
-                extras.reflection = props
-                    .msg(if is_media { 4 } else { 5 })
-                    .and_then(|r| crate::tsd::reflection_of(&r));
-                any = style.fill.is_some()
-                    || style.stroke.is_some()
-                    || style.line_ends.is_some()
-                    || extras.opacity.is_some()
-                    || extras.shadow.is_some()
-                    || extras.reflection.is_some();
-            }
-        } else {
+    // Per-property "seen at a nearer chain level" flags:
+    // fill, stroke, opacity, shadow, reflection, head, tail
+    let mut seen = [false; 7];
+    let mut head: Option<LineEnd> = None;
+    let mut tail: Option<LineEnd> = None;
+    let mut cur = style_ref;
+    let mut visited: HashSet<u64> = HashSet::new();
+    while let Some(sid) = cur {
+        if !visited.insert(sid) || visited.len() > 16 {
+            break; // cycle / runaway chain guard
+        }
+        cur = None;
+        let Some(sm) = ctx.loaded.msg(sid).cloned() else {
             ctx.warn_detail(
                 WarningCode::UnresolvedReference,
                 format!("style reference {sid} points nowhere"),
                 sid.to_string(),
             );
+            break;
+        };
+        // TSWP.ShapeStyleArchive (text shapes) wraps the TSD.ShapeStyleArchive
+        // as `super` (1); the fill/stroke/opacity properties live on the TSD
+        // level's field 11, while the wrapper's own field 11 holds text
+        // layout properties. Prefer the super's properties when present.
+        let tsd_super = sm.msg(1).filter(|s| s.has(11));
+        let props_msg = tsd_super.as_ref().unwrap_or(&sm);
+        // Next hop: TSS.StyleArchive super (1) → parent (3).
+        cur = props_msg.msg(1).and_then(|hdr| hdr.reference(3));
+        // shape_properties / media_properties = 11
+        let Some(props) = props_msg.msg(11) else { continue };
+        if !is_media {
+            if !seen[0] && props.has(1) {
+                seen[0] = true;
+                style.fill = props.msg(1).and_then(|f| crate::tsd::fill_of(ctx, &f));
+            }
+            if !seen[1] && props.has(2) {
+                seen[1] = true;
+                style.stroke = props.msg(2).and_then(|st| crate::tsd::stroke_of(ctx, &st));
+            }
+            if !seen[2] && props.has(3) {
+                seen[2] = true;
+                extras.opacity = props.f32v(3).map(|v| v as f64);
+            }
+            if !seen[5] && props.has(6) {
+                seen[5] = true;
+                head = props.msg(6).and_then(|le| crate::tsd::line_end_of(ctx, &le));
+            }
+            if !seen[6] && props.has(7) {
+                seen[6] = true;
+                tail = props.msg(7).and_then(|le| crate::tsd::line_end_of(ctx, &le));
+            }
+        } else {
+            if !seen[1] && props.has(1) {
+                seen[1] = true;
+                style.stroke = props.msg(1).and_then(|st| crate::tsd::stroke_of(ctx, &st));
+            }
+            if !seen[2] && props.has(2) {
+                seen[2] = true;
+                extras.opacity = props.f32v(2).map(|v| v as f64);
+            }
+        }
+        let shadow_field = if is_media { 3 } else { 4 };
+        if !seen[3] && props.has(shadow_field) {
+            seen[3] = true;
+            extras.shadow = props.msg(shadow_field).and_then(|sh| crate::tsd::shadow_of(ctx, &sh));
+        }
+        let refl_field = if is_media { 4 } else { 5 };
+        if !seen[4] && props.has(refl_field) {
+            seen[4] = true;
+            extras.reflection = props.msg(refl_field).and_then(|r| crate::tsd::reflection_of(&r));
         }
     }
+    if head.is_some() || tail.is_some() {
+        style.line_ends = Some(LineEnds { head, tail });
+    }
+    any = style.fill.is_some()
+        || style.stroke.is_some()
+        || style.line_ends.is_some()
+        || extras.opacity.is_some()
+        || extras.shadow.is_some()
+        || extras.reflection.is_some();
     (if any { Some(style) } else { None }, if any { Some(extras) } else { None })
 }
 
@@ -562,18 +608,15 @@ fn group_drawable(
         }),
     });
 
-    let group_pos = common.position;
+    // Child geometry is stored ALREADY group-local in the archive (verified
+    // across G2-golden-pages-layout.pages and 6 crawl .key decks: every raw
+    // child position lands inside [0, group size]); the former §3.4 re-base
+    // here double-subtracted the group origin and threw grouped drawables to
+    // the canvas corner. Emit children verbatim.
     let children: Vec<Drawable> = m
         .references(2)
         .into_iter()
-        .map(|cid| {
-            let mut d = convert_drawable_depth(ctx, cid, depth + 1, visiting);
-            // Re-base child coordinates into group-local space (§3.4).
-            if let Some(gp) = group_pos {
-                rebase_child(&mut d, gp);
-            }
-            d
-        })
+        .map(|cid| convert_drawable_depth(ctx, cid, depth + 1, visiting))
         .collect();
     Drawable::Group { common, children, freehand }
 }
@@ -699,20 +742,3 @@ fn mask_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
     Drawable::Shape { common, geometry, text: None, vertical_alignment: None, text_insets: None }
 }
 
-/// Re-base one child drawable's position into group-local coordinates.
-fn rebase_child(d: &mut Drawable, gp: Point) {
-    let common = match d {
-        Drawable::Shape { common, .. }
-        | Drawable::Textbox { common, .. }
-        | Drawable::Image { common, .. }
-        | Drawable::Movie { common, .. }
-        | Drawable::Group { common, .. }
-        | Drawable::ConnectionLine { common, .. }
-        | Drawable::Table { common, .. }
-        | Drawable::Chart { common, .. } => common,
-        _ => return,
-    };
-    if let Some(cp) = common.position {
-        common.position = Some(Point { x: cp.x - gp.x, y: cp.y - gp.y });
-    }
-}

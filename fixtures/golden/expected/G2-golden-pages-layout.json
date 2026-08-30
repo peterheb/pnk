@@ -148,32 +148,8 @@
               "kind": "largest",
               "marginPt": 12.0
             },
-            "style": {
-              "stroke": {
-                "color": "#000000",
-                "widthPt": 1.0,
-                "cap": "butt",
-                "join": "miter",
-                "miterLimit": 4.0,
-                "dashPhase": 0.0
-              },
-              "lineEnds": {
-                "head": {},
-                "tail": {}
-              }
-            },
-            "opacity": 1.0,
-            "shadow": {
-              "color": "#000000",
-              "angleDeg": 315.0,
-              "offsetPt": 5.0,
-              "radiusPt": 1.0,
-              "opacity": 1.0,
-              "kind": "drop"
-            },
-            "reflection": {
-              "opacity": 0.5
-            }
+            "style": {},
+            "opacity": 1.0
           },
           "text": {
             "paragraphs": [
@@ -234,24 +210,9 @@
               "fill": {
                 "type": "solid",
                 "color": "#feae00"
-              },
-              "stroke": {
-                "color": "#000000",
-                "widthPt": 1.0,
-                "cap": "butt",
-                "join": "miter",
-                "miterLimit": 4.0,
-                "dashPhase": 0.0
-              },
-              "lineEnds": {
-                "head": {},
-                "tail": {}
               }
             },
-            "opacity": 1.0,
-            "reflection": {
-              "opacity": 0.5
-            }
+            "opacity": 1.0
           },
           "geometry": {
             "preset": "rounded-rect",
@@ -292,24 +253,9 @@
               "fill": {
                 "type": "solid",
                 "color": "#000000"
-              },
-              "stroke": {
-                "color": "#000000",
-                "widthPt": 1.0,
-                "cap": "butt",
-                "join": "miter",
-                "miterLimit": 4.0,
-                "dashPhase": 0.0
-              },
-              "lineEnds": {
-                "head": {},
-                "tail": {}
               }
             },
-            "opacity": 1.0,
-            "reflection": {
-              "opacity": 0.5
-            }
+            "opacity": 1.0
           },
           "geometry": {
             "naturalSize": {
@@ -413,24 +359,9 @@
               "fill": {
                 "type": "solid",
                 "color": "#000000"
-              },
-              "stroke": {
-                "color": "#000000",
-                "widthPt": 1.0,
-                "cap": "butt",
-                "join": "miter",
-                "miterLimit": 4.0,
-                "dashPhase": 0.0
-              },
-              "lineEnds": {
-                "head": {},
-                "tail": {}
               }
             },
-            "opacity": 1.0,
-            "reflection": {
-              "opacity": 0.5
-            }
+            "opacity": 1.0
           },
           "geometry": {
             "naturalSize": {
@@ -500,7 +431,13 @@
               "kind": "largest",
               "marginPt": 12.0
             },
-            "style": {},
+            "style": {
+              "fill": {
+                "type": "solid",
+                "color": "#60d937"
+              }
+            },
+            "opacity": 1.0,
             "shadow": {
               "color": "#000000",
               "angleDeg": 45.0,
@@ -554,6 +491,10 @@
               "marginPt": 12.0
             },
             "style": {
+              "fill": {
+                "type": "solid",
+                "color": "#ed220d"
+              },
               "stroke": {
                 "color": "#000000",
                 "widthPt": 6.0,
@@ -563,6 +504,7 @@
                 "dashPhase": 0.0
               }
             },
+            "opacity": 1.0,
             "shadow": {
               "color": "#000000",
               "angleDeg": 0.0,
@@ -654,24 +596,9 @@
               "fill": {
                 "type": "solid",
                 "color": "#000000"
-              },
-              "stroke": {
-                "color": "#000000",
-                "widthPt": 1.0,
-                "cap": "butt",
-                "join": "miter",
-                "miterLimit": 4.0,
-                "dashPhase": 0.0
-              },
-              "lineEnds": {
-                "head": {},
-                "tail": {}
               }
             },
-            "opacity": 1.0,
-            "reflection": {
-              "opacity": 0.5
-            }
+            "opacity": 1.0
           },
           "geometry": {
             "naturalSize": {
@@ -748,7 +675,12 @@
               "kind": "largest",
               "marginPt": 12.0
             },
-            "style": {},
+            "style": {
+              "fill": {
+                "type": "solid",
+                "color": "#000000"
+              }
+            },
             "opacity": 0.295684814453125
           },
           "geometry": {
@@ -864,6 +796,10 @@
               "marginPt": 12.0
             },
             "style": {
+              "fill": {
+                "type": "solid",
+                "color": "#ff42a1"
+              },
               "stroke": {
                 "color": "#000000",
                 "widthPt": 6.0,
@@ -872,7 +808,8 @@
                 "miterLimit": 4.0,
                 "dashPhase": 0.0
               }
-            }
+            },
+            "opacity": 1.0
           },
           "geometry": {
             "naturalSize": {
@@ -955,7 +892,14 @@
             "textWrap": {
               "kind": "largest",
               "marginPt": 12.0
-            }
+            },
+            "style": {
+              "fill": {
+                "type": "solid",
+                "color": "#000000"
+              }
+            },
+            "opacity": 1.0
           },
           "geometry": {
             "naturalSize": {
@@ -1113,32 +1057,8 @@
               "kind": "largest",
               "marginPt": 12.0
             },
-            "style": {
-              "stroke": {
-                "color": "#000000",
-                "widthPt": 1.0,
-                "cap": "butt",
-                "join": "miter",
-                "miterLimit": 4.0,
-                "dashPhase": 0.0
-              },
-              "lineEnds": {
-                "head": {},
-                "tail": {}
-              }
-            },
-            "opacity": 1.0,
-            "shadow": {
-              "color": "#000000",
-              "angleDeg": 315.0,
-              "offsetPt": 5.0,
-              "radiusPt": 1.0,
-              "opacity": 1.0,
-              "kind": "drop"
-            },
-            "reflection": {
-              "opacity": 0.5
-            }
+            "style": {},
+            "opacity": 1.0
           },
           "text": {
             "paragraphs": [
@@ -1180,28 +1100,8 @@
               "kind": "right",
               "marginPt": 12.0
             },
-            "style": {
-              "stroke": {
-                "color": "#000000",
-                "widthPt": 1.0,
-                "cap": "butt",
-                "join": "miter",
-                "miterLimit": 4.0,
-                "dashPhase": 0.0
-              }
-            },
-            "opacity": 1.0,
-            "shadow": {
-              "color": "#000000",
-              "angleDeg": 315.0,
-              "offsetPt": 5.0,
-              "radiusPt": 1.0,
-              "opacity": 1.0,
-              "kind": "drop"
-            },
-            "reflection": {
-              "opacity": 0.5
-            }
+            "style": {},
+            "opacity": 1.0
           },
           "image": {
             "dataId": "26",
@@ -1245,8 +1145,8 @@
               "type": "shape",
               "common": {
                 "position": {
-                  "x": -185.9083251953125,
-                  "y": -524.7249755859375
+                  "x": 60.04583740234375,
+                  "y": 0.0
                 },
                 "size": {
                   "width": 100.0,
@@ -1259,6 +1159,10 @@
                   "marginPt": 12.0
                 },
                 "style": {
+                  "fill": {
+                    "type": "solid",
+                    "color": "#00a1ff"
+                  },
                   "stroke": {
                     "color": "#000000",
                     "widthPt": 4.0,
@@ -1267,7 +1171,8 @@
                     "miterLimit": 4.0,
                     "dashPhase": 0.0
                   }
-                }
+                },
+                "opacity": 1.0
               },
               "geometry": {
                 "preset": "right-arrow",
@@ -1290,8 +1195,8 @@
               "type": "shape",
               "common": {
                 "position": {
-                  "x": -245.95416259765625,
-                  "y": -474.7249755859375
+                  "x": 0.0,
+                  "y": 50.0
                 },
                 "size": {
                   "width": 57.045833587646484,
@@ -1304,6 +1209,14 @@
                   "marginPt": 12.0
                 },
                 "style": {
+                  "stroke": {
+                    "color": "#000000",
+                    "widthPt": 2.0,
+                    "cap": "butt",
+                    "join": "miter",
+                    "miterLimit": 4.0,
+                    "dashPhase": 0.0
+                  },
                   "lineEnds": {
                     "head": {
                       "identifier": "simple arrow",
@@ -1344,7 +1257,8 @@
                       }
                     }
                   }
-                }
+                },
+                "opacity": 1.0
               },
               "geometry": {
                 "naturalSize": {
@@ -1402,7 +1316,9 @@
             "textWrap": {
               "kind": "largest",
               "marginPt": 12.0
-            }
+            },
+            "style": {},
+            "opacity": 1.0
           },
           "text": {
             "paragraphs": [
@@ -1436,32 +1352,8 @@
               "kind": "largest",
               "marginPt": 12.0
             },
-            "style": {
-              "stroke": {
-                "color": "#000000",
-                "widthPt": 1.0,
-                "cap": "butt",
-                "join": "miter",
-                "miterLimit": 4.0,
-                "dashPhase": 0.0
-              },
-              "lineEnds": {
-                "head": {},
-                "tail": {}
-              }
-            },
-            "opacity": 1.0,
-            "shadow": {
-              "color": "#000000",
-              "angleDeg": 315.0,
-              "offsetPt": 5.0,
-              "radiusPt": 1.0,
-              "opacity": 1.0,
-              "kind": "drop"
-            },
-            "reflection": {
-              "opacity": 0.5
-            }
+            "style": {},
+            "opacity": 1.0
           },
           "text": {
             "paragraphs": [

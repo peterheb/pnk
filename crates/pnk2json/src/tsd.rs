@@ -328,6 +328,12 @@ fn gradient_fill(ctx: &mut Ctx, g: &Msg) -> Option<Fill> {
 }
 
 pub fn stroke_of(ctx: &mut Ctx, m: &Msg) -> Option<Stroke> {
+    // StrokePatternArchive.type = 2 (TSDEmptyPattern) means NO stroke at all
+    // — theme preset styles (G2 "captions-0-shapestyle" textbox presets) carry
+    // a full 1pt black stroke with an empty pattern; Apple draws no border.
+    if m.msg(6).and_then(|p| p.varint(1)) == Some(2) {
+        return None;
+    }
     let color = color_of(ctx, m, 1).unwrap_or_else(|| "#000000".to_string());
     let cap = match m.varint(3).unwrap_or(0) {
         1 => StrokeCap::Round,
@@ -361,6 +367,11 @@ pub fn stroke_of(ctx: &mut Ctx, m: &Msg) -> Option<Stroke> {
 }
 
 pub fn shadow_of(ctx: &mut Ctx, m: &Msg) -> Option<Shadow> {
+    // is_enabled = 6 [default = true] (TSDArchives.proto:229): preset styles
+    // ship a fully-parameterized shadow with is_enabled=0 — not a shadow.
+    if m.boolean(6) == Some(false) {
+        return None;
+    }
     let color = color_of(ctx, m, 1)?;
     let kind = match m.varint(7).unwrap_or(0) {
         1 => ShadowKind::Contact,
@@ -385,13 +396,23 @@ pub fn shadow_of(ctx: &mut Ctx, m: &Msg) -> Option<Shadow> {
 }
 
 pub fn reflection_of(m: &Msg) -> Option<Reflection> {
-    Some(Reflection { opacity: m.f32v(1).unwrap_or(0.5) as f64 })
+    // Preset styles carry an EMPTY ReflectionArchive for "no reflection";
+    // a real reflection stores its opacity explicitly even at the 0.5
+    // default (fixture: G2 pentagon writes {1: 0.5}, the caption presets
+    // write a 0-byte message and Apple paints nothing).
+    Some(Reflection { opacity: m.f32v(1)? as f64 })
 }
 
 pub fn line_end_of(_ctx: &mut Ctx, m: &Msg) -> Option<LineEnd> {
-    Some(LineEnd {
+    let le = LineEnd {
         identifier: m.string(5),
         is_filled: m.boolean(4),
         path: m.msg(1).as_ref().and_then(tsp_path),
-    })
+    };
+    // Empty archive (preset "no line end") or the explicit "none" identifier
+    // with no path points — nothing to draw.
+    if le.identifier.is_none() && le.is_filled.is_none() && le.path.is_none() {
+        return None;
+    }
+    Some(le)
 }
