@@ -1223,6 +1223,20 @@ fn pick_format(
             Some(261) => f.string(14).filter(|s| !s.is_empty()),
             _ => None,
         }).or_else(|| match ft {
+            // display-semantic markers (kind stays closed per the blessed
+            // convention): auto scientific has no persisted pattern;
+            // fractions carry an accuracy code in f11
+            Some(259) => Some("scientific".to_string()),
+            // fraction accuracy (f11): a small value is an exact
+            // denominator (2/4/8/10/16/100); 0xFFFFFFFD..FF are the
+            // up-to-N-digit sentinels (parser: numbers-parser
+            // FractionAccuracy)
+            Some(262) => Some(match f.varint(11) {
+                Some(acc) if acc >= 2 && acc <= 100 => format!("fraction-{acc}"),
+                _ => "fraction".to_string(),
+            }),
+            _ => None,
+        }).or_else(|| match ft {
             // custom formats (270-274): pattern lives behind the inline
             // CustomFormatArchive or the document custom-format list
             Some(270..=274) => custom_pattern(ctx, &f),
@@ -1233,8 +1247,9 @@ fn pick_format(
                 kind,
                 decimals,
                 currency_code: f.string(3),
-                // show_thousands_separator (f5); omit-default: only `true`
-                grouping: f.boolean(5).filter(|b| *b),
+                // show_thousands_separator (f5), raw presence: absent means
+                // the KIND's default (currency groups, number does not)
+                grouping: f.boolean(5),
                 format_string,
             }),
             false,
@@ -1414,8 +1429,9 @@ fn decode_cell_v4(
                     },
                     decimals: f.varint(2).filter(|v| *v <= 20).map(|v| v as u32),
                     currency_code: f.string(3),
-                    // show_thousands_separator (f5); omit-default: only `true`
-                    grouping: f.boolean(5).filter(|b| *b),
+                    // show_thousands_separator (f5), raw presence: absent
+                    // means the KIND's default (currency groups)
+                    grouping: f.boolean(5),
                     format_string: f
                         .string(18)
                         .or_else(|| f.string(14).filter(|s| !s.is_empty())),

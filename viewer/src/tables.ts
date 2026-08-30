@@ -107,6 +107,43 @@ const CURRENCY_SYMBOL: Record<string, string> = {
 };
 
 /**
+ * Fraction display, Apple-style: "fraction-N" fixes the denominator
+ * (halves/quarters/eighths/tenths/sixteenths/hundredths); bare "fraction"
+ * finds the closest denominator up to 3 digits. Whole part splits off:
+ * 1.375 -> "1 3/8"; 0 numerator -> just the whole part.
+ */
+function toFractionText(v: number, fs: string): string {
+  const sign = v < 0 ? "-" : "";
+  const av = Math.abs(v);
+  const whole = Math.floor(av);
+  const frac = av - whole;
+  const fixed = fs.startsWith("fraction-") ? parseInt(fs.slice(9), 10) : undefined;
+  let n = 0;
+  let d = 1;
+  if (fixed !== undefined && fixed >= 2) {
+    d = fixed;
+    n = Math.round(frac * d);
+  } else {
+    let err = Infinity;
+    for (let den = 1; den <= 999; den++) {
+      const num = Math.round(frac * den);
+      const e = Math.abs(frac - num / den);
+      if (e < err - 1e-12) { err = e; n = num; d = den; if (e < 1e-9) break; }
+    }
+  }
+  let w = whole;
+  if (n === d) { w += 1; n = 0; }
+  if (n === 0) return `${sign}${w}`;
+  // reduce (fixed denominators stay as Apple shows them, e.g. 2/8)
+  if (fixed === undefined) {
+    const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+    const g = gcd(n, d);
+    n /= g; d /= g;
+  }
+  return w > 0 ? `${sign}${w} ${n}/${d}` : `${sign}${n}/${d}`;
+}
+
+/**
  * ICU-ish date pattern renderer (TSK.FormatStructArchive date_time_format /
  * custom format strings such as "d", "M/d/yy", "d. MMMM yyyy"). UTC getters
  * only — cell dates are wall-clock values stored as ...T00:00:00Z.
@@ -172,6 +209,23 @@ function valueToText(cell: TableCell, format: CellFormat | undefined): string {
         // iWork stores percent as a fraction; the format displays it ×100
         return `${formatNumber(n * 100, format.decimals, true, format.grouping)}%`;
       }
+      const fs = format?.formatString;
+      if (fs === "scientific") {
+        // Apple's scientific: E+NN with the format's decimals; auto
+        // decimals keeps the full mantissa (G5: 6.0221408E+23)
+        const s = format?.decimals !== undefined ? n.toExponential(format.decimals) : n.toExponential();
+        return s.replace("e", "E");
+      }
+      if (fs !== undefined && fs.startsWith("base-")) {
+        const radix = parseInt(fs.slice(5), 10);
+        if (radix >= 2 && radix <= 36) {
+          const i = Math.round(n);
+          return (i < 0 ? "-" : "") + Math.abs(i).toString(radix).toUpperCase();
+        }
+      }
+      if (fs !== undefined && fs.startsWith("fraction")) {
+        return toFractionText(n, fs);
+      }
       // a number FORMAT with explicit decimals is the display contract:
       // render exactly what it says (no trailing-zero trim)
       const exact = format !== undefined && format.decimals !== undefined;
@@ -203,10 +257,9 @@ function valueToText(cell: TableCell, format: CellFormat | undefined): string {
       const n = typeof v === "number" ? v : Number(v);
       const code = cell.cur ?? format?.currencyCode ?? "";
       const decimals = format?.decimals ?? 2;
-      // no format at all -> Apple's default currency look groups; a format
-      // without the flag explicitly does not
-      const grp = format ? (format.grouping ?? false) : true;
-      const body = formatNumber(Math.abs(n), decimals, true, grp);
+      // currency groups by default (Apple: $1,234.56); an explicit
+      // grouping:false in the stored format turns it off
+      const body = formatNumber(Math.abs(n), decimals, true, format?.grouping ?? true);
       const sym = CURRENCY_SYMBOL[code];
       const sign = n < 0 ? "-" : "";
       return sym !== undefined ? `${sign}${sym}${body}` : `${sign}${code ? code + " " : "$"}${body}`;
@@ -292,6 +345,9 @@ export function renderTable(model: TableModel): HTMLTableElement {
 
   let sectionEl: HTMLTableSectionElement | null = null;
   let sectionKind: string | null = null;
+  let bodyOrdinal = -1;
+  const banded = model.style?.bandedRows && model.style.bandedFill?.type === "solid"
+    ? model.style.bandedFill.color : undefined;
   for (const r of visRows) {
     const kind = r < headEnd ? "thead" : r >= footStart ? "tfoot" : "tbody";
     if (kind !== sectionKind) {
@@ -306,6 +362,7 @@ export function renderTable(model: TableModel): HTMLTableElement {
     // Do NOT fall back to defaultRowHeightPt: Apple auto-fits unsized rows
     // (mini-calendar rows render ~13px under a 25.9pt stored default).
     if (info?.sizePt) tr.style.height = `${info.sizePt}px`;
+    if (kind === "tbody") bodyOrdinal++;
     for (const c of visCols) {
       if (covered.has(cellKey(r, c))) continue;
       const cell: GridCell | null = grid[r]?.[c] ?? null;
@@ -326,6 +383,12 @@ export function renderTable(model: TableModel): HTMLTableElement {
         : c < model.headerColumnCount ? model.style?.headerColumnCellStyle
         : r >= footStart ? model.style?.footerRowCellStyle
         : model.style?.bodyCellStyle;
+      // banded rows: every second BODY row takes the banded fill; section
+      // and per-cell fills paint over it (G5 acid table, Apple pattern:
+      // 2nd/4th/... body rows banded)
+      if (banded !== undefined && !header && !footer && bodyOrdinal % 2 === 1) {
+        td.style.backgroundColor = banded;
+      }
       if (section) applyCellStyle(td, section, header, footer);
       const style = cellStyleOf(model, norm?.cellStyleIndex);
       applyCellStyle(td, style, header, footer);
