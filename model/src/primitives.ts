@@ -372,6 +372,31 @@ export interface ParaStyle {
   border?: Stroke;
   /** Writing direction override. [proto: writing_direction] */
   writingDirection?: "left-to-right" | "right-to-left";
+  /**
+   * Drop cap on the paragraph's leading characters. [proto: TSWP.DropCapArchive
+   * via DropCapStyleArchive.drop_cap_properties; paragraphs keyed by
+   * StorageArchive.table_drop_cap_style (field 28)] Shape/image caps degrade
+   * to text rendering with an unsupported-feature warning (converter policy).
+   */
+  dropCap?: DropCap;
+}
+
+/** Drop-cap parameters, resolved. [proto: TSWP.DropCapArchive] */
+export interface DropCap {
+  /** Body lines the cap spans. [proto: number_of_lines, default 3] */
+  lines?: number;
+  /** Lines raised above the first baseline. [proto: number_of_raised_lines] */
+  raisedLines?: number;
+  /** Leading characters included in the cap. [proto: number_of_characters, default 1] */
+  characters?: number;
+  /** Glyph scale inside the cap box (0..1]. [proto: character_scale, default 1] */
+  characterScale?: number;
+  /** Hang into the margin, points. [proto: outdent] */
+  outdentPt?: number;
+  /** Gap between cap and adjacent text, points. [proto: padding] */
+  paddingPt?: number;
+  /** Resolved char overrides for the cap glyphs. [proto: DropCapStyleArchive.char_properties] */
+  charStyle?: CharStyle;
 }
 
 /** One tab stop. [proto: TSWP.TabArchive position/alignment/leader] */

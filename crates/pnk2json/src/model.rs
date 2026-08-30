@@ -369,6 +369,29 @@ pub struct ParaStyle {
     pub border: Option<Stroke>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub writing_direction: Option<WritingDirection>,
+    /// Drop cap on the paragraph's leading characters (TSWP.DropCapArchive).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub drop_cap: Option<DropCap>,
+}
+
+/// Drop-cap parameters, resolved. [proto: TSWP.DropCapArchive]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct DropCap {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lines: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub raised_lines: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub characters: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub character_scale: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub outdent_pt: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub padding_pt: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub char_style: Option<CharStyle>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
