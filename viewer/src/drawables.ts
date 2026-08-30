@@ -710,14 +710,17 @@ export function applyCommonGeometry(div: HTMLElement, c: DrawableCommon): void {
   }
   if (c.reflection) {
     // Chromium/WebKit only; other engines just skip the reflection.
-    // The mask paints over the MIRRORED copy top-down, so its top edge is
-    // the contact line: Apple's reflection is strongest there (~opacity)
-    // and dies out ~55% down (3c844ac1 logos vs Keynote's export) — the
-    // previous transparent-to-opaque ramp faded the wrong way, drawing a
-    // readable mirrored logo at full strength far from the object.
+    // Mask orientation, probe-verified on Chromium 151 (scratchpad
+    // reflect-probe.html): the gradient is flipped WITH the mirrored copy,
+    // so gradient-BOTTOM lands on the contact line. Apple's reflection is
+    // strongest at contact (~opacity) and dead ~55% out (measured on
+    // 3c844ac1 logos vs Keynote's export), so: transparent through the far
+    // 45%, ramping to opaque at the bottom. The previous opaque-to-
+    // transparent ramp painted the ghost far from the shape and nothing at
+    // contact (G2's pentagon reflection appeared under the diamond).
     s.setProperty(
       "-webkit-box-reflect",
-      `below 0px linear-gradient(rgba(0,0,0,${c.reflection.opacity}), transparent 55%)`,
+      `below 0px linear-gradient(transparent 45%, rgba(0,0,0,${c.reflection.opacity}))`,
     );
   }
 }
