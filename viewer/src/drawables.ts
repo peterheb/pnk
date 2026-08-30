@@ -365,6 +365,48 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
   const max = Math.max(...chart.series.flatMap((s) => s.values.map((v) => (typeof v === "number" ? v : 0))), 1e-9);
   const colors = chart.seriesColors ?? ["#4a90d9", "#e0762e", "#7bb662", "#b0578d", "#5b6abf"];
   const groupW = w / chart.categories.length;
+  const lineKinds = ["line", "area", "stacked-area", "scatter"];
+  if (lineKinds.includes(chart.type)) {
+    // Line family: one polyline per series through the category centers,
+    // 0-based y like Apple's default axis (Running Log pace chart), with
+    // small circle markers; area variants also fill down to the baseline.
+    chart.series.forEach((s, si) => {
+      const color = colors[si % colors.length];
+      const pts: [number, number][] = [];
+      s.values.forEach((v, vi) => {
+        if (typeof v !== "number") return;
+        pts.push([(vi + 0.5) * groupW, h - 4 - (v / max) * (h - 12)]);
+      });
+      if (!pts.length) return;
+      if (chart.type.endsWith("area")) {
+        const area = document.createElementNS(NS, "path");
+        area.setAttribute("d", `M${pts[0][0]},${h} L` + pts.map(([x, y]) => `${x},${y}`).join(" L") + ` L${pts[pts.length - 1][0]},${h} Z`);
+        area.setAttribute("fill", color);
+        area.setAttribute("opacity", "0.25");
+        svg.appendChild(area);
+      }
+      if (chart.type !== "scatter") {
+        const line = document.createElementNS(NS, "polyline");
+        line.setAttribute("points", pts.map(([x, y]) => `${x},${y}`).join(" "));
+        line.setAttribute("fill", "none");
+        line.setAttribute("stroke", color);
+        line.setAttribute("stroke-width", "2.5");
+        line.setAttribute("stroke-linejoin", "round");
+        svg.appendChild(line);
+      }
+      for (const [x, y] of pts) {
+        const dot = document.createElementNS(NS, "circle");
+        dot.setAttribute("cx", String(x));
+        dot.setAttribute("cy", String(y));
+        dot.setAttribute("r", "3");
+        dot.setAttribute("fill", "#fff");
+        dot.setAttribute("stroke", color);
+        dot.setAttribute("stroke-width", "2");
+        svg.appendChild(dot);
+      }
+    });
+    return svg;
+  }
   const barW = (groupW * 0.7) / chart.series.length;
   chart.series.forEach((s, si) => {
     s.values.forEach((v, vi) => {
