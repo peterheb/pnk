@@ -98,6 +98,8 @@ pub fn convert_chart(ctx: &mut Ctx, ca: &Msg) -> ChartModel {
         None
     };
 
+    let series_colors = series_colors(ctx, ca, ctype, series.len());
+
     ChartModel {
         r#type: ctype,
         three_d,
@@ -106,10 +108,115 @@ pub fn convert_chart(ctx: &mut Ctx, ca: &Msg) -> ChartModel {
         series,
         legend_frame,
         legend_visible: None,
-        series_colors: None,
+        series_colors,
         data_binding,
         scatter_format,
     }
+}
+
+/// Per-series display colors from the TSCH series style archives.
+///
+/// `ChartArchive.series_private_styles = 18` (TSP.SparseReferenceArray keyed
+/// by series index) overrides `series_theme_styles = 17` (repeated reference,
+/// cycled). Each resolves to a `TSCH.ChartSeriesStyleArchive` whose properties
+/// live in the Generated extension at field 10000
+/// (`TSCH.Generated.ChartSeriesStyleArchive`, TSCHArchives.GEN.proto) — the
+/// color slot is per chart type: line takes `linestroke = 48`, column
+/// `columnfill = 13`, bar `barfill = 12`, area `areafill = 11`, pie/donut
+/// `piefill = 17`, scatter `scattersymbolfill = 59` / `scatterstroke = 53`,
+/// bubble `bubblesymbolfill = 55`, radar `radarareastroke = 172` /
+/// `radarareafill = 165`, fallback `defaultfill = 14`. Absent locally, the
+/// TSS parent chain (super field 1 → parent ref 3) supplies it.
+/// Fixture-verified: 01_Running_Log pace line = #ff9e41 orange from the
+/// private style's linestroke. [proto + inferred]
+fn series_colors(ctx: &mut Ctx, ca: &Msg, ctype: ChartType, n: usize) -> Option<Vec<HexColor>> {
+    if n == 0 {
+        return None;
+    }
+    // (generated-ext field, is_stroke) in priority order, per chart type.
+    let slots: &[(u32, bool)] = match ctype {
+        ChartType::Line => &[(48, true), (14, false)],
+        ChartType::Column | ChartType::StackedColumn => &[(13, false), (14, false)],
+        ChartType::Bar | ChartType::StackedBar => &[(12, false), (14, false)],
+        ChartType::Area | ChartType::StackedArea => &[(11, false), (14, false)],
+        ChartType::Pie | ChartType::Donut => &[(17, false), (14, false)],
+        ChartType::Scatter => &[(59, false), (53, true), (48, true), (14, false)],
+        ChartType::Bubble => &[(55, false), (14, false)],
+        ChartType::Radar => &[(172, true), (165, false), (14, false)],
+        ChartType::Other => &[(14, false)],
+    };
+
+    let theme: Vec<u64> = ca.references(17);
+    // Sparse array: entries { index = 1, reference = 2 }.
+    let mut private: std::collections::HashMap<u64, u64> = std::collections::HashMap::new();
+    if let Some(sparse) = ca.msg(18) {
+        for e in sparse.msgs(2) {
+            if let (Some(idx), Some(r)) = (e.varint(1), e.reference(2)) {
+                private.insert(idx, r);
+            }
+        }
+    }
+
+    let mut out = Vec::with_capacity(n);
+    for i in 0..n {
+        let style_id = private
+            .get(&(i as u64))
+            .copied()
+            .or_else(|| (!theme.is_empty()).then(|| theme[i % theme.len()]))?;
+        out.push(series_style_color(ctx, style_id, slots)?);
+    }
+    Some(out)
+}
+
+/// Walk a series style's TSS parent chain looking for the first of `slots`
+/// carried in the Generated ext (10000); stroke slots read
+/// `TSD.StrokeArchive.color = 1`, fill slots go through `tsd::fill_of` (solid
+/// color, or a gradient's first stop).
+fn series_style_color(ctx: &mut Ctx, style_id: u64, slots: &[(u32, bool)]) -> Option<HexColor> {
+    let mut exts = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut cur = Some(style_id);
+    while let Some(sid) = cur {
+        if !seen.insert(sid) {
+            break;
+        }
+        let Some(m) = ctx.loaded.msg(sid) else { break };
+        if let Some(ext) = m.msg(10000) {
+            exts.push(ext);
+        }
+        cur = m.msg(1).and_then(|sup| sup.reference(3));
+    }
+    for &(field, is_stroke) in slots {
+        for ext in &exts {
+            let Some(payload) = ext.msg(field) else { continue };
+            if is_stroke {
+                if let Some(c) = payload.msg(1) {
+                    let mut warns = Vec::new();
+                    if let Some(hex) = crate::colors::color_hex(&c, &mut |r| warns.push(r)) {
+                        for w in warns {
+                            ctx.warn(WarningCode::ColorDegraded, w);
+                        }
+                        return Some(hex);
+                    }
+                }
+            } else if let Some(fill) = crate::tsd::fill_of(ctx, &payload) {
+                match fill {
+                    Fill::Solid { color } => return Some(color),
+                    Fill::Gradient { gradient } => {
+                        if let Some(stop) = gradient.stops.first() {
+                            return Some(stop.color.clone());
+                        }
+                    }
+                    Fill::Image { tint, .. } => {
+                        if let Some(t) = tint {
+                            return Some(t);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Grid → (categories, series). Role assignment follows `series_direction`
