@@ -700,6 +700,12 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
     // Table-level style: TST.TableStyleArchive { super = 1,
     // table_properties = 11 } plus the style-network role slots on the model
     // (fields 18-21 cell styles, 24-27 text styles; docs/format/tables.md).
+    // Outer-frame strokes are captured out of the closure for per-cell
+    // baking below.
+    let mut frame_h: Option<Stroke> = None;
+    let mut frame_v: Option<Stroke> = None;
+    let mut frame_hdr_h: Option<Stroke> = None;
+    let mut frame_hdr_v: Option<Stroke> = None;
     let style = m.reference(3).and_then(|sid| {
         // TableStyleArchive properties INHERIT along the TSS parent chain
         // (02_Invoice's dashed body horizontal stroke lives only on the
@@ -751,6 +757,22 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
         );
         let foot_sep = if flag(37, true) { stroke_at(ctx, 54) } else { None };
         attach_borders(&mut foot, foot_sep, stroke_at(ctx, 57), stroke_at(ctx, 56), None);
+        // Outer frame: the section gridline defaults above are half-open
+        // (each cell owns right+bottom) so boundary 0 — the table's top and
+        // left OUTER edge — has no owner and never painted. Apple draws the
+        // frame with its own strokes: table_body_*_border_stroke (f58/f59,
+        // gated by table_border_visible f38), and the header region's outer
+        // edge with header_row/column_border_stroke (f47/f50, gated f39)
+        // [proto TSTStylePropertyArchiving.proto:70-101]. Captured here,
+        // baked onto boundary cells below.
+        if flag(38, true) {
+            frame_h = stroke_at(ctx, 58);
+            frame_v = stroke_at(ctx, 59);
+        }
+        if flag(39, true) {
+            frame_hdr_h = stroke_at(ctx, 47);
+            frame_hdr_v = stroke_at(ctx, 50);
+        }
         Some(TableStyle {
             banded_rows: props.iter().find_map(|p| p.boolean(1)),
             banded_fill: first(2)
@@ -777,6 +799,46 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
     // pooled cell styles; leftovers on empty positions synthesize a
     // value-less styled cell after the loop.
     let mut edge_overrides = sidecar_borders(ctx, &m);
+    // Bake the outer frame onto boundary cells (weakest layer: only sides
+    // the sidecar left unset — its explicit strokes AND erases win). The
+    // header region's outer edge prefers the header border strokes; the
+    // bottom/right outer edge also gets the frame so it draws Apple's
+    // border stroke rather than the interior gridline.
+    if frame_h.is_some() || frame_v.is_some() || frame_hdr_h.is_some() || frame_hdr_v.is_some() {
+        let hdr_rows = m.varint(9).unwrap_or(0) as u32;
+        let hdr_cols = m.varint(10).unwrap_or(0) as u32;
+        let empty = || CellBorders { top: None, right: None, bottom: None, left: None };
+        for c in 0..column_count {
+            let top = if hdr_rows > 0 { frame_hdr_h.as_ref().or(frame_h.as_ref()) } else { frame_h.as_ref() };
+            if let Some(s) = top {
+                let e = edge_overrides.entry((0, c)).or_insert_with(empty);
+                if e.top.is_none() {
+                    e.top = Some(s.clone());
+                }
+            }
+            if let (Some(s), true) = (frame_h.as_ref(), row_count > 0) {
+                let e = edge_overrides.entry((row_count - 1, c)).or_insert_with(empty);
+                if e.bottom.is_none() {
+                    e.bottom = Some(s.clone());
+                }
+            }
+        }
+        for r in 0..row_count {
+            let left = if hdr_cols > 0 { frame_hdr_v.as_ref().or(frame_v.as_ref()) } else { frame_v.as_ref() };
+            if let Some(s) = left {
+                let e = edge_overrides.entry((r, 0)).or_insert_with(empty);
+                if e.left.is_none() {
+                    e.left = Some(s.clone());
+                }
+            }
+            if let (Some(s), true) = (frame_v.as_ref(), column_count > 0) {
+                let e = edge_overrides.entry((r, column_count - 1)).or_insert_with(empty);
+                if e.right.is_none() {
+                    e.right = Some(s.clone());
+                }
+            }
+        }
+    }
     let mut formats: Vec<CellFormat> = Vec::new();
     for (row, col, mut cell, format) in cells {
         if cell.cell_style_index.is_none() {
