@@ -283,6 +283,14 @@ function paginatedBody(
     frame.appendChild(inner);
     view.appendChild(frame);
   }
+
+  // footnote marks number sequentially through the document (Apple shows
+  // superscript indexes; the converter stores only the mark position)
+  let fnIndex = 0;
+  view.querySelectorAll<HTMLElement>('.field[data-field-kind="footnote-mark"]').forEach((el) => {
+    fnIndex += 1;
+    el.textContent = String(fnIndex);
+  });
 }
 
 export function renderPages(doc: PagesDocument, hdoc: HydratedDoc, ctx: ViewerCtx, mount: HTMLElement): void {

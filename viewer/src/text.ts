@@ -172,10 +172,16 @@ export function renderParagraph(
       el.style.marginBottom = "0";
       el.style.marginLeft = "0";
     }
+    // Nesting: the marker indent (absolute, per level) shifts the whole
+    // row when the paragraph style itself has no left indent — G5's nested
+    // bullets step 9/18pt per level, numbered 18/36/54pt.
+    if (!style?.leftIndentPt && list!.markerIndentPt) {
+      wrap.style.marginLeft = `${list!.markerIndentPt}px`;
+    }
     const marker = document.createElement("span");
     marker.className = "list-marker";
     marker.textContent = markerText;
-    marker.style.minWidth = `${Math.max(16, (list!.markerIndentPt ?? 0) + 12)}px`;
+    marker.style.minWidth = "18px";
     wrap.appendChild(marker);
     wrap.appendChild(el);
     renderParagraphContent(el, p, doc, ctx);

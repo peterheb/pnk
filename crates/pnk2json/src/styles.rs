@@ -330,51 +330,88 @@ pub fn para_style_from(ctx: &mut Ctx, msgs: &[Msg]) -> ParaStyle {
 
 /// `TSWP.ListStyleArchive` resolved for one nesting level
 /// (docs/format/text.md §List styles; exotic locale kinds degrade to "other").
+///
+/// List styles chain like other TSS styles (super = 1 → StyleArchive with
+/// parent at 3): overrides carry only the changed arrays — G5's custom
+/// bullet stores its "❏" in `strings` (16) while `label_types` (11) rides
+/// on the parent — so each property array is taken from the FIRST message
+/// along the chain that has it. A per-level lookup falls back to the last
+/// entry (arrays are per-level, padded by writers to ~9 entries).
 pub fn resolve_list_format(ctx: &mut Ctx, list_id: u64, level: u32) -> Option<ListFormat> {
-    let m = ctx.loaded.msg(list_id)?.clone();
-    let label_types: Vec<u64> = m
-        .all(11)
-        .into_iter()
-        .filter_map(|v| match v {
-            iwadump::proto::Value::Varint(v) => Some(*v),
-            _ => None,
-        })
-        .collect();
-    let label = label_types.get(level as usize).copied().unwrap_or(0);
-    let (marker_kind, number_kind, marker_text, marker_image) = match label {
-        0 => (ListMarkerKind::None, None, None, None),
-        1 => {
-            let image_ref = m
-                .msgs(17)
-                .get(level as usize)
-                .and_then(|img| img.reference(3).or_else(|| img.reference(1)));
-            let image = image_ref.map(|id| ctx.media_ref(id));
-            (ListMarkerKind::Image, None, None, image)
+    // Collect the parent chain, most-derived first.
+    let mut msgs: Vec<Msg> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut cur = Some(list_id);
+    while let Some(id) = cur {
+        if !seen.insert(id) {
+            break;
         }
-        2 => {
-            let text: Vec<String> = m
-                .all(16)
-                .into_iter()
-                .filter_map(|v| match v {
-                    iwadump::proto::Value::Bytes(b) => {
-                        Some(String::from_utf8_lossy(b).into_owned())
-                    }
-                    _ => None,
-                })
-                .collect();
-            let text = text.get(level as usize).cloned();
-            (ListMarkerKind::String, None, text, None)
-        }
-        3 => {
-            let numbers: Vec<u64> = m
-                .all(15)
+        let Some(m) = ctx.loaded.msg(id) else { break };
+        let m = m.clone();
+        cur = m.msg(1).and_then(|b| b.reference(3)).or_else(|| m.reference(3));
+        msgs.push(m);
+    }
+    if msgs.is_empty() {
+        return None;
+    }
+    fn varints(msgs: &[Msg], field: u32) -> Vec<u64> {
+        for m in msgs {
+            let v: Vec<u64> = m
+                .all(field)
                 .into_iter()
                 .filter_map(|v| match v {
                     iwadump::proto::Value::Varint(v) => Some(*v),
                     _ => None,
                 })
                 .collect();
-            let kind = numbers.get(level as usize).copied().unwrap_or(0);
+            if !v.is_empty() {
+                return v;
+            }
+        }
+        Vec::new()
+    }
+    fn at_level<T: Copy>(v: &[T], level: u32) -> Option<T> {
+        v.get(level as usize).or_else(|| v.last()).copied()
+    }
+
+    let label_types = varints(&msgs, 11);
+    let label = at_level(&label_types, level).unwrap_or(0);
+    let (marker_kind, number_kind, marker_text, marker_image) = match label {
+        0 => (ListMarkerKind::None, None, None, None),
+        1 => {
+            let images = msgs.iter().map(|m| m.msgs(17)).find(|v| !v.is_empty()).unwrap_or_default();
+            let image_ref = images
+                .get(level as usize)
+                .or_else(|| images.last())
+                .and_then(|img| img.reference(3).or_else(|| img.reference(1)));
+            let image = image_ref.map(|id| ctx.media_ref(id));
+            (ListMarkerKind::Image, None, None, image)
+        }
+        2 => {
+            let text: Vec<String> = msgs
+                .iter()
+                .map(|m| {
+                    m.all(16)
+                        .into_iter()
+                        .filter_map(|v| match v {
+                            iwadump::proto::Value::Bytes(b) => {
+                                Some(String::from_utf8_lossy(b).into_owned())
+                            }
+                            _ => None,
+                        })
+                        .collect::<Vec<String>>()
+                })
+                .find(|v| !v.is_empty())
+                .unwrap_or_default();
+            let text = text
+                .get(level as usize)
+                .or_else(|| text.last())
+                .cloned();
+            (ListMarkerKind::String, None, text, None)
+        }
+        3 => {
+            let numbers = varints(&msgs, 15);
+            let kind = at_level(&numbers, level).unwrap_or(0);
             let number_kind = match kind {
                 0..=2 => Some(NumberKind::Decimal),
                 3..=5 => Some(NumberKind::RomanUpper),
@@ -396,7 +433,11 @@ pub fn resolve_list_format(ctx: &mut Ctx, list_id: u64, level: u32) -> Option<Li
         }
         _ => (ListMarkerKind::None, None, None, None),
     };
-    let indents: Vec<f32> = m.packed_f32s(13);
+    let indents: Vec<f32> = msgs
+        .iter()
+        .map(|m| m.packed_f32s(13))
+        .find(|v| !v.is_empty())
+        .unwrap_or_default();
     Some(ListFormat {
         level,
         marker_kind,
@@ -404,7 +445,7 @@ pub fn resolve_list_format(ctx: &mut Ctx, list_id: u64, level: u32) -> Option<Li
         number_kind,
         marker_image,
         start: None,
-        marker_indent_pt: indents.get(level as usize).map(|v| *v as f64),
+        marker_indent_pt: at_level(&indents, level).map(|v| v as f64),
     })
 }
 
