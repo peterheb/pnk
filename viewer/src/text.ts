@@ -199,6 +199,19 @@ export function renderParagraph(
     ? document.createElement(`h${level}`)
     : document.createElement("p");
 
+  // The block's own font-size feeds the line-box STRUT: run spans carry
+  // their sizes but the <p> inherited the chrome's 15px, so every line of
+  // smaller text was padded to ~18px pitch (G2's 9pt caption rendered with
+  // double leading — visible even between the wrapped lines of one
+  // paragraph). Size the block to its largest visible run: Apple derives
+  // line height from the tallest run in the line.
+  const runSizes = p.items
+    .map((it) =>
+      typeof it === "string" || "type" in it ? undefined : charStyleOf(doc, (it as TextRun).cStyle)?.fontSizePt,
+    )
+    .filter((n): n is number => !!n);
+  if (runSizes.length) el.style.fontSize = `${Math.max(...runSizes)}px`;
+
   if (!hasMarker) {
     listState.lastKey = null;
     if (style) applyParaStyle(el, style);
