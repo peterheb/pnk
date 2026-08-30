@@ -67,6 +67,47 @@ function buildCanvas(
 /** Image extensions <img> cannot rasterize (Apple renders them natively). */
 const VECTOR_FILL = /\.(pdf|ai|eps)$/i;
 
+/**
+ * Best-effort CSS gradient from PDF-based vector art (.ai/.pdf background
+ * fills). Modern .ai files are PDF-compatible, and their shading DICTS are
+ * plain text even when content streams are Flate-compressed: an axial
+ * gradient carries `/ShadingType 2` with `/C0 [...]` / `/C1 [...]` function
+ * endpoints (PDF 32000-1 §8.7.4.5.3). The axis direction lives in the
+ * compressed stream's transform, so we assume top-to-bottom — the common
+ * orientation for slide backdrops [inferred]. Returns null when no shading
+ * is found (fully-compressed or raster-only art).
+ */
+async function vectorArtGradientCss(url: string): Promise<string | null> {
+  try {
+    const buf = await (await fetch(url)).arrayBuffer();
+    const text = new TextDecoder("latin1").decode(buf);
+    if (!/\/ShadingType\s*2/.test(text)) return null;
+    const comp = (name: string): number[] | null => {
+      const m = text.match(new RegExp(`\\/${name}\\s*\\[([^\\]]*)\\]`));
+      if (!m) return null;
+      const nums = m[1].trim().split(/\s+/).map(Number).filter((n) => !Number.isNaN(n));
+      return nums.length ? nums : null;
+    };
+    const rgb = (c: number[]): string | null => {
+      const to255 = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 255);
+      if (c.length === 3) return `rgb(${to255(c[0])},${to255(c[1])},${to255(c[2])})`;
+      if (c.length === 1) return `rgb(${to255(c[0])},${to255(c[0])},${to255(c[0])})`;
+      if (c.length === 4) {
+        // DeviceCMYK -> naive RGB
+        const [cy, mg, ye, k] = c;
+        return `rgb(${to255((1 - cy) * (1 - k))},${to255((1 - mg) * (1 - k))},${to255((1 - ye) * (1 - k))})`;
+      }
+      return null;
+    };
+    const c0 = comp("C0"), c1 = comp("C1");
+    if (!c0 || !c1) return null;
+    const a = rgb(c0), b = rgb(c1);
+    return a && b ? `linear-gradient(180deg, ${a}, ${b})` : null;
+  } catch {
+    return null;
+  }
+}
+
 /** A stage-renderable image fill, or null (missing bytes / vector art). */
 function renderableImageFill(
   f: Fill | null,
@@ -127,6 +168,19 @@ function applyStageBackground(
       ?? "";
     const approx = THEME_BACKDROP_APPROX[name.toLowerCase()];
     if (approx) inner.style.background = approx;
+    // Vector art (.ai/.pdf) backgrounds whose bytes DID ship: sniff an axial
+    // shading gradient out of the PDF dictionaries and paint it (async —
+    // upgrades the backdrop as soon as the bytes parse).
+    for (const f of [slideFill, masterFill]) {
+      if (f?.type !== "image") continue;
+      const n = f.image.preferredFileName ?? f.image.fileName ?? "";
+      const url = ctx.url(f.image.dataId);
+      if (!url || !VECTOR_FILL.test(n)) continue;
+      void vectorArtGradientCss(url).then((css) => {
+        if (css) inner.style.background = css;
+      });
+      break;
+    }
   }
 }
 
