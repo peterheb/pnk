@@ -328,6 +328,21 @@ fn convert_slide_raw(ctx: &mut Ctx, slide_id: u64, is_master: bool) -> (Slide, O
             converted.push((pid, crate::drawables::convert_drawable(ctx, pid)));
         }
     }
+    // Master prompt slots: sage_tag_to_info_map (28) tags the template's
+    // editable text shapes ("Text", "Text-1", …); a slide replaces a slot
+    // with its own same-tagged shape, and an unreplaced slot's prompt text
+    // ("Presentation Subtitle") is instructional — Apple never paints it
+    // (fixture 2496802c: master shape tagged Text-2 carries that string,
+    // slide 1 has no subtitle, Apple's export shows none). Drop text-carrying
+    // tagged drawables from the master; non-text furniture (logos, rules)
+    // stays even when tagged.
+    if is_master {
+        let tagged: std::collections::HashSet<u64> =
+            m.msgs(28).iter().filter_map(|e| e.reference(2)).collect();
+        if !tagged.is_empty() {
+            converted.retain(|(id, d)| !(tagged.contains(id) && drawable_has_text(d)));
+        }
+    }
     let drawables: Vec<Drawable> = converted.into_iter().map(|(_, d)| d).collect();
 
     // Placeholder visibility: Keynote's per-layout "Title/Body/Object/Slide
