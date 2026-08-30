@@ -710,9 +710,14 @@ export function applyCommonGeometry(div: HTMLElement, c: DrawableCommon): void {
   }
   if (c.reflection) {
     // Chromium/WebKit only; other engines just skip the reflection.
+    // The mask paints over the MIRRORED copy top-down, so its top edge is
+    // the contact line: Apple's reflection is strongest there (~opacity)
+    // and dies out ~55% down (3c844ac1 logos vs Keynote's export) — the
+    // previous transparent-to-opaque ramp faded the wrong way, drawing a
+    // readable mirrored logo at full strength far from the object.
     s.setProperty(
       "-webkit-box-reflect",
-      `below 0px linear-gradient(transparent 30%, rgba(0,0,0,${c.reflection.opacity}))`,
+      `below 0px linear-gradient(rgba(0,0,0,${c.reflection.opacity}), transparent 55%)`,
     );
   }
 }
