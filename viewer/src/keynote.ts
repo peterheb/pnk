@@ -3,7 +3,7 @@
 import type { Fill } from "../../model/src/shared";
 import type { Drawable, DrawableCommon, KeynoteDocument, Slide } from "../../model/src/keynote";
 import type { ViewerCtx } from "./ctx";
-import { fillToCss, renderCanvasDrawable } from "./drawables";
+import { applyTextFit, fillToCss, renderCanvasDrawable } from "./drawables";
 import { renderStyledText } from "./text";
 import type { HydratedDoc } from "./hydrate";
 
@@ -175,6 +175,14 @@ const THEME_BACKDROP_APPROX: Record<string, string> = {
     "radial-gradient(ellipse 95% 80% at 50% 32%, #8f8f8f 0%, #6d6d6d 38%, #4b4b4b 68%, #3a3a3a 100%)",
   // News/photo-deck cream paper texture (5089b9c7 deck).
   "cotton_paper_hd.jpeg": "radial-gradient(ellipse 120% 100% at 50% 40%, #f7f3e8 0%, #efe9d8 60%, #e7dfc9 100%)",
+  // Keynote '09 "Showroom" theme backdrop: light-gray studio-sweep gradient
+  // (0f9df553 / b52c89c1 decks reference the jpeg, bytes not shipped).
+  "showroom2_1024x768.jpeg":
+    "linear-gradient(180deg, #e9eaec 0%, #dcdee1 45%, #c9cbd0 75%, #babcc2 100%)",
+  "showroom_1024x768.jpeg":
+    "linear-gradient(180deg, #e9eaec 0%, #dcdee1 45%, #c9cbd0 75%, #babcc2 100%)",
+  "showroom_1024x768-1.jpeg":
+    "linear-gradient(180deg, #e9eaec 0%, #dcdee1 45%, #c9cbd0 75%, #babcc2 100%)",
 };
 
 /** Placeholder role of a drawable, when it has one. Master-underlay
@@ -294,6 +302,8 @@ export function renderKeynote(
   const activate = (index: number) => {
     stageSlot.replaceChildren();
     stageSlot.appendChild(renderStage(doc, hdoc, ctx, doc.slides[index], index, stageSlot.clientWidth || 800));
+    // Shrink-to-fit measurement pass needs the stage attached and laid out.
+    applyTextFit(stageSlot);
     for (const item of list.children) {
       item.classList.toggle("active", (item as HTMLElement).dataset.slideIndex === String(index));
     }
@@ -316,4 +326,7 @@ export function renderKeynote(
   view.appendChild(stageSlot);
   mount.appendChild(view);
   activate(active);
+  // Thumbnails were built detached; measure their shrink boxes now that the
+  // whole view is attached.
+  applyTextFit(list);
 }

@@ -375,6 +375,14 @@ function applyTextFitMode(
     layer.style.height = "auto";
   } else if (fit === "shrink") {
     div.dataset.textFit = "shrink";
+  } else {
+    // Fixed box (no flag). Apple laid the stored frame out with ITS font
+    // metrics; browser fallback faces + line boxes run taller, so text that
+    // fits exactly in Keynote clips mid-line here (0f9df553 byline: 132px of
+    // content in a 102pt box). Tolerance mode: the measurement pass may
+    // shrink bounded (>=0.6) to absorb that drift — never past it, so truly
+    // authored overflow still clips like Apple's fixed frames do.
+    div.dataset.textFit = "tolerance";
   }
 }
 
@@ -387,10 +395,13 @@ function applyTextFitMode(
  * displayed (measurement). Idempotent: safe to re-run.
  */
 export function applyTextFit(root: HTMLElement): void {
-  for (const box of root.querySelectorAll<HTMLElement>('[data-text-fit="shrink"]')) {
+  for (const box of root.querySelectorAll<HTMLElement>("[data-text-fit]")) {
     const layer = box.querySelector<HTMLElement>(":scope > .drawable-text");
     const inner = layer?.querySelector<HTMLElement>(":scope > .drawable-text-inner");
     if (!layer || !inner) continue;
+    // "shrink" = Keynote's shrink-on-overflow (scale as far as needed);
+    // "tolerance" = fixed box, bounded shrink for font-metric drift only.
+    const minScale = box.dataset.textFit === "shrink" ? 0.35 : 0.6;
     inner.style.transform = "";
     inner.style.width = "";
     const boxH = layer.clientHeight;
@@ -403,7 +414,7 @@ export function applyTextFit(root: HTMLElement): void {
     for (let i = 0; i < 3; i++) {
       const contentH = inner.offsetHeight;
       if (contentH * s <= boxH + 0.5) break;
-      s = Math.max(Math.min(s, boxH / contentH), 0.35);
+      s = Math.max(Math.min(s, boxH / contentH), minScale);
       inner.style.width = `${(100 / s).toFixed(3)}%`;
       inner.style.transform = `scale(${s.toFixed(4)})`;
       inner.style.transformOrigin = origin;
@@ -590,9 +601,9 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
     div.appendChild(svg);
     const layer = textLayer({ ...d, text: d.text, verticalAlignment: d.verticalAlignment, common: c }, doc, ctx);
     if (layer) {
-      // Shapes keep their geometry: only the shrink mode applies (a shape
-      // never grows for its text).
-      if (d.textFit === "shrink") applyTextFitMode(div, layer, "shrink", d.verticalAlignment);
+      // Shapes keep their geometry: a shape never grows for its text, so
+      // "grow" degrades to the fixed-box tolerance mode.
+      applyTextFitMode(div, layer, d.textFit === "grow" ? undefined : d.textFit, d.verticalAlignment);
       div.appendChild(layer);
     }
   } else if (d.type === "image") {
