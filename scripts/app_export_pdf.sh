@@ -29,7 +29,7 @@ on run argv
     end try
   end tell
   tell application id appID
-    activate
+    -- no activate: Apple events need no focus; do not steal the desktop
     open docPath
     set deadline to (current date) + 20
     repeat until ((count of documents) > 0) or ((current date) > deadline)

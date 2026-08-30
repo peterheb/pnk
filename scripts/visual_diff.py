@@ -98,7 +98,10 @@ def export_via_app(app_name: str, fixture: Path, work: Path, log) -> tuple[Path 
             # informational only: the copy is distinguishable by its own name
             log(f"note: user's original {fixture.name!r} is also open in {app_name}")
         log(f"opening copy {copy_path} in {app_name} (docs open: {names})")
-        subprocess.run(["open", "-a", app_name, str(copy_path)], check=True, timeout=30)
+        # -g: open without bringing the app to the foreground — exports are
+        # driven by Apple events and need no focus, and stealing the user's
+        # focus mid-keystroke was the harness's worst side effect.
+        subprocess.run(["open", "-g", "-a", app_name, str(copy_path)], check=True, timeout=30)
         deadline = time.time() + OPEN_TIMEOUT_S
         while time.time() < deadline:
             existing = find_copy()
