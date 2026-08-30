@@ -15,6 +15,7 @@ function buildCanvas(
   hdoc: HydratedDoc,
   ctx: ViewerCtx,
   widthPx: number,
+  slideNumber: number,
 ): HTMLElement {
   const { width, height } = doc.slideSize;
   const scale = widthPx / width;
@@ -36,8 +37,13 @@ function buildCanvas(
   for (const d of slide.masterDrawables ?? []) inner.appendChild(renderCanvasDrawable(d, hdoc, ctx));
   for (const d of slide.drawables) {
     // The slide-number placeholder paints only when the slide shows numbers
-    // (its content is a page-number field; Apple hides it otherwise).
-    if (roleOf(d) === "slide-number" && !slide.slideNumberVisible) continue;
+    // (Apple hides it otherwise); its page-number field bakes to the real
+    // index so it reads "2", not a field label.
+    if (roleOf(d) === "slide-number") {
+      if (!slide.slideNumberVisible) continue;
+      inner.appendChild(renderCanvasDrawable(bakePageNumber(d, slideNumber), hdoc, ctx));
+      continue;
+    }
     // Empty placeholders are editor chrome: Keynote's own export paints
     // nothing for them (their theme para styles can carry stray borders).
     if (roleOf(d) && !hasVisibleText(d)) continue;
@@ -178,6 +184,32 @@ function roleOf(d: Drawable): string | null {
   return c?.placeholder?.role ?? null;
 }
 
+/** Replace page-number fields with the slide's real number, inheriting the
+ * char style of a neighboring styled run (Keynote pairs the field with an
+ * empty styled run carrying its look). */
+function bakePageNumber(d: Drawable, n: number): Drawable {
+  if (!("text" in d) || !d.text) return d;
+  let changed = false;
+  const paragraphs = d.text.paragraphs.map((p) => {
+    const cStyle = p.items.reduce<number | undefined>(
+      (acc, it) =>
+        acc ?? (typeof it === "object" && it && "cStyle" in it ? (it as { cStyle?: number }).cStyle : undefined),
+      undefined,
+    );
+    const items = p.items.map((it) => {
+      const isPageField =
+        typeof it === "object" && it !== null && "type" in it
+        && (it as { type?: string }).type === "field"
+        && (it as { field?: { kind?: string } }).field?.kind === "page-number";
+      if (!isPageField) return it;
+      changed = true;
+      return cStyle === undefined ? { text: String(n) } : { text: String(n), cStyle };
+    });
+    return { ...p, items };
+  });
+  return changed ? ({ ...d, text: { ...d.text, paragraphs } } as Drawable) : d;
+}
+
 /** True when the drawable carries at least one non-whitespace text run. */
 function hasVisibleText(d: Drawable): boolean {
   if (!("text" in d) || !d.text) return false;
@@ -206,7 +238,7 @@ function renderStage(
   const stage = document.createElement("div");
   stage.className = "slide-stage";
 
-  const frame = buildCanvas(slide, doc, hdoc, ctx, widthPx);
+  const frame = buildCanvas(slide, doc, hdoc, ctx, widthPx, index + 1);
   frame.dataset.slideIndex = String(index);
   stage.appendChild(frame);
 
@@ -230,7 +262,9 @@ function renderStage(
     : Object.assign(document.createElement("p"), { textContent: "No notes on this slide.", className: "muted" }));
   stage.appendChild(notes);
 
-  if (slide.slideNumberVisible) {
+  // Corner badge only when no slide-number placeholder painted the number
+  // on the canvas itself.
+  if (slide.slideNumberVisible && !slide.drawables.some((d) => roleOf(d) === "slide-number")) {
     const num = document.createElement("div");
     num.className = "slide-number";
     num.textContent = String(index + 1);
@@ -269,7 +303,7 @@ export function renderKeynote(
     const item = document.createElement("div");
     item.className = "slide-list-item";
     item.dataset.slideIndex = String(i);
-    item.appendChild(buildCanvas(slide, doc, hdoc, ctx, THUMB_WIDTH));
+    item.appendChild(buildCanvas(slide, doc, hdoc, ctx, THUMB_WIDTH, i + 1));
     const label = document.createElement("span");
     label.className = "label";
     label.textContent = `${i + 1}${slide.name ? ` · ${slide.name}` : ""}${slide.skipped ? " (skipped)" : ""}`;

@@ -76,21 +76,31 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> KeynoteDocument {
             slide_ids = walk_slide_nodes(ctx, tree.reference(1));
         }
     }
-    // In practice, tree.slides may reference KN.SlideNodeArchive objects
-    // rather than SlideArchives directly: deref node.slide (field 2).
-    slide_ids = slide_ids
-        .into_iter()
-        .map(|sid| match ctx.loaded.record(sid).map(|r| r.type_id) {
-            Some(4) => ctx.loaded.msg(sid).and_then(|n| n.reference(2)).unwrap_or(sid),
-            _ => sid,
-        })
-        .collect();
-
-    // Navigator flags: isSkipped (4), isSlideNumberVisible (18), by slide id.
+    // Navigator flags: isSkipped (4), isSlideNumberVisible (18), by slide id
+    // — from the deprecated root tree when present…
     let mut node_flags: HashMap<u64, (Option<bool>, Option<bool>)> = HashMap::new();
     if let Some(tree) = show.msg(3) {
         collect_node_flags(ctx, tree.reference(1), &mut node_flags);
     }
+    // In practice, tree.slides may reference KN.SlideNodeArchive objects
+    // rather than SlideArchives directly: deref node.slide (field 2), and
+    // harvest the flags off THESE nodes too — modern decks carry them here,
+    // not on the deprecated root tree (RIPE bc5a842a: node field 18 = 1 yet
+    // the root-tree walk finds nothing).
+    slide_ids = slide_ids
+        .into_iter()
+        .map(|sid| match ctx.loaded.record(sid).map(|r| r.type_id) {
+            Some(4) => {
+                let node = ctx.loaded.msg(sid);
+                let resolved = node.and_then(|n| n.reference(2)).unwrap_or(sid);
+                if let Some(n) = node {
+                    node_flags.insert(resolved, (n.boolean(4), n.boolean(18)));
+                }
+                resolved
+            }
+            _ => sid,
+        })
+        .collect();
 
     let master_index: HashMap<u64, usize> =
         template_ids.iter().enumerate().map(|(i, t)| (*t, i)).collect();
