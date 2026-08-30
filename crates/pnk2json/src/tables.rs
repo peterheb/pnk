@@ -180,6 +180,123 @@ fn header_info(
     out
 }
 
+/// u128 from a TSP.UUID ({lower=1, upper=2}) or TSP.CFUUIDArchive
+/// ({uuid_w0..w3 = fields 2..5}); both normalize to the same 128-bit value
+/// (parser: masaccio/numbers-parser@3238795 numbers_uuid.py).
+fn uuid_u128(m: &Msg) -> Option<u128> {
+    if let (Some(w2), Some(w3)) = (m.varint(4), m.varint(5)) {
+        let w0 = m.varint(2)?;
+        let w1 = m.varint(3)?;
+        return Some(
+            ((w3 as u128) << 96) | ((w2 as u128) << 64) | ((w1 as u128) << 32) | w0 as u128,
+        );
+    }
+    let lower = m.varint(1)?;
+    let upper = m.varint(2)?;
+    Some(((upper as u128) << 64) | lower as u128)
+}
+
+/// Merge rects from TSCE.FormulaOwnerDependenciesArchive (type 4008)
+/// records: the HAUNTED_OWNER (kind 35) archive whose formula_owner_uid
+/// (f1) equals the table's haunted uid gives the table's base_owner_uid
+/// (f12); MERGE_OWNER (kind 5) archives carry the rects in
+/// range_dependencies (f5) back_dependency (f2) internal_range_reference
+/// (f4) { owner_id = 1, range = 2 {tl_col=1, tl_row=2, br_col=3, br_row=4}},
+/// with owner_id resolving to a uuid via the calc engine's (type 4000)
+/// dependency_tracker (f2) owner_id_map (f3) map_entry (f1)
+/// { internal_owner_id = 1, owner_id = 2 (CFUUID) }.
+/// [parser: masaccio/numbers-parser@3238795 model.py:746-771,877-908]
+fn dependency_merges(ctx: &Ctx, haunted: u128, rows: u32, cols: u32) -> Vec<TableMerge> {
+    let mut base: Option<u128> = None;
+    for rec in ctx.loaded.records.values() {
+        if rec.type_id != 4008 {
+            continue;
+        }
+        let Some(fo) = rec.msg.as_ref() else { continue };
+        if fo.varint(3) != Some(35) {
+            continue; // not a HAUNTED_OWNER mapping entry
+        }
+        if fo.msg(1).as_ref().and_then(uuid_u128) == Some(haunted) {
+            base = fo.msg(12).as_ref().and_then(uuid_u128);
+            break;
+        }
+    }
+    let Some(base) = base else { return Vec::new() };
+
+    // internal owner id -> uuid (calc engine owner-id map)
+    let mut owner_uuid: HashMap<u64, u128> = HashMap::new();
+    for rec in ctx.loaded.records.values() {
+        if rec.type_id != 4000 {
+            continue;
+        }
+        let Some(ce) = rec.msg.as_ref() else { continue };
+        if let Some(map) = ce.msg(2).and_then(|dt| dt.msg(3)) {
+            for e in map.msgs(1) {
+                if let (Some(id), Some(uuid)) =
+                    (e.varint(1), e.msg(2).as_ref().and_then(uuid_u128))
+                {
+                    owner_uuid.insert(id, uuid);
+                }
+            }
+        }
+    }
+
+    let mut merges = Vec::new();
+    for rec in ctx.loaded.records.values() {
+        if rec.type_id != 4008 {
+            continue;
+        }
+        let Some(fo) = rec.msg.as_ref() else { continue };
+        if fo.varint(3) != Some(5) {
+            continue; // not a MERGE_OWNER
+        }
+        let Some(deps) = fo.msg(5) else { continue };
+        for bd in deps.msgs(2) {
+            let Some(irr) = bd.msg(4) else { continue };
+            let owned_by = irr.varint(1).and_then(|id| owner_uuid.get(&id).copied());
+            if owned_by != Some(base) {
+                continue;
+            }
+            let Some(range) = irr.msg(2) else { continue };
+            let tlc = range.varint(1).unwrap_or(0);
+            let tlr = range.varint(2).unwrap_or(0);
+            let brc = range.varint(3).unwrap_or(tlc);
+            let brr = range.varint(4).unwrap_or(tlr);
+            push_merge(&mut merges, tlr, tlc, brr, brc, rows, cols);
+        }
+    }
+    merges
+}
+
+/// Clamp a decoded merge range to the table bounds and push it; degenerate
+/// 1x1 "merges" are no-ops and dropped.
+fn push_merge(
+    merges: &mut Vec<TableMerge>,
+    r0: u64,
+    c0: u64,
+    r1: u64,
+    c1: u64,
+    rows: u32,
+    cols: u32,
+) {
+    if rows == 0 || cols == 0 || r0 >= rows as u64 || c0 >= cols as u64 {
+        return;
+    }
+    let r1 = r1.min(rows as u64 - 1);
+    let c1 = c1.min(cols as u64 - 1);
+    let row_span = (r1 - r0 + 1) as u32;
+    let column_span = (c1 - c0 + 1) as u32;
+    if row_span == 1 && column_span == 1 {
+        return;
+    }
+    merges.push(TableMerge {
+        anchor_row: r0 as u32,
+        anchor_column: c0 as u32,
+        row_span,
+        column_span,
+    });
+}
+
 fn rows_to_model(info: Vec<(u32, RowColInfo)>, count: u32) -> Option<Vec<RowColInfo>> {
     if info.is_empty() || count == 0 {
         return None;
@@ -282,12 +399,72 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
     }
     cells.sort_by_key(|(r, c, _, _)| (*r, *c));
 
-    // Merges: merge_region_map (DataStore field 13) → MergeRegionMapArchive
-    // { cell_range = 1 } with CellRange { origin = CellID, size = TableSize };
-    // packedData: column in the high 16 bits, row in the low 16 bits
-    // (docs/format/tables.md §Merges).
+    // Merges, in numbers-parser's priority order (model.py merge_cells):
+    // (1) merge_owner (model f47) formula-store ranges — modern files write
+    //     COLON_TRACT_NODE (67) ASTs with absolute row/col tracts; pre-BNC
+    //     files write RPN CELL_REFERENCE_NODE (36) pairs + COLON_NODE (29)
+    //     — both handled here; (2) the legacy packed-int merge_region_map
+    //     (DataStore f13). Stored ranges can be stale-wide (lafs_playlist:
+    //     A1:G1 on a 4-column table) — spans clamp to the table bounds.
+    //     [parser: masaccio/numbers-parser@3238795 model.py:848-876 +
+    //     proto TSCEArchives.proto ASTNodeArchive; RPN pair form inferred,
+    //     fixture-verified on lafs 6d101a3e]
     let mut merges = Vec::new();
-    if let Some(mrm_id) = store.as_ref().and_then(|s| s.reference(13)) {
+    let mut merge_candidates = 0usize;
+    if let Some(fs) = m.msg(47).and_then(|mo| mo.msg(2)) {
+        for pair in fs.msgs(3) {
+            let Some(nodes) = pair.msg(2).and_then(|f| f.msg(1)).map(|arr| arr.msgs(1)) else {
+                continue;
+            };
+            merge_candidates += 1;
+            // modern: colon tract node carries the whole range
+            if let Some(tract) = nodes
+                .iter()
+                .find(|n| n.varint(1) == Some(67))
+                .and_then(|n| n.msg(40))
+            {
+                let row = tract.msgs(4).into_iter().next();
+                let col = tract.msgs(3).into_iter().next();
+                if let (Some(row), Some(col)) = (row, col) {
+                    if let (Some(r0), Some(c0)) = (row.varint(1), col.varint(1)) {
+                        let r1 = row.varint(2).unwrap_or(r0).max(r0);
+                        let c1 = col.varint(2).unwrap_or(c0).max(c0);
+                        push_merge(&mut merges, r0, c0, r1, c1, row_count, column_count);
+                    }
+                }
+                continue;
+            }
+            // pre-BNC: two cell refs (AST_column f26 / AST_row f27) + colon
+            let refs: Vec<(u64, u64)> = nodes
+                .iter()
+                .filter(|n| n.varint(1) == Some(36))
+                .map(|n| {
+                    (
+                        n.msg(27).and_then(|r| r.varint(1)).unwrap_or(0),
+                        n.msg(26).and_then(|c| c.varint(1)).unwrap_or(0),
+                    )
+                })
+                .collect();
+            if refs.len() == 2 && nodes.iter().any(|n| n.varint(1) == Some(29)) {
+                push_merge(
+                    &mut merges,
+                    refs[0].0.min(refs[1].0),
+                    refs[0].1.min(refs[1].1),
+                    refs[0].0.max(refs[1].0),
+                    refs[0].1.max(refs[1].1),
+                    row_count,
+                    column_count,
+                );
+            }
+        }
+    }
+    // Legacy fallback: merge_region_map (DataStore field 13) →
+    // MergeRegionMapArchive { cell_range = 1 } with CellRange { origin =
+    // CellID, size = TableSize }; packedData: column in the high 16 bits,
+    // row in the low 16 bits (docs/format/tables.md §Merges).
+    if let Some(mrm_id) =
+        store.as_ref().and_then(|s| s.reference(13)).filter(|_| merges.is_empty())
+    {
         if let Some(mrm) = ctx.loaded.msg(mrm_id) {
             for cr in mrm.msgs(1) {
                 let origin = cr.msg(1).and_then(|c| c.get(1).and_then(fixed32));
@@ -303,6 +480,17 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
                     });
                 }
             }
+        }
+    }
+    // Last resort: TSCE dependency-archive merges (numbers-parser merge
+    // path 2, model.py:877-908). The table's haunted_owner uid (model f84)
+    // maps through a HAUNTED_OWNER (kind 35) FormulaOwnerDependenciesArchive
+    // to the table's base owner uid; MERGE_OWNER (kind 5) dependency
+    // archives then list merge rects as internal range references whose
+    // owner ids resolve via the calc engine's owner-id map.
+    if merges.is_empty() {
+        if let Some(haunted) = m.msg(84).and_then(|h| h.msg(1)).as_ref().and_then(uuid_u128) {
+            merges = dependency_merges(ctx, haunted, row_count, column_count);
         }
     }
     merges.sort_by_key(|m| (m.anchor_row, m.anchor_column));
@@ -356,14 +544,12 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
         }
     }
 
-    // Modern Numbers writes uid-based merge ranges (a merge table on the
-    // model — field 70 in the observed layout — with UUIDRect-style
-    // coordinate pairs referencing row/column UID maps we don't yet
-    // resolve). When such ranges exist but the legacy packed-int map didn't
-    // produce merges, flag the table: the grid nulls still mark covered
-    // cells, but span info is missing (gotcha #18). Fixture-verified: G5
-    // Table 2.
-    if m.has(70) && merges.is_empty() {
+    // All three numbers-parser merge sources are decoded above. Only warn
+    // when the merge owner's formula store HELD candidate ranges that we
+    // failed to decode — a bare merge owner with an empty store (written
+    // for merge-free tables too) plus sparse nulls is not evidence of
+    // missing merges (gotcha #18).
+    if merge_candidates > 0 && merges.is_empty() {
         let null_cells: u32 = grid
             .iter()
             .flat_map(|row| row.iter())
@@ -373,7 +559,7 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
             ctx.warn_detail(
                 WarningCode::TableDegraded,
                 format!(
-                    "uid-based merge ranges not yet decoded (legacy packed-int merge map absent); {null_cells} covered cells emit as null without span info"
+                    "merge owner present but no ranges decoded (formula-store + region-map paths empty; TSCE dependency-archive merges not yet read); {null_cells} covered cells emit as null without span info"
                 ),
                 format!("table '{}'", m.string(8).unwrap_or_default()),
             );
