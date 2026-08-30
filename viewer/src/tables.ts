@@ -107,6 +107,81 @@ const CURRENCY_SYMBOL: Record<string, string> = {
 };
 
 /**
+ * Apple duration rendering, following numbers-parser's decode of
+ * TSK.FormatStructArchive (cell.py _duration_format/_auto_units):
+ * style 0 = compact positional ("28:40"), 1 = short units ("28m 40s"),
+ * 2 = long units ("28 minutes 40 seconds"). Units enum: 1 week, 2 day,
+ * 4 hour, 8 minute, 16 second, 32 millisecond.
+ */
+function formatDurationStyled(v: number, style: number, largest: number, smallest: number, auto: boolean): string {
+  const WEEK = 604800, DAY = 86400, HOUR = 3600;
+  if (auto) {
+    if (v === 0) { largest = 2; smallest = 2; }
+    else {
+      largest = v >= WEEK ? 1 : v >= DAY ? 2 : v >= HOUR ? 4 : v >= 60 ? 8 : v >= 1 ? 16 : 32;
+      if (Math.floor(v) !== v) smallest = 32;
+      else if (v % 60) smallest = 16;
+      else if (v % HOUR) smallest = 8;
+      else if (v % DAY) smallest = 4;
+      else if (v % WEEK) smallest = 2;
+      smallest = Math.max(smallest, largest);
+    }
+  }
+  const unit = (name: string, abbrev: string, value: number): string => {
+    if (style === 0) return "";
+    if (style === 1) return abbrev;
+    return ` ${name}${value === 1 ? "" : "s"}`;
+  };
+  const inRange = (u: number) => largest <= u && smallest >= u;
+  // Apple ROUNDS at the smallest displayed unit (28:39.7 -> "28m 40s");
+  // pre-round so the carry propagates through the floors below.
+  const SMALLEST_S: Record<number, number> = { 1: WEEK, 2: DAY, 4: HOUR, 8: 60, 16: 1, 32: 0.001 };
+  const q = SMALLEST_S[smallest] ?? 1;
+  let d = Math.round(v / q) * q;
+  const parts: string[] = [];
+  if (largest === 1) {
+    const dd = Math.floor(d / WEEK);
+    if (smallest !== 1) d -= WEEK * dd;
+    parts.push(dd + unit("week", "w", dd));
+  }
+  if (inRange(2)) {
+    const dd = Math.floor(d / DAY);
+    if (smallest > 2) d -= DAY * dd;
+    parts.push(dd + unit("day", "d", dd));
+  }
+  if (inRange(4)) {
+    const dd = Math.floor(d / HOUR);
+    if (smallest > 4) d -= HOUR * dd;
+    parts.push(dd + unit("hour", "h", dd));
+  }
+  if (inRange(8)) {
+    const dd = Math.floor(d / 60);
+    if (smallest > 8) d -= 60 * dd;
+    if (style === 0) {
+      const pad = (largest === 8 && smallest === 8) || dd >= 10;
+      parts.push((pad ? "" : "0") + dd);
+    } else parts.push(dd + unit("minute", "m", dd));
+  }
+  if (inRange(16)) {
+    const dd = Math.floor(d);
+    if (smallest > 16) d -= dd;
+    if (style === 0) {
+      const pad = (largest === 16 && smallest === 16) || dd >= 10;
+      parts.push((pad ? "" : "0") + dd);
+    } else parts.push(dd + unit("second", "s", dd));
+  }
+  if (smallest >= 32) {
+    const dd = Math.round(1000 * d);
+    if (style === 0) {
+      parts.push(dd >= 100 ? String(dd) : dd >= 10 ? `0${dd}` : `00${dd}`);
+    } else parts.push(dd + unit("millisecond", "ms", dd));
+  }
+  let out = parts.join(style === 0 ? ":" : " ");
+  if (style === 0) out = out.replace(/:(\d\d\d)$/, ".$1");
+  return out;
+}
+
+/**
  * Fraction display, Apple-style: "fraction-N" fixes the denominator
  * (halves/quarters/eighths/tenths/sixteenths/hundredths); bare "fraction"
  * finds the closest denominator up to 3 digits. Whole part splits off:
@@ -244,12 +319,18 @@ function valueToText(cell: TableCell, format: CellFormat | undefined): string {
       return formatDatePattern(d, pattern);
     }
     case "duration": {
-      // Apple duration rendering: h:mm:ss (h omitted when 0)
-      const total = typeof v === "number" ? Math.round(v) : Math.round(Number(v));
-      const h = Math.floor(total / 3600);
-      const m = Math.floor((total % 3600) / 60);
-      const s = total % 60;
-      return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+      const total = typeof v === "number" ? v : Number(v);
+      const spec = format?.kind === "duration" ? format.formatString : undefined;
+      const m = spec?.match(/^duration-(\d+)-(\d+)-(\d+)-([01])$/);
+      if (m) {
+        return formatDurationStyled(total, Number(m[1]), Number(m[2]), Number(m[3]), m[4] === "1");
+      }
+      // no stored format: Apple's compact h:mm:ss (h omitted when 0)
+      const t = Math.round(total);
+      const h = Math.floor(t / 3600);
+      const mi = Math.floor((t % 3600) / 60);
+      const s = t % 60;
+      return h > 0 ? `${h}:${String(mi).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${String(mi).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
     }
     case "currency": {
       // Apple style: "$5,500.00" — symbol prefix, no space, 2 decimals

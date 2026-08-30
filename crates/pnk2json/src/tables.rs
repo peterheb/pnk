@@ -1235,6 +1235,18 @@ fn pick_format(
                 Some(acc) if acc >= 2 && acc <= 100 => format!("fraction-{acc}"),
                 _ => "fraction".to_string(),
             }),
+            // durations: style (f7: 0 compact "28:40" / 1 short "28m 40s" /
+            // 2 long), unit range largest/smallest (f15/f16: 1 week, 2 day,
+            // 4 hour, 8 minute, 16 second, 32 ms), automatic units (f40) —
+            // packed for the viewer's renderer [parser: numbers-parser
+            // cell.py _duration_format/_auto_units]
+            Some(268) => Some(format!(
+                "duration-{}-{}-{}-{}",
+                f.varint(7).unwrap_or(0),
+                f.varint(15).unwrap_or(4),
+                f.varint(16).unwrap_or(16),
+                u8::from(f.boolean(40).unwrap_or(false)),
+            )),
             _ => None,
         }).or_else(|| match ft {
             // custom formats (270-274): pattern lives behind the inline
@@ -1434,7 +1446,18 @@ fn decode_cell_v4(
                     grouping: f.boolean(5),
                     format_string: f
                         .string(18)
-                        .or_else(|| f.string(14).filter(|s| !s.is_empty())),
+                        .or_else(|| f.string(14).filter(|s| !s.is_empty()))
+                        .or_else(|| match f.varint(1) {
+                            // duration spec (same packing as the BNC path)
+                            Some(268) => Some(format!(
+                                "duration-{}-{}-{}-{}",
+                                f.varint(7).unwrap_or(0),
+                                f.varint(15).unwrap_or(4),
+                                f.varint(16).unwrap_or(16),
+                                u8::from(f.boolean(40).unwrap_or(false)),
+                            )),
+                            _ => None,
+                        }),
                 })
             })
         }),
