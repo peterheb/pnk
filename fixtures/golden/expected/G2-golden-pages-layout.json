@@ -1257,12 +1257,6 @@
                           }
                         ]
                       }
-                    },
-                    "tail": {
-                      "identifier": "none",
-                      "path": {
-                        "elements": []
-                      }
                     }
                   }
                 },

@@ -249,6 +249,23 @@ closeSubpath = 5 }`. This is what `bezier_path_source.path` carries and what
 - `TSD.LineEndArchive` (210-216): `path` (TSP.Path), `line_join` (default
   MiterJoin), `end_point`, `is_filled`, `identifier` (string) — preset
   arrowhead identity + optional explicit outline.
+  Rendering semantics [inferred→fixture-verified 2026-08-30: cdx-00243-21
+  vs Pages' own PDF export vectors]:
+  - The glyph path is a canonical shape in its own small coordinate space
+    ("simple arrow" = triangle (0,0)-(3,6)-(6,0); "filled arrow" adds a
+    (3,1.5) notch), with **+y pointing outward** past the line tip. The
+    glyph's bbox-top row (max y — the arrow apex) sits exactly AT the
+    path's geometric endpoint.
+  - `end_point` (e.g. (3,0) for simple arrow) marks where the line's own
+    stroke terminates in glyph space; Apple's export cuts the stroke back
+    to it plus half a stroke width.
+  - Glyph scale tracks stroke width sub-linearly: the 6x6 canonical glyph
+    rasterizes 6.0pt tall at a 1pt stroke and 9.6pt at a 2pt stroke —
+    `scale = 0.4 + 0.6 * stroke_width` fits both observations.
+  - `head_line_end` decorates the path's END point, `tail_line_end` its
+    START (the "head" is the end the user dragged to).
+  - `identifier = "none"` is the explicit no-decoration preset; it still
+    carries an empty `path` message and renders nothing.
 
 ### Shadows [proto] TSDArchives.proto 218-246
 

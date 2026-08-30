@@ -14,6 +14,7 @@ import type {
   Drawable,
   DrawableCommon,
   Fill,
+  LineEnd,
   ShapeGeometry,
   Stroke,
 } from "../../model/src/shared";
@@ -216,6 +217,146 @@ function shapePathD(g: ShapeGeometry, w: number, h: number): string {
 }
 
 // ---------------------------------------------------------------------------
+// Line-end glyphs (arrowheads)
+//
+// TSD.LineEndArchive stores a canonical glyph path (e.g. "simple arrow" =
+// triangle (0,0)-(3,6)-(6,0)) with +y pointing OUTWARD past the line tip.
+// Placement fixture-verified against Apple's own PDF export (cdx-00243-21):
+//   - the glyph's bbox top row (max y) sits exactly AT the path tip, apex on
+//     the tip (arrow triangle (120.52,467.42)-(130.12,472.22)-(120.52,477.02)
+//     for a line geometrically ending at x=130.12);
+//   - glyph scale follows stroke width: 6x6 canonical renders 6.0pt at 1pt
+//     stroke and 9.6pt at 2pt stroke -> s = 0.4 + 0.6*widthPt;
+//   - the line's own stroke is cut back to the glyph base + width/2
+//     (Apple strokes 98.14..121.52 under a 120.52..130.12 arrowhead);
+//   - `head` decorates the path END point, `tail` the path START (the
+//     "arrowhead" end is the one the user dragged to).
+// ---------------------------------------------------------------------------
+
+/** Tip position + outward unit direction at one end of an open path. */
+interface PathTip {
+  x: number;
+  y: number;
+  dx: number;
+  dy: number;
+}
+
+/**
+ * Start/end tips of an open explicit path, in the same (w x h) space the
+ * path `d` is emitted in. Closed paths have no tips (line ends only apply
+ * to open line/connection shapes).
+ */
+function pathTips(g: ShapeGeometry, w: number, h: number): { start?: PathTip; end?: PathTip } {
+  const els = g.path?.elements;
+  if (!els || els.length < 2) return {};
+  // Same coordinate conventions as explicitPathD: a bare move+line pair is
+  // already in drawable point space; everything else scales naturalSize->w,h.
+  let sx = 1;
+  let sy = 1;
+  if (!(els.length === 2 && els[0].type === "move" && els[1].type === "line")) {
+    const nw = g.naturalSize?.width || w || 1;
+    const nh = g.naturalSize?.height || h || 1;
+    sx = nw > 0 ? w / nw : 1;
+    sy = nh > 0 ? (h > 0 ? h / nh : 1) : 1;
+  }
+  // Flatten to a vertex list (control points included — they carry the
+  // tangent direction at the adjacent anchor, which is all we need).
+  const pts: [number, number][] = [];
+  for (const e of els) {
+    if (e.type === "close") return {}; // closed shape: no free ends
+    for (let i = 0; i < e.points.length; i += 2) pts.push([e.points[i] * sx, e.points[i + 1] * sy]);
+  }
+  if (pts.length < 2) return {};
+  const unit = (from: [number, number], to: [number, number]): [number, number] | null => {
+    const vx = to[0] - from[0];
+    const vy = to[1] - from[1];
+    const len = Math.hypot(vx, vy);
+    return len > 1e-6 ? [vx / len, vy / len] : null;
+  };
+  // Outward at the start = away from the second vertex; at the end = away
+  // from the second-to-last. Skip coincident control points.
+  let startDir: [number, number] | null = null;
+  for (let i = 1; i < pts.length && !startDir; i++) startDir = unit(pts[i], pts[0]);
+  let endDir: [number, number] | null = null;
+  for (let i = pts.length - 2; i >= 0 && !endDir; i--) endDir = unit(pts[i], pts[pts.length - 1]);
+  const tips: { start?: PathTip; end?: PathTip } = {};
+  if (startDir) tips.start = { x: pts[0][0], y: pts[0][1], dx: startDir[0], dy: startDir[1] };
+  if (endDir) tips.end = { x: pts[pts.length - 1][0], y: pts[pts.length - 1][1], dx: endDir[0], dy: endDir[1] };
+  return tips;
+}
+
+/** Fallback canonical glyph when the archive carried an identifier but no
+ * path — the ubiquitous 6x6 arrow triangle. */
+const DEFAULT_ARROW: [number, number][] = [
+  [0, 0],
+  [3, 6],
+  [6, 0],
+];
+
+/**
+ * Build the SVG element for one line-end glyph at `tip`, and report how far
+ * the line's own stroke should be cut back (glyph height minus a half
+ * stroke, per Apple's export).
+ */
+function lineEndGlyph(
+  le: LineEnd,
+  tip: PathTip,
+  stroke: Stroke,
+  strokeScale: number,
+): { el: SVGPathElement; cutback: number } | null {
+  const NS = "http://www.w3.org/2000/svg";
+  let d = "";
+  let xs: number[] = [];
+  let ys: number[] = [];
+  if (le.path && le.path.elements.length >= 2) {
+    const parts: string[] = [];
+    for (const e of le.path.elements) {
+      const pts = e.type === "close" ? [] : e.points;
+      const xy: string[] = [];
+      for (let i = 0; i < pts.length; i += 2) {
+        xs.push(pts[i]);
+        ys.push(pts[i + 1]);
+        xy.push(`${pts[i]},${pts[i + 1]}`);
+      }
+      if (e.type === "move") parts.push(`M${xy[0]}`);
+      else if (e.type === "line") parts.push(`L${xy[0]}`);
+      else if (e.type === "quad") parts.push(`Q${xy[0]} ${xy[1]}`);
+      else if (e.type === "cubic") parts.push(`C${xy[0]} ${xy[1]} ${xy[2]}`);
+      else parts.push("Z");
+    }
+    d = parts.join(" ");
+  } else if (le.identifier) {
+    // identifier-only archive: synthesize the canonical arrow triangle
+    d = "M" + DEFAULT_ARROW.map(([x, y]) => `${x},${y}`).join(" L") + " Z";
+    xs = DEFAULT_ARROW.map((p) => p[0]);
+    ys = DEFAULT_ARROW.map((p) => p[1]);
+  }
+  if (!d || xs.length === 0) return null;
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const yMax = Math.max(...ys);
+  const height = yMax - Math.min(...ys);
+  const s = (0.4 + 0.6 * stroke.widthPt) * strokeScale;
+  // Rotation mapping glyph +y onto the outward direction (screen y-down):
+  // R(theta)*(0,1) = (dx,dy) => theta = atan2(-dx, dy).
+  const deg = (Math.atan2(-tip.dx, tip.dy) * 180) / Math.PI;
+  const p = document.createElementNS(NS, "path");
+  p.setAttribute("d", d);
+  p.setAttribute(
+    "transform",
+    `translate(${tip.x.toFixed(2)} ${tip.y.toFixed(2)}) rotate(${deg.toFixed(2)}) scale(${s.toFixed(4)}) translate(${-cx} ${-yMax})`,
+  );
+  if (le.isFilled !== false) {
+    p.setAttribute("fill", stroke.color);
+  } else {
+    p.setAttribute("fill", "none");
+    p.setAttribute("stroke", stroke.color);
+    // keep the outline weight in glyph units: the transform scale multiplies
+    p.setAttribute("stroke-width", String(stroke.widthPt / Math.max(s / strokeScale, 0.1)));
+  }
+  return { el: p, cutback: Math.max(0, s * height - (stroke.widthPt * strokeScale) / 2) };
+}
+
+// ---------------------------------------------------------------------------
 // SVG shape
 // ---------------------------------------------------------------------------
 
@@ -251,12 +392,37 @@ function shapeSvg(g: ShapeGeometry, w: number, h: number, style: DrawableCommon[
   const scale = ratios.length ? ratios.reduce((a, b) => a + b, 0) / ratios.length : 1;
   svgGradientDefs(svg, style);
   const path = document.createElementNS(NS, "path");
-  path.setAttribute("d", shapePathD(g, w, h));
+  let d = shapePathD(g, w, h);
+  const stroke = style?.stroke;
+
+  // Line-end glyphs (arrowheads): head decorates the path END, tail the
+  // START; the straight-line fast path also gets its stroke cut back to the
+  // glyph base like Apple draws it.
+  const ends = style?.lineEnds;
+  let glyphs: SVGPathElement[] = [];
+  if (ends && stroke && g.path) {
+    const tips = pathTips(g, w, h);
+    const head = ends.head && tips.end ? lineEndGlyph(ends.head, tips.end, stroke, scale) : null;
+    const tail = ends.tail && tips.start ? lineEndGlyph(ends.tail, tips.start, stroke, scale) : null;
+    const els = g.path.elements;
+    if ((head || tail) && els.length === 2 && els[0].type === "move" && els[1].type === "line" && tips.start && tips.end) {
+      const s = tips.start;
+      const e = tips.end;
+      const x1 = s.x - s.dx * (tail?.cutback ?? 0);
+      const y1 = s.y - s.dy * (tail?.cutback ?? 0);
+      const x2 = e.x - e.dx * (head?.cutback ?? 0);
+      const y2 = e.y - e.dy * (head?.cutback ?? 0);
+      d = `M${x1.toFixed(2)},${y1.toFixed(2)} L${x2.toFixed(2)},${y2.toFixed(2)}`;
+    }
+    glyphs = [head?.el, tail?.el].filter((x): x is SVGPathElement => !!x);
+  }
+
+  path.setAttribute("d", d);
   const fill = style?.fill;
   path.setAttribute("fill", fill ? (fill.type === "gradient" ? `url(#${svg.dataset.fillRef})` : (fillToCss(fill) ?? "none")) : "none");
-  const stroke = style?.stroke;
   if (stroke) svgStrokeAttrs(path, stroke, scale);
   svg.appendChild(path);
+  for (const gl of glyphs) svg.appendChild(gl);
   return svg;
 }
 

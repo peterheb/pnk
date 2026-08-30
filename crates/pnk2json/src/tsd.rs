@@ -404,13 +404,21 @@ pub fn reflection_of(m: &Msg) -> Option<Reflection> {
 }
 
 pub fn line_end_of(_ctx: &mut Ctx, m: &Msg) -> Option<LineEnd> {
-    let le = LineEnd {
-        identifier: m.string(5),
-        is_filled: m.boolean(4),
-        path: m.msg(1).as_ref().and_then(tsp_path),
-    };
-    // Empty archive (preset "no line end") or the explicit "none" identifier
-    // with no path points — nothing to draw.
+    let identifier = m.string(5);
+    // identifier "none" is Apple's explicit no-decoration preset — it still
+    // carries an (empty) path message, and Apple draws nothing (fixture:
+    // cdx-00243-21 stores tail={identifier:"none", path:[]} on all 124 arrow
+    // lines; its PDF export decorates only the heads).
+    if identifier.as_deref() == Some("none") {
+        return None;
+    }
+    let path = m
+        .msg(1)
+        .as_ref()
+        .and_then(tsp_path)
+        .filter(|p| !p.elements.is_empty());
+    let le = LineEnd { identifier, is_filled: m.boolean(4), path };
+    // Empty archive (preset "no line end"): nothing to draw.
     if le.identifier.is_none() && le.is_filled.is_none() && le.path.is_none() {
         return None;
     }
