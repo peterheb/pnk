@@ -82,6 +82,10 @@ for a present-but-valueless cell); **`fmt`** = index into the table's
 into `styles.para`; **`cur`** = ISO 4217 currency code when
 `type: "currency"`.
 
+**`points`** (curve elements only): a FLAT positional array `[x1,y1,…]` —
+2 numbers per move/line element, 4 for quad, 6 for cubic, absent on close
+(see §2.5).
+
 **STYLES OMIT-DEFAULT** (approved): pooled styles (`styles.para`,
 `styles.char`, per-table `cellStyles`) emit only NON-DEFAULT values; an
 absent key means the documented default applies (for resolved styles this
@@ -216,7 +220,10 @@ headroom ≠ 1 → clamp + warning. Alpha byte appended when `a ≠ 1`.
 `TSP.Path` is the universal curve language
 [proto: TSPMessages.proto → TSP.Path, ElementType moveTo/lineTo/quadCurveTo/
 curveTo/closeSubpath] and maps 1:1 onto `CurveElement`
-(move/line/quad/cubic/close). Sources, in priority order:
+(move/line/quad/cubic/close). Elements use COMPACT FLAT positional point
+arrays — `points: [x1,y1,x2,y2,…]` SVG-style pairs, never `{x,y}` objects:
+2 numbers for move/line, 4 for quad (cx,cy,x,y), 6 for cubic
+(c1x,c1y,c2x,c2y,x,y), none for close. Sources, in priority order:
 
 1. `bezier_path_source.path` / `editable_bezier_path_source` (node + control
    points) → explicit `CurvePath` (editable-bezier smooth nodes become cubic
@@ -230,6 +237,14 @@ Presets are named, not expanded: the viewer renders them (they are closed
 vocabularies: docs/format/drawables.md lists the enums). `naturalSize` is the
 design coordinate space for the path/preset; the drawable scales it into
 `common.size`.
+
+**Standalone line contract** (fixture-verified: G5 acid line — a
+`TSD.ShapeArchive` with a 2-node sharp `editable_bezier_path_source`, no
+fill, stroke-only): a line is a `ShapeDrawable` whose `geometry.path`
+contains exactly one `move` + one `line` element. Coordinates are already in
+the drawable's point space — no `naturalSize`, no scaling; the viewer can
+fast-path any 2-element move+line path. Stroke-only shapes carry
+`style.fill` absent by the omit-default rule.
 
 ### 2.6 Tables (TST) — docs/format/tables.md
 
@@ -379,6 +394,15 @@ unknown becomes a row; **no silent drops**. Codes (enum in shared.ts):
 
 Registry policy per docs/format/registry.md: prefer keynote-parser 14.5 table
 for KN ids, Common+Numbers/Pages JSONs for TN/TP ids; unknown ids stay opaque.
+
+**Unresolved-but-rendered objects** (no silent drops): when a fixture shows
+more objects than the model captured (e.g. G2's 14th object — Apple renders
+14, the FDA page group refs only 13; exhaustive stream search excluded the
+group children, the 3097 StandinCaption marker objects, and the missing FDA
+ref — stream location still unidentified, crossval session pending), the
+converter emits an `unsupported-feature` warning naming the count delta and
+the search performed. The line/path contract (§2.5) covers lines once their
+storage is identified.
 
 ---
 

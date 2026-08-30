@@ -214,24 +214,32 @@ export interface Reflection {
 // ---------------------------------------------------------------------------
 
 /**
- * One path element. This is `TSP.Path` translated to explicit primitives
- * [proto: .scratch/otorp/Keynote/TSPMessages.proto → TSP.Path
- * { ElementType: moveTo=1, lineTo=2, quadCurveTo=3, curveTo=4, closeSubpath=5;
- *   each Element carries repeated TSP.Point }]:
- *  - "move"  → points[0] is the new subpath start.
- *  - "line"  → points[0] is the line target.
- *  - "quad"  → points[0] control, points[1] target.
- *  - "cubic" → points[0..1] controls, points[2] target.
+ * One path element — `TSP.Path` translated to explicit primitives with
+ * COMPACT FLAT positional point arrays [proto: .scratch/otorp/Keynote/
+ * TSPMessages.proto → TSP.Path { ElementType: moveTo=1, lineTo=2,
+ * quadCurveTo=3, curveTo=4, closeSubpath=5; each Element carries repeated
+ * TSP.Point }] — `points` is `[x1,y1,x2,y2,…]` (SVG-style pairs), not
+ * `{x,y}` objects:
+ *  - "move"  → points = [x, y] (subpath start).
+ *  - "line"  → points = [x, y] (line target).
+ *  - "quad"  → points = [cx, cy, x, y] (control, target).
+ *  - "cubic" → points = [c1x, c1y, c2x, c2y, x, y] (two controls, target).
  *  - "close" → closes the current subpath (no points).
  */
 export type CurveElement =
-  | { type: "move"; points: [Point] }
-  | { type: "line"; points: [Point] }
-  | { type: "quad"; points: [Point, Point] }
-  | { type: "cubic"; points: [Point, Point, Point] }
-  | { type: "close"; points?: [] };
+  | { type: "move"; points: [number, number] }
+  | { type: "line"; points: [number, number] }
+  | { type: "quad"; points: [number, number, number, number] }
+  | { type: "cubic"; points: [number, number, number, number, number, number] }
+  | { type: "close" };
 
-/** An explicit vector path in the shape's own coordinate space (points). */
+/**
+ * An explicit vector path in the shape's own coordinate space (points).
+ * A straight LINE is the minimal form: exactly one "move" + one "line"
+ * element (2 sharp nodes, stroke-only, no fill — fixture-verified:
+ * G5 acid line, editable_bezier_path_source with 2 nodes). Its coordinates
+ * are already in the drawable's point space — no naturalSize scaling.
+ */
 export interface CurvePath {
   elements: CurveElement[];
 }
