@@ -219,7 +219,7 @@ impl Ctx {
     // -- warnings -----------------------------------------------------------
 
     pub fn warn(&mut self, code: WarningCode, message: impl Into<String>) {
-        self.warnings.push(Warning { code, message: message.into(), path: None, detail: None });
+        self.warnings.push(Warning { code, message: message.into(), path: None, detail: None, count: None, paths: None });
     }
 
     pub fn warn_detail(
@@ -233,6 +233,8 @@ impl Ctx {
             message: message.into(),
             path: None,
             detail: Some(detail.into()),
+            count: None,
+            paths: None,
         });
     }
 
@@ -248,6 +250,8 @@ impl Ctx {
                 ),
                 path: None,
                 detail: Some(format!("0x{:x}", id)),
+                count: None,
+                paths: None,
             });
         }
         let undecodable = self.loaded.undecodable_ids.clone();
@@ -261,6 +265,8 @@ impl Ctx {
                 message: format!("{count} object(s) of type {name} failed to decode structurally; payloads skipped by declared length"),
                 path: None,
                 detail: Some(name),
+                count: None,
+                paths: None,
             });
         }
     }

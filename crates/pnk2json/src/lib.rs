@@ -34,6 +34,56 @@ pub fn convert_path(path: &std::path::Path) -> Result<PnkDocument, iwadump::Erro
     convert_ctx(&mut ctx)
 }
 
+/// Collapse warning floods (docs/model-review.md §1 Leak A): rows sharing
+/// (code, message-with-digit-runs-normalized) merge into the first row with
+/// `count` = total and up to 5 distinct example `paths`. Degraded corpus docs
+/// carry hundreds of per-cell rows ("cell r1c1 dropped" / "cell r0c3 dropped")
+/// that differ only in coordinates; normalizing digit runs to '#' is the
+/// dedupe key, while the surviving row keeps its original message verbatim.
+fn aggregate_warnings(warnings: Vec<model::Warning>) -> Vec<model::Warning> {
+    use std::collections::HashMap;
+    let mut order: Vec<model::Warning> = Vec::new();
+    let mut index: HashMap<(model::WarningCode, String), usize> = HashMap::new();
+    let normalize = |m: &str| {
+        let mut out = String::with_capacity(m.len());
+        let mut in_digits = false;
+        for c in m.chars() {
+            if c.is_ascii_digit() {
+                if !in_digits {
+                    out.push('#');
+                    in_digits = true;
+                }
+            } else {
+                in_digits = false;
+                out.push(c);
+            }
+        }
+        out
+    };
+    for w in warnings {
+        let key = (w.code, normalize(&w.message));
+        match index.get(&key) {
+            Some(&i) => {
+                let first = &mut order[i];
+                first.count = Some(first.count.unwrap_or(1) + 1);
+                if let Some(p) = &w.path {
+                    let paths = first.paths.get_or_insert_with(|| {
+                        first.path.iter().cloned().collect()
+                    });
+                    if paths.len() < 5 && !paths.contains(p) {
+                        paths.push(p.clone());
+                    }
+                }
+            }
+            None => {
+                index.insert(key, order.len());
+                order.push(w);
+            }
+        }
+    }
+    order
+}
+
 /// Convert using an already-opened context (exposes media/fonts/warnings for
 /// the wasm binding and tests).
 pub fn convert_ctx(ctx: &mut ctx::Ctx) -> Result<PnkDocument, iwadump::Error> {
@@ -52,7 +102,7 @@ pub fn convert_ctx(ctx: &mut ctx::Ctx) -> Result<PnkDocument, iwadump::Error> {
     // Envelope: fonts (deduped, sorted), media inventory, warnings, styles.
     let fonts: Vec<String> = ctx.fonts.iter().cloned().collect();
     let media = ctx.build_media_assets();
-    let warnings = std::mem::take(&mut ctx.warnings);
+    let warnings = aggregate_warnings(std::mem::take(&mut ctx.warnings));
     let styles = model::StylePools {
         para: std::mem::take(&mut ctx.para_pool.items),
         char: std::mem::take(&mut ctx.char_pool.items),

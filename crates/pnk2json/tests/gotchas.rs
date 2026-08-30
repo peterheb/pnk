@@ -155,6 +155,8 @@ fn serde_field_names_match_ts_contract() {
             message: "test".into(),
             path: None,
             detail: Some("0xde".into()),
+            count: None,
+            paths: None,
         }],
         fonts: vec!["Helvetica".into()],
         styles: StylePools::default(),

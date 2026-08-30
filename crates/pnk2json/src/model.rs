@@ -482,7 +482,7 @@ pub enum AppKind {
     Keynote,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum WarningCode {
     UnknownObjectType,
@@ -505,6 +505,12 @@ pub struct Warning {
     pub path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
+    /// Aggregation: total occurrences this row stands for; None = 1.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub count: Option<u32>,
+    /// Up to 5 distinct example paths when count > 1.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub paths: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -1276,6 +1282,8 @@ impl TsceFormulaRef {
                 message: "TSCE formula kept opaque; the stored last-calculated value is in the cell/chart data".into(),
                 path: None,
                 detail: None,
+                count: None,
+                paths: None,
             },
         }
     }

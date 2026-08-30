@@ -50,6 +50,14 @@ export interface Warning {
   path?: string;
   /** Original object type id / registry name, when the warning is about one. */
   detail?: string;
+  /**
+   * Aggregation: total occurrences this row stands for; absent = 1. Warnings
+   * differing only in embedded numbers (cell coords, object ids) collapse to
+   * one row at emission — `message`/`path` are the first occurrence's.
+   */
+  count?: number;
+  /** Up to 5 distinct example paths when count > 1. */
+  paths?: string[];
 }
 
 /** Which app produced the document. */
