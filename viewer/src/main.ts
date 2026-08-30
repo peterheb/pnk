@@ -14,6 +14,7 @@ import { renderFonts, renderWarnings } from "./warnings";
 import type { PnkDocument } from "../../model/src/shared";
 
 let ctx: ViewerCtx | null = null;
+let lastJson: { text: string; filename: string } | null = null;
 
 const $ = (id: string) => document.getElementById(id)!;
 
@@ -38,6 +39,7 @@ function renderHeader(doc: PnkDocument, filename: string): void {
   if (doc.meta.locale) meta.push(doc.meta.locale);
   if (doc.meta.documentId) meta.push(`id ${doc.meta.documentId.slice(0, 8)}`);
   $("doc-meta").textContent = meta.join("  ·  ");
+  $("json-btn").classList.remove("hidden");
   $("app-header").classList.remove("hidden");
 }
 
@@ -71,6 +73,8 @@ function renderDocument(doc: PnkDocument, filename: string): void {
 }
 
 function showError(err: unknown, filename: string): void {
+  lastJson = null;
+  $("json-btn").classList.add("hidden");
   $("drop-zone").classList.add("hidden");
   $("app-header").classList.remove("hidden");
   $("doc-filename").textContent = filename;
@@ -90,7 +94,9 @@ async function handleFile(file: File): Promise<void> {
   status.classList.remove("hidden");
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const doc = JSON.parse(convert(bytes)) as PnkDocument;
+    const json = convert(bytes);
+    const doc = JSON.parse(json) as PnkDocument;
+    lastJson = { text: json, filename: file.name.replace(/\.[^.]+$/, "") + ".json" };
     renderDocument(doc, file.name);
   } catch (err) {
     showError(err, file.name);
@@ -143,6 +149,16 @@ function wireEvents(): void {
   $("reset-btn").addEventListener("click", () => {
     input.value = "";
     showLanding();
+  });
+  // Download the converted JSON model (blob URL — still no network, no upload)
+  $("json-btn").addEventListener("click", () => {
+    if (!lastJson) return;
+    const url = URL.createObjectURL(new Blob([lastJson.text], { type: "application/json" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = lastJson.filename;
+    a.click();
+    URL.revokeObjectURL(url);
   });
   input.addEventListener("change", () => {
     if (input.files?.[0]) handleFile(input.files[0]);
