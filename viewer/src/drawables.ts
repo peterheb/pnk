@@ -399,6 +399,20 @@ export function applyTextFit(root: HTMLElement): void {
     const layer = box.querySelector<HTMLElement>(":scope > .drawable-text");
     const inner = layer?.querySelector<HTMLElement>(":scope > .drawable-text-inner");
     if (!layer || !inner) continue;
+    if (box.dataset.textFit === "edge-clamp") {
+      // Zero-size auto box: scale down (bounded) when the laid-out label
+      // spills past the canvas' right edge — Apple's metrics fit it inside.
+      const canvas = box.closest<HTMLElement>(".canvas-inner");
+      if (!canvas) continue;
+      inner.style.transform = "";
+      const spill = box.offsetLeft + box.offsetWidth - canvas.clientWidth;
+      if (spill > 1 && box.offsetWidth > 0) {
+        const s = Math.max((box.offsetWidth - spill) / box.offsetWidth, 0.7);
+        inner.style.transform = `scale(${s.toFixed(4)})`;
+        inner.style.transformOrigin = "left top";
+      }
+      continue;
+    }
     // "shrink" = Keynote's shrink-on-overflow (scale as far as needed);
     // "tolerance" = fixed box, bounded shrink for font-metric drift only.
     const minScale = box.dataset.textFit === "shrink" ? 0.35 : 0.6;
@@ -591,6 +605,10 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
         layer.style.whiteSpace = "nowrap";
         layer.style.width = "max-content"; // percentage of an auto box is meaningless
         layer.style.height = "auto";
+        // Auto-sized boxes lay out at Apple's metrics; browser faces run
+        // wider, so a label Apple fits to the slide edge can spill past it
+        // ("James 3:13-18" bottom-right badges). The measurement pass clamps.
+        div.dataset.textFit = "edge-clamp";
       } else {
         applyTextFitMode(div, layer, d.textFit, d.verticalAlignment);
       }
