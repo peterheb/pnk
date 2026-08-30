@@ -45,7 +45,8 @@
           "level": 1,
           "markerKind": "string",
           "markerText": "•",
-          "markerIndentPt": 9.0
+          "markerIndentPt": 9.0,
+          "markerBaselineOffsetPt": -1.0
         }
       }
     ],
