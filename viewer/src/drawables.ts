@@ -601,9 +601,17 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
     div.appendChild(svg);
     const layer = textLayer({ ...d, text: d.text, verticalAlignment: d.verticalAlignment, common: c }, doc, ctx);
     if (layer) {
-      // Shapes keep their geometry: a shape never grows for its text, so
-      // "grow" degrades to the fixed-box tolerance mode.
-      applyTextFitMode(div, layer, d.textFit === "grow" ? undefined : d.textFit, d.verticalAlignment);
+      if (h === 0) {
+        // 0-height shape carrying text (RIPE ea785d2e subtitle): the box is
+        // an anchor, not a clip — let the text flow down from it.
+        layer.style.bottom = "auto";
+        layer.style.height = "auto";
+        layer.style.overflow = "visible";
+      } else {
+        // Shapes keep their geometry: a shape never grows for its text, so
+        // "grow" degrades to the fixed-box tolerance mode.
+        applyTextFitMode(div, layer, d.textFit === "grow" ? undefined : d.textFit, d.verticalAlignment);
+      }
       div.appendChild(layer);
     }
   } else if (d.type === "image") {

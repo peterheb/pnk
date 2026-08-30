@@ -100,6 +100,57 @@ async function vectorArtGradientCss(url: string): Promise<string | null> {
   }
 }
 
+/**
+ * Second-chance backdrop sniff for vector art with no axial shading: inflate
+ * the PDF's FlateDecode content streams (DecompressionStream "deflate" — PDF
+ * streams are zlib-wrapped) and take the FIRST 3-component fill operator
+ * (`r g b rg|sc|scn`) in a stream that draws paths — slide backdrops open
+ * with a full-page fill (RIPE ea785d2e: `0.224 0.227 0.239 scn` charcoal
+ * before the polygon texture) [inferred: single-page .ai backdrop layout].
+ */
+async function vectorArtFirstFillCss(url: string): Promise<string | null> {
+  try {
+    const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
+    const text = new TextDecoder("latin1").decode(bytes); // 1:1 byte mapping
+    // Match `stream` but not `endstream` (Illustrator uses \r EOLs).
+    const streamRe = /(^|[^d])stream\r?\n?/g;
+    let mm: RegExpExecArray | null;
+    let tries = 0;
+    while ((mm = streamRe.exec(text)) && tries < 40) {
+      const start = mm.index + mm[0].length;
+      const end = text.indexOf("endstream", start);
+      if (end < 0) break;
+      tries++;
+      let content: string | null = null;
+      // zlib CMF: compression method nibble 8 (0x78 AND Illustrator's 0x48).
+      if ((bytes[start] & 0x0f) === 8) {
+        const chunks: number[] = [];
+        try {
+          const ds = new DecompressionStream("deflate");
+          const reader = new Blob([bytes.slice(start, end)]).stream().pipeThrough(ds).getReader();
+          // Tolerant read: PDF streams may carry trailing EOL junk that makes
+          // DecompressionStream throw at the very end — keep what inflated.
+          for (;;) {
+            const r = await reader.read();
+            if (r.done) break;
+            for (const b of r.value) chunks.push(b);
+          }
+        } catch { /* partial output retained */ }
+        if (chunks.length) content = new TextDecoder("latin1").decode(new Uint8Array(chunks));
+      }
+      if (content === null) content = text.slice(start, end); // plain-text form streams
+      if (!/\d\s+[ml]\b/.test(content)) continue; // no path ops: not page content
+      const m = content.match(/([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+(?:rg|scn|sc)\b/);
+      if (!m) continue;
+      const to255 = (v: string) => Math.round(Math.min(1, Math.max(0, Number(v))) * 255);
+      return `rgb(${to255(m[1])},${to255(m[2])},${to255(m[3])})`;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 /** A stage-renderable image fill, or null (missing bytes / vector art). */
 function renderableImageFill(
   f: Fill | null,
@@ -158,8 +209,9 @@ function applyStageBackground(
     // upgrades the backdrop as soon as the bytes parse).
     const url = ctx.url(slideFill.image.dataId);
     if (url && VECTOR_FILL.test(name)) {
-      void vectorArtGradientCss(url).then((grad) => {
-        if (grad) inner.style.background = grad;
+      void vectorArtGradientCss(url).then(async (grad) => {
+        const css = grad ?? (await vectorArtFirstFillCss(url));
+        if (css) inner.style.background = css;
       });
     }
   }
