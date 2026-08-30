@@ -83,22 +83,61 @@ function showError(err: unknown, filename: string): void {
 }
 
 async function handleFile(file: File): Promise<void> {
-  showLanding();
-  const hint = $("drop-hint");
-  hint.textContent = `Parsing ${file.name}…`;
-  $("drop-zone").classList.remove("hidden");
+  // The current document (or landing card) stays on screen while we parse;
+  // the swap happens only once the new document is ready (or errors out).
+  const status = $("parse-status");
+  status.textContent = `Parsing ${file.name}…`;
+  status.classList.remove("hidden");
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const doc = JSON.parse(convert(bytes)) as PnkDocument;
     renderDocument(doc, file.name);
   } catch (err) {
     showError(err, file.name);
+  } finally {
+    status.classList.add("hidden");
   }
+}
+
+// Whole-window drag & drop: any file drag anywhere over the app raises a
+// full-viewport overlay; dropping loads the file, whatever view is showing.
+function wireDragAndDrop(): void {
+  const overlay = $("drag-overlay");
+  const target = $("drop-target");
+  let depth = 0; // dragenter/leave fire per descendant element — count them
+
+  const isFileDrag = (e: DragEvent) =>
+    Array.from(e.dataTransfer?.types ?? []).includes("Files");
+  const hideOverlay = () => {
+    depth = 0;
+    overlay.classList.add("hidden");
+    target.classList.remove("dragover");
+  };
+
+  window.addEventListener("dragenter", (e) => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    depth++;
+    overlay.classList.remove("hidden");
+    target.classList.add("dragover");
+  });
+  window.addEventListener("dragover", (e) => {
+    if (isFileDrag(e)) e.preventDefault();
+  });
+  window.addEventListener("dragleave", (e) => {
+    if (!isFileDrag(e)) return;
+    if (--depth <= 0) hideOverlay();
+  });
+  window.addEventListener("drop", (e) => {
+    e.preventDefault();
+    hideOverlay();
+    const file = e.dataTransfer?.files?.[0];
+    if (file) handleFile(file);
+  });
 }
 
 function wireEvents(): void {
   const input = $("file-input") as HTMLInputElement;
-  const drop = $("drop-target");
 
   $("pick-btn").addEventListener("click", () => input.click());
   $("reset-btn").addEventListener("click", () => {
@@ -108,20 +147,7 @@ function wireEvents(): void {
   input.addEventListener("change", () => {
     if (input.files?.[0]) handleFile(input.files[0]);
   });
-
-  for (const zone of [drop, $("drop-zone")]) {
-    zone.addEventListener("dragover", (e) => {
-      e.preventDefault();
-      drop.classList.add("dragover");
-    });
-    zone.addEventListener("dragleave", () => drop.classList.remove("dragover"));
-  }
-  window.addEventListener("drop", (e) => {
-    e.preventDefault();
-    drop.classList.remove("dragover");
-    const file = (e as DragEvent).dataTransfer?.files?.[0];
-    if (file) handleFile(file);
-  });
+  wireDragAndDrop();
 }
 
 async function boot(): Promise<void> {

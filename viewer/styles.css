@@ -56,6 +56,34 @@ button {
 }
 button:hover { border-color: var(--muted); }
 
+/* ---- whole-window drag overlay + parse toast ----------------------------- */
+
+#drag-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(245, 245, 247, .82);
+  backdrop-filter: blur(3px);
+  pointer-events: none;          /* drops land on window, not this layer */
+}
+.drag-overlay-card {
+  border: 3px dashed var(--accent);
+  border-radius: 20px;
+  padding: 48px 72px;
+  font-size: 28px; font-weight: 700; color: var(--accent);
+  text-align: center; background: var(--card);
+  box-shadow: 0 8px 40px rgba(0,0,0,.12);
+}
+.drag-overlay-sub { font-size: 14px; font-weight: 400; color: var(--muted); }
+.drag-overlay-sub code { background: var(--surface); padding: 1px 5px; border-radius: 4px; }
+
+#parse-status {
+  position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+  z-index: 1001;
+  background: var(--ink); color: #fff;
+  border-radius: 999px; padding: 8px 20px; font-size: 13px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.25);
+}
+
 /* ---- header / envelope -------------------------------------------------- */
 
 #app-header {
@@ -64,6 +92,9 @@ button:hover { border-color: var(--muted); }
   gap: 12px;
   padding: 10px 4px;
   flex-wrap: wrap;
+  position: sticky; top: 0; z-index: 20;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(6px);
 }
 #doc-filename { font-weight: 600; word-break: break-all; }
 .badge {

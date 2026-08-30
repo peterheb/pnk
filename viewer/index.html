@@ -46,6 +46,13 @@
     <main id="view" class="hidden"></main>
   </div>
 
+  <div id="drag-overlay" class="hidden" aria-hidden="true">
+    <div class="drag-overlay-card">Drop to open<br>
+      <span class="drag-overlay-sub"><code>.pages</code> · <code>.numbers</code> · <code>.key</code> — parsed locally, never uploaded</span>
+    </div>
+  </div>
+  <div id="parse-status" class="hidden" role="status"></div>
+
   <input type="file" id="file-input" class="hidden"
          accept=".pages,.numbers,.key,.pages.zip,.numbers.zip,.key.zip,application/vnd.apple.pages,application/vnd.apple.numbers,application/vnd.apple.keynote">
 
