@@ -20,10 +20,25 @@ import { charStyleOf, paraStyleOf, type HydratedDoc } from "./hydrate";
 // numerically equal to the pt value. Emitting CSS `pt` here would inflate
 // text 4/3 relative to the page geometry (browsers map 1pt = 4/3px) — the
 // KVKK fixture paginated a 1-page doc onto 2 pages that way.
+/**
+ * Fallback stacks for fonts that are usually NOT installed but have a
+ * recognizable shape class: a condensed display face substituted by the
+ * default sans overflows its layout badly (Labothek covers set 128px
+ * BebasNeue titles that spilled off the page). Keyed by despaced lowercase
+ * prefix; the real font still wins when present.
+ */
+const FONT_FALLBACKS: [RegExp, string][] = [
+  [/^bebas|^oswald|^anton|^haettenschweiler|condensed|^impact|narrow/i, '"Arial Narrow", Impact, "Helvetica Neue", sans-serif'],
+];
+
 export function applyCharStyle(el: HTMLElement, cs: CharStyle | undefined): void {
   if (!cs) return;
   const s = el.style;
-  if (cs.fontName) s.fontFamily = `"${cs.fontName}", sans-serif`;
+  if (cs.fontName) {
+    const flat = cs.fontName.replace(/[\s-]+/g, "");
+    const fb = FONT_FALLBACKS.find(([re]) => re.test(flat))?.[1] ?? "sans-serif";
+    s.fontFamily = `"${cs.fontName}", ${fb}`;
+  }
   if (cs.fontSizePt) s.fontSize = `${cs.fontSizePt}px`;
   if (cs.bold) s.fontWeight = "700";
   if (cs.italic) s.fontStyle = "italic";
