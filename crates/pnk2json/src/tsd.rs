@@ -25,13 +25,11 @@ pub fn tsp_path(m: &Msg) -> Option<CurvePath> {
     let mut elements = Vec::new();
     for el in m.msgs(1) {
         let ty = el.varint(1)?;
-        let points: Vec<Point> = el
+        let points: Vec<f64> = el
             .msgs(2)
             .into_iter()
-            .filter_map(|p| {
-                let (x, y) = (p.f32v(1)? as f64, p.f32v(2)? as f64);
-                Some(Point { x, y })
-            })
+            .filter_map(|p| Some([p.f32v(1)? as f64, p.f32v(2)? as f64]))
+            .flatten()
             .collect();
         elements.push(match ty {
             1 => CurveElement::Move { points },
@@ -65,11 +63,11 @@ fn editable_bezier(m: &Msg, natural: Option<Size>) -> ShapeGeometry {
         for (i, node) in nodes.iter().enumerate() {
             let Some(cur) = pts.get(i) else { continue };
             if first {
-                elements.push(CurveElement::Move { points: vec![Point { x: cur.0, y: cur.1 }] });
+                elements.push(CurveElement::Move { points: vec![cur.0, cur.1] });
                 first = false;
             }
             let Some(next) = pts.get(i + 1) else { continue };
-            let next_pt = Point { x: next.0, y: next.1 };
+            let next_pt = [next.0, next.1];
             let node_type = node.varint(4).unwrap_or(1);
             let out = node.msg(3).and_then(|m| Some((m.f32v(1)? as f64, m.f32v(2)? as f64)));
             let next_in = nodes[i + 1]
@@ -77,19 +75,19 @@ fn editable_bezier(m: &Msg, natural: Option<Size>) -> ShapeGeometry {
                 .and_then(|m| Some((m.f32v(1)? as f64, m.f32v(2)? as f64)));
             match (node_type, out, next_in) {
                 // Sharp nodes carry no real curvature: straight line.
-                (1, _, _) => elements.push(CurveElement::Line { points: vec![next_pt] }),
+                (1, _, _) => elements.push(CurveElement::Line { points: next_pt.to_vec() }),
                 (_, Some(o), Some(nin)) => elements.push(CurveElement::Cubic {
-                    points: vec![Point { x: o.0, y: o.1 }, Point { x: nin.0, y: nin.1 }, next_pt],
+                    points: vec![o.0, o.1, nin.0, nin.1, next_pt[0], next_pt[1]],
                 }),
                 (_, Some(o), None) => elements.push(CurveElement::Quad {
-                    points: vec![Point { x: o.0, y: o.1 }, next_pt],
+                    points: vec![o.0, o.1, next_pt[0], next_pt[1]],
                 }),
-                _ => elements.push(CurveElement::Line { points: vec![next_pt] }),
+                _ => elements.push(CurveElement::Line { points: next_pt.to_vec() }),
             }
         }
         if closed {
             if let Some(start) = pts.first() {
-                elements.push(CurveElement::Line { points: vec![Point { x: start.0, y: start.1 }] });
+                elements.push(CurveElement::Line { points: vec![start.0, start.1] });
             }
             elements.push(CurveElement::Close { points: vec![] });
         }
@@ -119,18 +117,18 @@ fn normalize_path(mut p: CurvePath, natural: Option<&Size>) -> CurvePath {
     let mut min = (f64::INFINITY, f64::INFINITY);
     let mut max = (f64::NEG_INFINITY, f64::NEG_INFINITY);
     for el in &p.elements {
-        let pts: &[Point] = match el {
+        let pts: &[f64] = match el {
             CurveElement::Move { points }
             | CurveElement::Line { points }
             | CurveElement::Quad { points }
             | CurveElement::Cubic { points }
             | CurveElement::Close { points } => points,
         };
-        for pt in pts {
-            min.0 = min.0.min(pt.x);
-            min.1 = min.1.min(pt.y);
-            max.0 = max.0.max(pt.x);
-            max.1 = max.1.max(pt.y);
+        for xy in pts.chunks_exact(2) {
+            min.0 = min.0.min(xy[0]);
+            min.1 = min.1.min(xy[1]);
+            max.0 = max.0.max(xy[0]);
+            max.1 = max.1.max(xy[1]);
         }
     }
     if !min.0.is_finite() {
@@ -143,16 +141,16 @@ fn normalize_path(mut p: CurvePath, natural: Option<&Size>) -> CurvePath {
     let ox = (n.width - bw * scale) / 2.0;
     let oy = (n.height - bh * scale) / 2.0;
     for el in p.elements.iter_mut() {
-        let pts: &mut Vec<Point> = match el {
+        let pts: &mut Vec<f64> = match el {
             CurveElement::Move { points }
             | CurveElement::Line { points }
             | CurveElement::Quad { points }
             | CurveElement::Cubic { points }
             | CurveElement::Close { points } => points,
         };
-        for pt in pts.iter_mut() {
-            pt.x = (pt.x - min.0) * scale + ox;
-            pt.y = (pt.y - min.1) * scale + oy;
+        for xy in pts.chunks_exact_mut(2) {
+            xy[0] = (xy[0] - min.0) * scale + ox;
+            xy[1] = (xy[1] - min.1) * scale + oy;
         }
     }
     p

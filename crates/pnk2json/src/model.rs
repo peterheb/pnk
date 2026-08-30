@@ -190,13 +190,16 @@ pub struct Reflection {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum CurveElement {
-    Move { points: Vec<Point> },
-    Line { points: Vec<Point> },
-    Quad { points: Vec<Point> },
-    Cubic { points: Vec<Point> },
+    // points are compact flat pairs [x1,y1,x2,y2,…] (SVG-style), matching the
+    // ratified TS contract in model/src/primitives.ts (2ed592d): move/line 2
+    // numbers, quad 4, cubic 6, close none.
+    Move { points: Vec<f64> },
+    Line { points: Vec<f64> },
+    Quad { points: Vec<f64> },
+    Cubic { points: Vec<f64> },
     Close {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        points: Vec<Point>,
+        points: Vec<f64>,
     },
 }
 
