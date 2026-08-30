@@ -59,7 +59,19 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
     let page_scale = root.f32v(38).map(|v| v as f64);
 
     // Page templates (masters).
-    let template_ids = root.references(48);
+    let mut template_ids = root.references(48);
+    // Fresh 26.3 docs (G5): PageMasterArchives float in the object graph when
+    // root has no field 48. They carry headers (f1) and footers (f2) as
+    // TSWP.StorageArchive references — the old TP.PageMasterArchive layout.
+    if template_ids.is_empty() {
+        for rec in ctx.loaded.records.values() {
+            if rec.type_id == 10143 {
+                template_ids.push(rec.id);
+            }
+        }
+        // records is a hash map: sort for deterministic template order/names.
+        template_ids.sort_unstable();
+    }
     let mut page_templates = Vec::new();
     let mut template_names: std::collections::HashMap<u64, String> =
         std::collections::HashMap::new();
@@ -139,10 +151,43 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
         }
     }
 
-    // Sections (TP.SectionArchive [10011]).
+    // Sections (TP.SectionArchive). Older docs hang ONE section off
+    // DocumentArchive.section (5); modern Pages (26.x) stores sections in the
+    // BODY storage's table_section attribute table (StorageArchive field 17
+    // [proto: TSWPArchives.proto table_section], offset → SectionArchive —
+    // fixture G5: entry at offset 0 → the section carrying the page masters
+    // with header/footer text).
+    let mut section_ids: Vec<u64> = root.reference(5).into_iter().collect();
+    if section_ids.is_empty() {
+        if let Some(bsid) = root.reference(4) {
+            if let Some(bs) = ctx.loaded.msg(bsid) {
+                if let Some(table) = bs.msg(17) {
+                    let mut entries: Vec<(u64, u64)> = table
+                        .msgs(1)
+                        .into_iter()
+                        .filter_map(|e| {
+                            Some((e.varint(1).unwrap_or(0), e.reference(2)?))
+                        })
+                        .collect();
+                    entries.sort_by_key(|(off, _)| *off);
+                    for (_, sid) in entries {
+                        if !section_ids.contains(&sid) {
+                            section_ids.push(sid);
+                        }
+                    }
+                }
+            }
+        }
+    }
     let mut sections = Vec::new();
-    if let Some(sec_id) = root.reference(5) {
-        sections.push(convert_section(ctx, sec_id, &template_names));
+    for (i, sec_id) in section_ids.iter().enumerate() {
+        sections.push(convert_section(
+            ctx,
+            *sec_id,
+            &template_names,
+            i,
+            &mut page_templates,
+        ));
     }
 
     PagesDocument {
@@ -189,7 +234,13 @@ fn convert_page_template(ctx: &mut Ctx, tid: u64, index: usize) -> (PageTemplate
         return (empty_template(), None);
     };
 
-    let name = m.string(1).filter(|s| !s.is_empty());
+    // Field 1 is a NAME string on TP.PageTemplateArchive but a header-storage
+    // REFERENCE on the 10143 PageMasterArchive layout — a ref misread as a
+    // lossy string carries control chars / U+FFFD, so filter those out.
+    let name = m
+        .string(1)
+        .filter(|s| !s.is_empty())
+        .filter(|s| !s.chars().any(|c| (c as u32) < 0x20 || c == '\u{FFFD}'));
 
     let drawables: Vec<Drawable> = m
         .references(2)
@@ -213,11 +264,45 @@ fn convert_page_template(ctx: &mut Ctx, tid: u64, index: usize) -> (PageTemplate
     // scan unknown fields (≥ 8) for storage references as a fixture-driven
     // best effort [inferred]. HEADER-kind (1) storages are headers; others
     // are footers.
-    let (headers, footers) = template_headers_footers(ctx, &m);
+    // For the 10143 TP.PageMasterArchive layout (fresh 26.3 docs): headers
+    // = field 1, footers = field 2 (both direct TSWP.StorageArchive refs,
+    // three column storages each — left/center/right [inferred, fixture G5]).
+    // For the TP.PageTemplateArchive layout, headers/footers are at f>=8
+    // [inferred]. Dispatch on the record's type id.
+    let is_master = ctx.loaded.record(tid).map(|r| r.type_id) == Some(10143);
+    let (headers, footers) = if !is_master {
+        // Headers/footers via template_headers_footers (PageTemplateArchive)
+        template_headers_footers(ctx, &m)
+    } else {
+        // Direct header/footer storage refs (PageMasterArchive 10143):
+        // field 1 = headers (repeated), field 2 = footers (repeated)
+        let mut hdr_ids = Vec::new();
+        let mut ftr_ids = Vec::new();
+        for f in &m.fields {
+            if let iwadump::proto::Value::Bytes(b) = &f.value {
+                if let Some(inner) = Msg::parse(b) {
+                    if let Some(id) = inner.varint(1) {
+                        if matches!(ctx.loaded.record(id).map(|r| r.type_id), Some(2001) | Some(2005)) {
+                            if f.number == 1 { hdr_ids.push(id); }
+                            else if f.number == 2 { ftr_ids.push(id); }
+                        }
+                    }
+                }
+            }
+        }
+        let to_styled = |ids: Vec<u64>, ctx: &mut Ctx| -> Vec<StyledText> {
+            ids.into_iter().filter_map(|sid| crate::text::extract(ctx, sid).map(|e| e.text)).collect()
+        };
+        (to_styled(hdr_ids, ctx), to_styled(ftr_ids, ctx))
+    };
 
+    // The resolved name doubles as the section-lookup key (sections refer to
+    // templates by name in the model), so unnamed masters get a stable
+    // index-based name on the template itself too.
+    let resolved_name = name.or_else(|| Some(format!("Template {}", index + 1)));
     (
         PageTemplate {
-            name: name.clone(),
+            name: resolved_name.clone(),
             drawables,
             placeholders,
             background_fill: m.msg(6).and_then(|f| crate::tsd::fill_of(ctx, &f)),
@@ -226,7 +311,7 @@ fn convert_page_template(ctx: &mut Ctx, tid: u64, index: usize) -> (PageTemplate
             footers,
             headers_footers_match_previous_page: m.boolean(4).unwrap_or(false),
         },
-        name.or_else(|| Some(format!("Template {}", index + 1))),
+        resolved_name,
     )
 }
 
@@ -301,6 +386,8 @@ fn convert_section(
     ctx: &mut Ctx,
     sec_id: u64,
     template_names: &std::collections::HashMap<u64, String>,
+    _index: usize,
+    page_templates: &mut [PageTemplate],
 ) -> PagesSection {
     let Some(m) = ctx.loaded.msg(sec_id).cloned() else {
         ctx.warn_detail(
@@ -313,6 +400,19 @@ fn convert_section(
     let name_of = |r: Option<u64>| -> Option<String> {
         r.and_then(|id| template_names.get(&id).cloned())
     };
+    // section_template_first_page_hides_header_footer (28 [proto:
+    // TPArchives.proto SectionArchive]) — G5: Apple's export shows no
+    // header/footer on page 1. Surface it as hide_headers_footers on the
+    // FIRST-page template so the model needs no new field.
+    if m.boolean(28) == Some(true) {
+        if let Some(first_name) = name_of(m.reference(23)) {
+            for t in page_templates.iter_mut() {
+                if t.name.as_deref() == Some(first_name.as_str()) {
+                    t.hide_headers_footers = Some(true);
+                }
+            }
+        }
+    }
     let page_numbering = if m.has(20) || m.has(21) || m.has(22) {
         Some(PageNumbering {
             restart: m.varint(20).map(|v| v != 0),

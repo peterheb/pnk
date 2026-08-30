@@ -3,12 +3,76 @@
 // page-layout flavor = stacked positioned page canvases. Floating objects
 // render into their anchor page's canvas.
 
-import type { PagesDocument } from "../../model/src/pages";
+import type { PagesDocument, PageTemplate } from "../../model/src/pages";
 import type { ViewerCtx } from "./ctx";
-import type { Drawable } from "../../model/src/shared";
+import type { Drawable, StyledText } from "../../model/src/shared";
 import { newListNumberingState, renderParagraph, renderStyledText } from "./text";
 import { renderCanvasDrawable } from "./drawables";
 import { paraStyleOf, type HydratedDoc } from "./hydrate";
+
+/** Any visible text in a styled-text block? */
+function hasText(t: StyledText): boolean {
+  return t.paragraphs.some((p) =>
+    p.items.some((it) =>
+      typeof it === "string" ? it.length > 0 : !("type" in it) ? it.text.length > 0 : true,
+    ),
+  );
+}
+
+function templateHasHf(t: PageTemplate | undefined): boolean {
+  return !!t && (t.headers.some(hasText) || t.footers.some(hasText));
+}
+
+/**
+ * Header/footer template for page `i` (0-based): first-page template on page
+ * 1 (honoring its hide flag), else the parity template, falling back to the
+ * other parity when one side was left empty (Pages stores empty storages on
+ * the unused templates when "different even/odd" is off).
+ */
+function hfTemplateFor(doc: PagesDocument, i: number): PageTemplate | undefined {
+  const sec = doc.sections[0];
+  if (!sec) return undefined;
+  const byName = new Map<string, PageTemplate>();
+  for (const t of doc.pageTemplates) if (t.name) byName.set(t.name, t);
+  const first = sec.firstPageTemplate ? byName.get(sec.firstPageTemplate) : undefined;
+  const even = sec.evenPageTemplate ? byName.get(sec.evenPageTemplate) : undefined;
+  const odd = sec.oddPageTemplate ? byName.get(sec.oddPageTemplate) : undefined;
+  if (i === 0 && first?.hideHeadersFooters) return undefined;
+  const parity = (i + 1) % 2 === 0 ? [even, odd] : [odd, even];
+  const candidates = i === 0 ? [first, ...parity] : parity;
+  for (const c of candidates) if (templateHasHf(c)) return c;
+  return undefined;
+}
+
+/** Three header/footer column storages as one absolutely-positioned row. */
+function hfRow(
+  cols: StyledText[],
+  hdoc: HydratedDoc,
+  ctx: ViewerCtx,
+  cssClass: string,
+): HTMLElement {
+  const row = document.createElement("div");
+  row.className = `pages-hf ${cssClass}`;
+  const aligns = ["left", "center", "right"] as const;
+  cols.slice(0, 3).forEach((t, i) => {
+    const col = document.createElement("div");
+    col.className = "pages-hf-col";
+    col.style.textAlign = aligns[i] ?? "left";
+    col.appendChild(renderStyledText(t, hdoc, ctx));
+    row.appendChild(col);
+  });
+  return row;
+}
+
+/** Resolve page-number / page-count fields to the paginated reality. */
+function fillPageFields(root: HTMLElement, pageNumber: number, pageCount: number): void {
+  root.querySelectorAll<HTMLElement>('.field[data-field-kind="page-number"]').forEach((el) => {
+    el.textContent = String(pageNumber);
+  });
+  root.querySelectorAll<HTMLElement>('.field[data-field-kind="page-count"]').forEach((el) => {
+    el.textContent = String(pageCount);
+  });
+}
 
 function pageCanvas(
   doc: PagesDocument,
@@ -16,6 +80,7 @@ function pageCanvas(
   ctx: ViewerCtx,
   drawables: Drawable[],
   pageIndex: number | undefined,
+  templateDrawables?: Drawable[],
 ): HTMLElement {
   const frame = document.createElement("div");
   frame.className = "canvas-frame pages-page";
@@ -32,6 +97,8 @@ function pageCanvas(
     inner.style.top = "0";
     inner.style.left = "50%";
     inner.style.marginLeft = `${-doc.pageSize.width * scale / 2}px`;
+    // template underlay paints first, beneath the page's own drawables
+    for (const d of templateDrawables ?? []) inner.appendChild(renderCanvasDrawable(d, hdoc, ctx));
     for (const d of drawables) inner.appendChild(renderCanvasDrawable(d, hdoc, ctx));
     frame.appendChild(inner);
     frame.style.height = `${doc.pageSize.height * scale}px`;
@@ -42,6 +109,7 @@ function pageCanvas(
     inner.style.position = "relative";
     inner.style.width = "720px";
     inner.style.minHeight = "400px";
+    for (const d of templateDrawables ?? []) inner.appendChild(renderCanvasDrawable(d, hdoc, ctx));
     for (const d of drawables) inner.appendChild(renderCanvasDrawable(d, hdoc, ctx));
     frame.appendChild(inner);
   }
@@ -67,7 +135,9 @@ function floatingSection(
     label.className = "muted canvas-caption";
     label.textContent = group.pageIndex !== undefined ? `Page ${group.pageIndex + 1}` : `Group ${i + 1}`;
     wrap.appendChild(label);
-    wrap.appendChild(pageCanvas(doc, hdoc, ctx, group.drawables, group.pageIndex));
+    wrap.appendChild(
+      pageCanvas(doc, hdoc, ctx, group.drawables, group.pageIndex, group.templateDrawables),
+    );
   });
   mount.appendChild(wrap);
 }
@@ -188,6 +258,28 @@ function paginatedBody(
     for (const el of pagesEls[i] ?? []) content.appendChild(el);
     inner.appendChild(content);
 
+    // headers/footers from the section's page templates, at the header/
+    // footer margins (TP.DocumentArchive fields 36/37)
+    const hf = hfTemplateFor(doc, i);
+    if (hf) {
+      const m = doc.pageMargins;
+      if (hf.headers.some(hasText)) {
+        const h = hfRow(hf.headers, hdoc, ctx, "pages-header");
+        h.style.top = `${m?.header ?? 36}px`;
+        h.style.left = `${g.left}px`;
+        h.style.width = `${g.contentW}px`;
+        inner.appendChild(h);
+      }
+      if (hf.footers.some(hasText)) {
+        const f = hfRow(hf.footers, hdoc, ctx, "pages-footer");
+        f.style.bottom = `${m?.footer ?? 36}px`;
+        f.style.left = `${g.left}px`;
+        f.style.width = `${g.contentW}px`;
+        inner.appendChild(f);
+      }
+    }
+
+    fillPageFields(inner, i + 1, pageCount);
     frame.appendChild(inner);
     view.appendChild(frame);
   }

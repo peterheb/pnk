@@ -304,3 +304,18 @@ table.sheet-table td.cell-error { color: #b03030; font-style: italic; }
 .pages-print p, .pages-print h1, .pages-print h2, .pages-print h3,
 .pages-print h4, .pages-print h5, .pages-print h6,
 .pages-print .list-item { white-space: pre-wrap; tab-size: 36px; }
+
+/* === numbers/tables (agent N) === */
+/* Numbers clips cell content at the cell boundary — text never spills into
+   a neighbor cell (Apple renders template placeholder keys like
+   "S_LOCALIZABLE_Sunday" clipped to "S_L" in narrow columns; we match). */
+table.sheet-table td, table.sheet-table th { overflow: hidden; }
+/* Exact stored column widths (fixed layout): the 42px readability guard
+   would inflate genuinely narrow columns (mini-calendar day columns are
+   ~15pt in Apple's templates). */
+table.sheet-table.exact-cols td, table.sheet-table.exact-cols th { min-width: 0; }
+/* headers/footers inside word-processing page frames: 3 column storages
+   (left/center/right), absolutely positioned at the header/footer margins */
+.pages-hf { position: absolute; display: flex; gap: 8px; font-size: 11px; color: #1d1d1f; }
+.pages-hf-col { flex: 1 1 0; min-width: 0; }
+.pages-hf .styled-text p { margin: 0; }
