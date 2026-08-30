@@ -332,6 +332,133 @@ fn dependency_merges(ctx: &Ctx, haunted: u128, rows: u32, cols: u32) -> Vec<Tabl
     merges
 }
 
+/// Overlay explicit edge strokes onto a cell style's borders.
+fn merge_borders(s: &mut TableCellStyle, b: CellBorders) {
+    let dst = s.borders.get_or_insert(CellBorders {
+        top: None,
+        right: None,
+        bottom: None,
+        left: None,
+    });
+    if b.top.is_some() {
+        dst.top = b.top;
+    }
+    if b.right.is_some() {
+        dst.right = b.right;
+    }
+    if b.bottom.is_some() {
+        dst.bottom = b.bottom;
+    }
+    if b.left.is_some() {
+        dst.left = b.left;
+    }
+}
+
+/// A table stroke, or None when it draws nothing: StrokePatternArchive
+/// type 2 = TSDEmptyPattern ("no line" — distinct from solid), or a zero
+/// width. [proto TSDArchives.proto StrokePatternArchive]
+fn table_stroke(ctx: &mut Ctx, m: &Msg) -> Option<Stroke> {
+    if m.msg(6).and_then(|p| p.varint(1)) == Some(2) {
+        return None;
+    }
+    let s = crate::tsd::stroke_of(ctx, m)?;
+    if s.width_pt <= 0.0 {
+        return None;
+    }
+    Some(s)
+}
+
+/// Merge default grid strokes into a section style's borders (only where
+/// the section style doesn't already carry that edge).
+fn attach_borders(
+    section: &mut Option<TableCellStyle>,
+    top: Option<Stroke>,
+    right: Option<Stroke>,
+    bottom: Option<Stroke>,
+    left: Option<Stroke>,
+) {
+    if top.is_none() && right.is_none() && bottom.is_none() && left.is_none() {
+        return;
+    }
+    let s = section.get_or_insert_with(TableCellStyle::default);
+    let b = s.borders.get_or_insert(CellBorders {
+        top: None,
+        right: None,
+        bottom: None,
+        left: None,
+    });
+    if b.top.is_none() {
+        b.top = top;
+    }
+    if b.right.is_none() {
+        b.right = right;
+    }
+    if b.bottom.is_none() {
+        b.bottom = bottom;
+    }
+    if b.left.is_none() {
+        b.left = left;
+    }
+}
+
+/// Per-cell edge stroke overrides from the StrokeSidecarArchive (model
+/// f49): left/right COLUMN layers (f4/f5, row_column_index = column, runs
+/// range over rows) and top/bottom ROW layers (f6/f7, index = row, runs
+/// over columns). Each run { origin = 1, length = 2, stroke = 3 } paints
+/// one edge of a contiguous cell range. [proto TSTArchives.proto
+/// StrokeSidecarArchive/StrokeLayerArchive; fixture-verified: 02_Invoice
+/// black rules above Tax/Total]
+fn sidecar_borders(ctx: &mut Ctx, m: &Msg) -> HashMap<(u32, u32), CellBorders> {
+    let mut out: HashMap<(u32, u32), CellBorders> = HashMap::new();
+    let Some(sc) = m.reference(49).and_then(|id| ctx.loaded.msg(id).cloned()) else {
+        return out;
+    };
+    for (field, edge) in [(4u32, 0u8), (5, 1), (6, 2), (7, 3)] {
+        let layer_ids: Vec<u64> = sc.references(field);
+        for lid in layer_ids {
+            let Some(layer) = ctx.loaded.msg(lid).cloned() else { continue };
+            let idx = layer.varint(1).unwrap_or(0) as u32;
+            for run in layer.msgs(2) {
+                let Some(sm) = run.msg(3) else { continue };
+                // An EmptyPattern / zero-width run ERASES the default grid
+                // stroke on that edge — encoded as a 0-width stroke (the
+                // viewer renders 0px = no line, overriding the section
+                // default).
+                let stroke = table_stroke(ctx, &sm).unwrap_or(Stroke {
+                    color: "#00000000".to_string(),
+                    width_pt: 0.0,
+                    cap: StrokeCap::Butt,
+                    join: StrokeJoin::Miter,
+                    miter_limit: None,
+                    dash: None,
+                    dash_phase: None,
+                });
+                let origin = run.varint(1).unwrap_or(0) as u32;
+                let length = run.varint(2).unwrap_or(1).max(1) as u32;
+                for i in origin..origin + length {
+                    // column layers: idx = column, i = row; row layers:
+                    // idx = row, i = column
+                    let key = if field <= 5 { (i, idx) } else { (idx, i) };
+                    let b = out.entry(key).or_insert(CellBorders {
+                        top: None,
+                        right: None,
+                        bottom: None,
+                        left: None,
+                    });
+                    let slot = match edge {
+                        0 => &mut b.left,
+                        1 => &mut b.right,
+                        2 => &mut b.top,
+                        _ => &mut b.bottom,
+                    };
+                    *slot = Some(stroke.clone());
+                }
+            }
+        }
+    }
+    out
+}
+
 /// Clamp a decoded merge range to the table bounds and push it; degenerate
 /// 1x1 "merges" are no-ops and dropped.
 fn push_merge(
@@ -574,14 +701,65 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
     // table_properties = 11 } plus the style-network role slots on the model
     // (fields 18-21 cell styles, 24-27 text styles; docs/format/tables.md).
     let style = m.reference(3).and_then(|sid| {
-        let props = ctx.loaded.msg(sid).and_then(|sm| sm.msg(11));
-        props.map(|p| TableStyle {
-            banded_rows: p.boolean(1),
-            banded_fill: p.msg(2).and_then(|f| crate::tsd::fill_of(ctx, &f)),
-            body_cell_style: section_style(ctx, &m, 18, 24),
-            header_row_cell_style: section_style(ctx, &m, 19, 25),
-            header_column_cell_style: section_style(ctx, &m, 20, 26),
-            footer_row_cell_style: section_style(ctx, &m, 21, 27),
+        // TableStyleArchive properties INHERIT along the TSS parent chain
+        // (02_Invoice's dashed body horizontal stroke lives only on the
+        // preset parent); first-wins per field like every other style walk.
+        let props = styles::chain(ctx, sid, 11);
+        if props.is_empty() {
+            return None;
+        }
+        let first = |f: u32| props.iter().find(|p| p.has(f)).cloned();
+        let flag = |f: u32, default: bool| {
+            props
+                .iter()
+                .find_map(|p| p.boolean(f))
+                .unwrap_or(default)
+        };
+        // Default gridline strokes (TableStylePropertiesArchive modern
+        // stroke slots f46-61 + visibility flags f33/f34/f35/f36/f37)
+        // become section-style borders: a HORIZONTAL stroke is every
+        // cell's bottom edge, a VERTICAL one its right edge, and the
+        // separators paint the header/footer boundary. Strokes with an
+        // empty pattern (TSDEmptyPattern) or zero width draw nothing.
+        let h_vis = flag(34, true);
+        let v_vis = flag(33, true);
+        let mut body = section_style(ctx, &m, 18, 24);
+        let mut hrow = section_style(ctx, &m, 19, 25);
+        let mut hcol = section_style(ctx, &m, 20, 26);
+        let mut foot = section_style(ctx, &m, 21, 27);
+        let mut stroke_at = |ctx: &mut Ctx, f: u32| {
+            first(f).and_then(|p| p.msg(f)).and_then(|sm| table_stroke(ctx, &sm))
+        };
+        let body_h = if h_vis { stroke_at(ctx, 60) } else { None };
+        let body_v = if v_vis { stroke_at(ctx, 61) } else { None };
+        attach_borders(&mut body, None, body_v.clone(), body_h.clone(), None);
+        let hr_sep = if flag(35, true) { stroke_at(ctx, 46) } else { None };
+        attach_borders(
+            &mut hrow,
+            None,
+            stroke_at(ctx, 49),
+            hr_sep.or_else(|| stroke_at(ctx, 48)),
+            None,
+        );
+        let hc_sep = if flag(36, true) { stroke_at(ctx, 51) } else { None };
+        attach_borders(
+            &mut hcol,
+            None,
+            hc_sep.or_else(|| stroke_at(ctx, 53)),
+            stroke_at(ctx, 52),
+            None,
+        );
+        let foot_sep = if flag(37, true) { stroke_at(ctx, 54) } else { None };
+        attach_borders(&mut foot, foot_sep, stroke_at(ctx, 57), stroke_at(ctx, 56), None);
+        Some(TableStyle {
+            banded_rows: props.iter().find_map(|p| p.boolean(1)),
+            banded_fill: first(2)
+                .and_then(|p| p.msg(2))
+                .and_then(|f| crate::tsd::fill_of(ctx, &f)),
+            body_cell_style: body,
+            header_row_cell_style: hrow,
+            header_column_cell_style: hcol,
+            footer_row_cell_style: foot,
         })
     });
 
@@ -595,12 +773,24 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
     // per-cell style; row beats column.
     let row_styles = header_styles(ctx, store.as_ref(), 1, 0);
     let col_styles = header_styles(ctx, store.as_ref(), 0, 2);
+    // Per-cell edge stroke overrides (stroke sidecar) merge into the
+    // pooled cell styles; leftovers on empty positions synthesize a
+    // value-less styled cell after the loop.
+    let mut edge_overrides = sidecar_borders(ctx, &m);
     let mut formats: Vec<CellFormat> = Vec::new();
     for (row, col, mut cell, format) in cells {
         if cell.cell_style_index.is_none() {
             if let Some(s) = row_styles.get(&row).or_else(|| col_styles.get(&col)) {
                 cell.cell_style_index = cell_pool.intern(s.clone());
             }
+        }
+        if let Some(b) = edge_overrides.remove(&(row, col)) {
+            let mut s = cell
+                .cell_style_index
+                .and_then(|i| cell_pool.items.get(i as usize).cloned())
+                .unwrap_or_default();
+            merge_borders(&mut s, b);
+            cell.cell_style_index = cell_pool.intern(s);
         }
         if let Some(f) = format {
             let idx = match formats.iter().position(|e| *e == f) {
@@ -625,6 +815,26 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
         };
         if (row as usize) < grid.len() && (col as usize) < grid[row as usize].len() {
             grid[row as usize][col as usize] = Some(slot);
+        }
+    }
+    // Sidecar strokes on positions with no stored cell (02_Invoice's empty
+    // spacer row still carries its heavy rule): synthesize a value-less
+    // styled cell so the edge renders.
+    for ((row, col), b) in edge_overrides.drain() {
+        if (row as usize) < grid.len()
+            && (col as usize) < grid[row as usize].len()
+            && grid[row as usize][col as usize].is_none()
+        {
+            let mut s = TableCellStyle::default();
+            merge_borders(&mut s, b);
+            grid[row as usize][col as usize] = Some(GridCell::Cell(TableCell {
+                v: GridValue::None,
+                r#type: None,
+                cur: None,
+                fmt: None,
+                cell_style_index: cell_pool.intern(s),
+                formula: None,
+            }));
         }
     }
 

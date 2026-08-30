@@ -376,6 +376,7 @@ pub fn resolve_list_format(ctx: &mut Ctx, list_id: u64, level: u32) -> Option<Li
 
     let label_types = varints(&msgs, 11);
     let label = at_level(&label_types, level).unwrap_or(0);
+    let mut number_surround: Option<NumberSurround> = None;
     let (marker_kind, number_kind, marker_text, marker_image) = match label {
         0 => (ListMarkerKind::None, None, None, None),
         1 => {
@@ -412,6 +413,7 @@ pub fn resolve_list_format(ctx: &mut Ctx, list_id: u64, level: u32) -> Option<Li
         3 => {
             let numbers = varints(&msgs, 15);
             let kind = at_level(&numbers, level).unwrap_or(0);
+            number_surround = number_surround_of(kind);
             let number_kind = match kind {
                 0..=2 => Some(NumberKind::Decimal),
                 3..=5 => Some(NumberKind::RomanUpper),

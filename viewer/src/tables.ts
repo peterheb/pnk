@@ -360,10 +360,15 @@ function applyCellStyle(td: HTMLTableCellElement, style: TableCellStyle | undefi
   if (style?.fill) s.backgroundColor = style.fill.type === "solid" ? style.fill.color : "#e8e8ee";
   if (style?.borders) {
     const b = style.borders;
-    if (b.top) s.borderTop = `${b.top.widthPt}px solid ${b.top.color}`;
-    if (b.right) s.borderRight = `${b.right.widthPt}px solid ${b.right.color}`;
-    if (b.bottom) s.borderBottom = `${b.bottom.widthPt}px solid ${b.bottom.color}`;
-    if (b.left) s.borderLeft = `${b.left.widthPt}px solid ${b.left.color}`;
+    // width 0 = explicit "no line" (erases the base gridline); dash
+    // patterns map to dotted (short) / dashed CSS lines
+    const css = (st: { widthPt: number; color: string; dash?: number[] }) =>
+      st.widthPt <= 0 ? "none"
+        : `${Math.max(st.widthPt, 1)}px ${st.dash ? (st.dash[0] <= 1.5 ? "dotted" : "dashed") : "solid"} ${st.color}`;
+    if (b.top) s.borderTop = css(b.top);
+    if (b.right) s.borderRight = css(b.right);
+    if (b.bottom) s.borderBottom = css(b.bottom);
+    if (b.left) s.borderLeft = css(b.left);
   }
   if (style?.text) applyCharStyle(td, style.text);
   if (style?.paragraph?.horizontalAlignment && style.paragraph.horizontalAlignment !== "auto") {
@@ -429,6 +434,10 @@ export function renderTable(model: TableModel): HTMLTableElement {
   let bodyOrdinal = -1;
   const banded = model.style?.bandedRows && model.style.bandedFill?.type === "solid"
     ? model.style.bandedFill.color : undefined;
+  // A table whose style carries real stroke info paints ONLY its own
+  // borders — the base gray gridlines would add lines Apple doesn't draw
+  // (02_Invoice has horizontal rules only).
+  if (model.style?.bodyCellStyle?.borders) table.classList.add("own-strokes");
   for (const r of visRows) {
     const kind = r < headEnd ? "thead" : r >= footStart ? "tfoot" : "tbody";
     if (kind !== sectionKind) {

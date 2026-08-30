@@ -321,3 +321,6 @@ table.sheet-table.exact-cols td, table.sheet-table.exact-cols th { min-width: 0;
 .pages-hf .styled-text p { margin: 0; }
 /* footnote marks render as superscript indexes */
 .pages-print .field[data-field-kind="footnote-mark"] { vertical-align: super; font-size: 0.7em; }
+/* A table with decoded stroke styles draws only its own borders; the base
+   gridline would add lines Apple doesn't (Invoice: horizontal rules only). */
+table.sheet-table.own-strokes td, table.sheet-table.own-strokes th { border: none; }
