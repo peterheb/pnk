@@ -54,12 +54,22 @@ function asCell(slot: NonNullable<GridCell>): TableCell {
   return { v: slot };
 }
 
-/** Fixed-decimal display, trailing zeros trimmed, in the document's locale. */
-function formatNumber(v: number, decimals: number | undefined): string {
-  const n = decimals !== undefined ? Math.min(Math.max(decimals, 0), 8) : undefined;
-  // unformatted cells: 12 significant digits kills double-repr noise
-  // (388.59999999999997 -> 388.6) without hiding real precision
-  let s = n !== undefined ? v.toFixed(n) : Number(v.toPrecision(12)).toString();
+/**
+ * Number display in the document's locale. A number FORMAT's decimals is
+ * the display contract (Apple shows 912558.880000000 for decimals=10) —
+ * rendered exactly, no trimming. Unformatted bare numbers keep the noise
+ * trim (12 significant digits).
+ */
+function formatNumber(v: number, decimals: number | undefined, exact: boolean): string {
+  let s: string;
+  if (decimals !== undefined) {
+    s = v.toFixed(Math.min(Math.max(decimals, 0), 20));
+    if (!exact) s = s.replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
+  } else {
+    // unformatted cells: 12 significant digits kills double-repr noise
+    // (388.59999999999997 -> 388.6) without hiding real precision
+    s = Number(v.toPrecision(12)).toString();
+  }
   if (decimalComma) s = s.replace(".", ",");
   return s;
 }
@@ -74,16 +84,19 @@ function valueToText(cell: TableCell, format: CellFormat | undefined): string {
       const n = typeof v === "number" ? v : Number(v);
       if (format?.kind === "percent") {
         // iWork stores percent as a fraction; the format displays it ×100
-        return `${formatNumber(n * 100, format.decimals)}%`;
+        return `${formatNumber(n * 100, format.decimals, true)}%`;
       }
+      // a number FORMAT with explicit decimals is the display contract:
+      // render exactly what it says (no trailing-zero trim)
+      const exact = format !== undefined && format.decimals !== undefined;
       const decimals = format && (format.kind === "number" || format.kind === "automatic")
         ? format.decimals : undefined;
-      return formatNumber(n, decimals);
+      return formatNumber(n, decimals, exact);
     }
     case "bool": return typeof v === "boolean" ? (v ? "true" : "false") : String(v);
     case "date": return String(v).slice(0, 10);
     case "duration": return `${v}s`;
-    case "currency": return `${cell.cur ?? "$"} ${formatNumber(typeof v === "number" ? v : Number(v), format?.decimals)}`;
+    case "currency": return `${cell.cur ?? "$"} ${formatNumber(typeof v === "number" ? v : Number(v), format?.decimals, format?.decimals !== undefined)}`;
     case "error": return String(v);
     case "richtext": {
       const st = v as TableModel["grid"] extends never ? never : NonNullable<TableCell["v"]> & { paragraphs?: { items?: { type?: string; text?: string }[] }[] };
