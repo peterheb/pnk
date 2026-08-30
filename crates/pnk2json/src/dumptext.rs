@@ -401,7 +401,16 @@ fn pages_md(d: &PagesDocument, out: &mut String) {
 fn cell_text_plain(cell: &TableCell) -> String {
     match (&cell.v, cell.r#type) {
         (GridValue::None, _) => String::new(),
-        (GridValue::Number(n), Some(CellTypeTag::Duration)) => format!("{}s", fmt_num(*n)),
+        (GridValue::Number(n), Some(CellTypeTag::Duration)) => {
+            // Apple duration rendering: h:mm:ss (h omitted when 0)
+            let total = *n as i64;
+            let (h, m, s) = (total / 3600, (total % 3600) / 60, total % 60);
+            if h > 0 {
+                format!("{h}:{m:02}:{s:02}")
+            } else {
+                format!("{m:02}:{s:02}")
+            }
+        }
         (GridValue::Number(n), Some(CellTypeTag::Currency)) => match &cell.cur {
             Some(c) => format!("{} {}", fmt_num(*n), c),
             None => fmt_num(*n),

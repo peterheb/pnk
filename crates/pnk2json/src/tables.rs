@@ -63,6 +63,38 @@ fn load_data_list(ctx: &Ctx, list_id: Option<u64>) -> DataList {
     out
 }
 
+/// HeaderStorage field 2 entries: buckets may be TSP.References (v5/BNC)
+/// or INLINE HeaderStorageBucket messages (v4/pre-BNC, fixture-verified
+/// lafs_playlist). Yields each bucket's Msg.
+fn header_buckets(ctx: &Ctx, hs: &Msg) -> Vec<Msg> {
+    hs.fields
+        .iter()
+        .filter(|f| f.number == 2)
+        .filter_map(|f| match &f.value {
+            iwadump::proto::Value::Bytes(b) => {
+                // Could be a TSP.Reference { 1: id } or an inline bucket.
+                // A bucket has fields 1..6 (hash/size/hiding/ncells/refs);
+                // a reference has only field 1 with a plausible id.
+                match Msg::parse(b) {
+                    Some(inner) => {
+                        let n_fields = inner.fields.len();
+                        // Reference: exactly one varint field
+                        if n_fields == 1 {
+                            if let Some(id) = inner.varint(1) {
+                                return ctx.loaded.msg(id).cloned();
+                            }
+                        }
+                        // Inline bucket: multiple fields or non-reference f1
+                        Some(inner)
+                    }
+                    None => None,
+                }
+            }
+            _ => None,
+        })
+        .collect()
+}
+
 /// Header buckets → (model index, storage-buffer ordinal) in order
 /// (numbers-parser row_storage_map semantics, docs/format/tables.md).
 fn strip_map_with_ctx(
@@ -71,15 +103,23 @@ fn strip_map_with_ctx(
     inline_field: u32,
     ref_field: u32,
 ) -> Vec<(u32, usize)> {
-    // HeaderStorage may be inline (rowHeaders) or referenced (columnHeaders).
     let hs = storage
         .msg(inline_field)
         .or_else(|| storage.reference(ref_field).and_then(|r| ctx.loaded.msg(r).cloned()));
     let Some(hs) = hs else { return Vec::new() };
     let mut out = Vec::new();
     let mut ordinal = 0usize;
-    for bref in hs.references(2) {
-        if let Some(bucket) = ctx.loaded.msg(bref) {
+    for bucket in header_buckets(ctx, &hs) {
+        let is_v4_header = bucket
+            .get(2)
+            .map(|v| matches!(v, iwadump::proto::Value::Fixed32(_)))
+            .unwrap_or(false);
+        if is_v4_header {
+            if let Some(idx) = bucket.varint(1) {
+                out.push((idx as u32, ordinal));
+                ordinal += 1;
+            }
+        } else {
             for h in bucket.msgs(2) {
                 if let Some(idx) = h.varint(1) {
                     out.push((idx as u32, ordinal));
@@ -105,8 +145,25 @@ fn header_info(
         .or_else(|| storage.reference(ref_field).and_then(|r| ctx.loaded.msg(r).cloned()));
     let Some(hs) = hs else { return Vec::new() };
     let mut out = Vec::new();
-    for bref in hs.references(2) {
-        if let Some(bucket) = ctx.loaded.msg(bref) {
+    for bucket in header_buckets(ctx, &hs) {
+        // v4/pre-BNC: the bucket IS the Header (f1=index, f2=fixed32 size,
+        // f3=hiding) — no nested f2 headers. v5/BNC: the bucket contains
+        // Headers at f2. Distinguish by f2's wire type: Fixed32 = v4 header
+        // field, LEN = v5 bucket nesting.
+        let is_v4_header = bucket
+            .get(2)
+            .map(|v| matches!(v, iwadump::proto::Value::Fixed32(_)))
+            .unwrap_or(false);
+        if is_v4_header {
+            let Some(idx) = bucket.varint(1) else { continue };
+            out.push((
+                idx as u32,
+                RowColInfo {
+                    size_pt: bucket.f32v(2).map(|v| v as f64),
+                    hidden: bucket.varint(3).map(|v| v != 0),
+                },
+            ));
+        } else {
             for h in bucket.msgs(2) {
                 let Some(idx) = h.varint(1) else { continue };
                 out.push((
