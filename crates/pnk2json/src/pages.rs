@@ -49,6 +49,16 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
         None
     };
 
+    // lays_out_body_vertically (39 [proto: TPArchives.proto]) — vertical
+    // (tategaki) body layout. The viewer renders horizontally; warn so the
+    // blank/mis-laid render is explained (00V template probe).
+    if root.varint(39) == Some(1) {
+        ctx.warn(
+            WarningCode::UnsupportedFeature,
+            "document uses vertical text layout (tategaki); rendered horizontally".to_string(),
+        );
+    }
+
     let orientation = root.varint(42).map(|v| {
         if v != 0 {
             PageLayoutOrientation::Landscape
