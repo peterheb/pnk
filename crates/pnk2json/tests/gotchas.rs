@@ -171,6 +171,7 @@ fn serde_field_names_match_ts_contract() {
             name: Some("S".into()),
             skipped: Some(false),
             master_name: None,
+            master_drawables: None,
             drawables: vec![Drawable::Shape {
                 common: DrawableCommon {
                     position: Some(Point { x: 1.0, y: 2.0 }),
@@ -258,6 +259,7 @@ fn json_escapes_zs_cf_code_points() {
             name: None,
             skipped: None,
             master_name: None,
+            master_drawables: None,
             drawables: vec![Drawable::Textbox {
                 common: DrawableCommon::default(),
                 text: StyledText {
