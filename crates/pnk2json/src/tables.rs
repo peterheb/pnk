@@ -307,6 +307,17 @@ fn rows_to_model(info: Vec<(u32, RowColInfo)>, count: u32) -> Option<Vec<RowColI
             out[idx as usize] = rc;
         }
     }
+    // RATIFIED (docs/model-review.md §1 Leak B): truncate after the last
+    // non-default entry; an all-default array is omitted entirely. Readers
+    // treat missing positions as default (matters on 28k-row sheets).
+    let default = RowColInfo { size_pt: None, hidden: None };
+    let is_default =
+        |rc: &RowColInfo| *rc == default || (rc.size_pt == Some(0.0) && rc.hidden != Some(true));
+    let keep = out.iter().rposition(|rc| !is_default(rc)).map(|i| i + 1).unwrap_or(0);
+    if keep == 0 {
+        return None;
+    }
+    out.truncate(keep);
     Some(out)
 }
 
@@ -1223,14 +1234,17 @@ fn decode_cell_v4(
         7 => CellValue::Duration { value: f64_at(3)? },
         5 => CellValue::Date { value: crate::colors::iso_from_apple_seconds(f64_at(3)?) },
         2 => CellValue::Number { value: f64_at(3)? },
+        6 => CellValue::Bool { value: f64_at(3)? > 0.0 },
         9 => {
-            // v4 rich-text cells: the rich-text table key is at slot 5
-            // (byte 20-23), fixture-verified on IVS doc bc5e6bd1 — cells map
-            let rid = u32s.get(5).map(|v| *v as i32);
-            let found = rid.map(|id| rich_text_table.entries.get(&id).map(|e| (e.reference, e.string.clone())));
-            eprintln!("v4 type9 r{row}c{col} rid={rid:?} rt_entries={} found={found:?}", rich_text_table.entries.len());
-
-
+            // v4 rich-text cells: the rich-text table key sits in the
+            // TRAILING u32 slot — 24-byte blocks carry it at slot 5 (IVS
+            // doc bc5e6bd1), 28-byte blocks at slot 6 (bd3a64fb, where
+            // slot 5 is constant 1). Probe trailing first, then 5/6.
+            let rid = [u32s.last().copied(), u32s.get(5).copied(), u32s.get(6).copied()]
+                .into_iter()
+                .flatten()
+                .map(|v| v as i32)
+                .find(|id| rich_text_table.entries.contains_key(id));
             let rtp_id = rid.and_then(|id| rich_text_table.entries.get(&id).and_then(|e| e.reference));
             match rtp_id {
                 Some(rtp_id) => {
