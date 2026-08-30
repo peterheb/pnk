@@ -115,15 +115,18 @@ test("numbers fixture renders sheet tables with real cell values", async ({ page
   assertNoRuntimeNetwork(page);
 });
 
-test("pages fixture renders flowing paragraphs and headings", async ({ page }) => {
+test("pages fixture renders paginated pages with paragraphs and headings", async ({ page }) => {
   await page.goto("/");
   trackRequests(page);
   await page.setInputFiles("#file-input", path.join(CRAWL, FIXTURES.pages));
-  const flow = page.locator(".pages-flow");
-  await expect(flow).toBeVisible();
-  await expect(flow.locator("p").first()).toBeVisible();
+  // word-processing docs paginate into page frames; the printable area is
+  // .pages-print inside each frame (docs without page geometry fall back to
+  // one .pages-flow)
+  const area = page.locator(".pages-wp-page .pages-print, .pages-flow").first();
+  await expect(area).toBeVisible();
+  await expect(area.locator("p").first()).toBeVisible();
   // this fixture has 200+ styled headings in the body
-  await expect(flow.locator("h1, h2, h3, h4, h5, h6").first()).toBeVisible();
+  await expect(page.locator(".pages-wp-page h1, .pages-wp-page h2, .pages-wp-page h3, .pages-wp-page h4, .pages-wp-page h5, .pages-wp-page h6, .pages-flow h1, .pages-flow h2, .pages-flow h3").first()).toBeVisible();
   await shot(page, "pages.png", false);
   assertNoRuntimeNetwork(page);
 });
