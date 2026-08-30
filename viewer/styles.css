@@ -347,3 +347,10 @@ table.sheet-table.own-strokes td, table.sheet-table.own-strokes th { border: non
   vertical-align: super;
   font-size: 0.7em;
 }
+/* placed vector art without a raster twin: neutral gray shape + tiny caption */
+.media-vector {
+  width: 100%; height: 100%; display: flex; align-items: flex-end; justify-content: center;
+  background: #d4d4d8; border-radius: 2px; overflow: hidden;
+}
+.media-vector-caption { font-size: 9px; color: #71717a; padding: 2px 4px; max-width: 100%;
+  white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }

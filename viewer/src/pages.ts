@@ -167,13 +167,31 @@ function pageGeom(doc: PagesDocument): PageGeom | null {
   return { w: ps.width, h: ps.height, left, top, contentW, contentH };
 }
 
+/** Multi-column spec for a run of body paragraphs (PagesSection.columns). */
+interface ColSpec {
+  count: number;
+  gapPt: number;
+}
+
+/** A run of paragraphs on one page sharing a column layout (null = flow). */
+interface PageBlock {
+  cols: ColSpec | null;
+  /** Column block: printable height available when the block started. */
+  heightPx: number;
+  els: HTMLElement[];
+}
+
 /**
  * Word-processing pagination: paragraphs measured offscreen at the printable
  * width, then greedily packed into page frames of the printable height.
  * Paragraph-level breaks only (an oversized paragraph gets its own page and
  * clips) — a heuristic, not Apple's line-exact layout, but page count and
  * margins track the original closely. `pageBreakBefore` (paragraph style)
- * forces a break.
+ * forces a break; each later section starts a new page (Pages' section break
+ * behavior). Sections with `columns` render as a CSS multicol block filling
+ * column-by-column (column-fill: auto), measured at the column width and
+ * packed with a stacked budget of columns × printable height.
+ * Returns the page of each paragraph (for page-bottom footnotes).
  */
 function paginatedBody(
   doc: PagesDocument,
@@ -193,29 +211,122 @@ function paginatedBody(
     forceBreak.push(!!paraStyleOf(hdoc, p.pStyle)?.pageBreakBefore);
   }
 
-  // 2. measure at printable width in a hidden flow-root (transform scaling
-  // does not affect layout metrics, so these heights match the page frames)
-  const meas = document.createElement("div");
-  meas.className = "pages-print";
-  meas.style.cssText =
-    `position:absolute;visibility:hidden;left:-100000px;top:0;width:${g.contentW}px;`;
-  for (const el of els) meas.appendChild(el);
-  document.body.appendChild(meas);
-  const pagesEls: HTMLElement[][] = [[]];
-  let pageStartY = 0;
-  els.forEach((el, i) => {
-    const top = el.offsetTop;
-    const bottom = top + el.offsetHeight;
-    const overflows = bottom - pageStartY > g.contentH && i > 0;
-    if ((forceBreak[i] && i > 0 && pagesEls[pagesEls.length - 1].length > 0) || overflows) {
-      pagesEls.push([]);
-      pageStartY = top;
+  // per-paragraph column spec from the sections' body ranges; a section
+  // start (beyond paragraph 0) is a page break
+  const spans = (doc.sections ?? [])
+    .map((s) => ({
+      start: s.bodyParagraphStart ?? 0,
+      cols: s.columns && s.columns.count >= 2
+        ? { count: s.columns.count, gapPt: s.columns.gutterPt ?? 36 }
+        : null,
+    }))
+    .sort((a, b) => a.start - b.start);
+  if (spans.length === 0 || spans[0].start > 0) spans.unshift({ start: 0, cols: null });
+  const specOf: (ColSpec | null)[] = [];
+  {
+    let si = 0;
+    for (let i = 0; i < els.length; i++) {
+      while (si + 1 < spans.length && spans[si + 1].start <= i) si++;
+      specOf.push(spans[si].cols);
+      if (i > 0 && spans[si].start === i) forceBreak[i] = true;
     }
-    pagesEls[pagesEls.length - 1].push(el);
-  });
-  meas.remove();
+  }
+  const colWidth = (c: ColSpec): number => (g.contentW - c.gapPt * (c.count - 1)) / c.count;
 
-  // 3. page frames: printable area positioned at the margins; floating
+  // 2. measure offscreen: consecutive same-spec paragraphs share a wrapper at
+  // their render width (flow = printable width, columns = column width);
+  // transform scaling does not affect layout metrics, so these heights match
+  // the page frames. Spec changes only happen at section starts, so every
+  // segment after the first begins on a fresh page.
+  interface Segment {
+    start: number;
+    spec: ColSpec | null;
+    els: HTMLElement[];
+    tops: number[];
+    heights: number[];
+  }
+  const segments: Segment[] = [];
+  const meas = document.createElement("div");
+  meas.style.cssText = "position:absolute;visibility:hidden;left:-100000px;top:0;";
+  {
+    let i = 0;
+    while (i < els.length) {
+      let j = i;
+      while (j < els.length && specOf[j] === specOf[i]) j++;
+      const wrap = document.createElement("div");
+      wrap.className = "pages-print";
+      const spec = specOf[i];
+      wrap.style.cssText =
+        `position:relative;width:${spec ? colWidth(spec) : g.contentW}px;`;
+      const seg: Segment = { start: i, spec, els: els.slice(i, j), tops: [], heights: [] };
+      for (const el of seg.els) wrap.appendChild(el);
+      meas.appendChild(wrap);
+      segments.push(seg);
+      i = j;
+    }
+    document.body.appendChild(meas);
+    for (const seg of segments) {
+      for (const el of seg.els) {
+        seg.tops.push(el.offsetTop);
+        seg.heights.push(el.offsetHeight);
+      }
+    }
+    meas.remove();
+  }
+
+  // 3. pack into pages of blocks: page breaks where the cumulative bottom
+  // exceeds the printable height (flow) or count × printable height
+  // (column sections, stacked-column budget)
+  const pages: PageBlock[][] = [[]];
+  const pageOfPara: number[] = new Array(els.length).fill(0);
+  const pageHasContent = () => pages[pages.length - 1].some((b) => b.els.length > 0);
+  const newPage = () => pages.push([]);
+  segments.forEach((seg, si) => {
+    if (si > 0 && pageHasContent()) newPage();
+    if (!seg.spec) {
+      let pageTop = seg.tops[0] ?? 0;
+      let blk: PageBlock | null = null;
+      seg.els.forEach((el, j) => {
+        const k = seg.start + j;
+        const overflows = seg.tops[j] + seg.heights[j] - pageTop > g.contentH;
+        if ((forceBreak[k] || overflows) && pageHasContent()) {
+          newPage();
+          pageTop = seg.tops[j];
+          blk = null;
+        }
+        if (!blk) {
+          const page = pages[pages.length - 1];
+          const last = page[page.length - 1];
+          blk = last && !last.cols ? last : { cols: null, heightPx: 0, els: [] };
+          if (blk !== last) page.push(blk);
+        }
+        blk.els.push(el);
+        pageOfPara[k] = pages.length - 1;
+      });
+    } else {
+      const cap = g.contentH * seg.spec.count;
+      let colTop = seg.tops[0] ?? 0;
+      let blk: PageBlock | null = null;
+      seg.els.forEach((el, j) => {
+        const k = seg.start + j;
+        if (blk && seg.tops[j] + seg.heights[j] - colTop > cap) {
+          newPage();
+          colTop = seg.tops[j];
+          blk = null;
+        }
+        if (!blk) {
+          blk = { cols: seg.spec, heightPx: g.contentH, els: [] };
+          pages[pages.length - 1].push(blk);
+        }
+        blk.els.push(el);
+        pageOfPara[k] = pages.length - 1;
+      });
+    }
+  });
+
+  const pagesEls: PageBlock[][] = pages;
+
+  // 4. page frames: printable area positioned at the margins; floating
   // drawables anchored to page i render into the same canvas
   const floatingByPage = new Map<number, Drawable[]>();
   let maxFloatPage = -1;
@@ -225,6 +336,20 @@ function paginatedBody(
     if (idx > maxFloatPage) maxFloatPage = idx;
   }
   const pageCount = Math.max(pagesEls.length, maxFloatPage + 1);
+
+  // Footnotes render at the bottom of their anchor's page (Apple's default);
+  // an explicit endnotes placement keeps the end-of-document section instead
+  // (handled by the caller).
+  const footnotesByPage = new Map<number, { text: StyledText; n: number }[]>();
+  if (doc.footnotes?.length && !doc.footnotePlacement) {
+    doc.footnotes.forEach((fn, i) => {
+      const pg =
+        pageOfPara[Math.min(fn.anchorParagraphIndex, pageOfPara.length - 1)] ?? 0;
+      const list = footnotesByPage.get(pg) ?? [];
+      list.push({ text: fn.text, n: i + 1 });
+      footnotesByPage.set(pg, list);
+    });
+  }
 
   const scale = 720 / g.w;
   for (let i = 0; i < pageCount; i++) {
@@ -255,8 +380,51 @@ function paginatedBody(
     content.style.top = `${g.top}px`;
     content.style.width = `${g.contentW}px`;
     content.style.height = `${g.contentH}px`;
-    for (const el of pagesEls[i] ?? []) content.appendChild(el);
+    for (const blk of pagesEls[i] ?? []) {
+      if (!blk.cols) {
+        for (const el of blk.els) content.appendChild(el);
+      } else {
+        const cols = document.createElement("div");
+        cols.className = "pages-cols";
+        cols.style.columnCount = String(blk.cols.count);
+        cols.style.columnGap = `${blk.cols.gapPt}px`;
+        cols.style.height = `${blk.heightPx}px`;
+        for (const el of blk.els) cols.appendChild(el);
+        content.appendChild(cols);
+      }
+    }
     inner.appendChild(content);
+
+    // page-bottom footnotes, pinned inside the printable area
+    const pageFns = footnotesByPage.get(i);
+    if (pageFns) {
+      const area = document.createElement("div");
+      area.className = "pages-footnote-area pages-print";
+      area.style.left = `${g.left}px`;
+      area.style.width = `${g.contentW}px`;
+      area.style.bottom = `${g.h - g.top - g.contentH}px`;
+      for (const { text, n } of pageFns) {
+        const row = document.createElement("div");
+        row.className = "footnote";
+        const body = renderStyledText(text, hdoc, ctx);
+        // the footnote body's own leading mark field (Pages stores one)
+        // carries the footnote's number; add one if the body has none
+        const marks = body.querySelectorAll<HTMLElement>(
+          '.field[data-field-kind="footnote-mark"]',
+        );
+        if (marks.length > 0) {
+          marks.forEach((m) => (m.textContent = String(n)));
+        } else {
+          const mark = document.createElement("span");
+          mark.className = "mark";
+          mark.textContent = `${n}`;
+          row.appendChild(mark);
+        }
+        row.appendChild(body);
+        area.appendChild(row);
+      }
+      inner.appendChild(area);
+    }
 
     // headers/footers from the section's page templates, at the header/
     // footer margins (TP.DocumentArchive fields 36/37)
@@ -284,10 +452,12 @@ function paginatedBody(
     view.appendChild(frame);
   }
 
-  // footnote marks number sequentially through the document (Apple shows
-  // superscript indexes; the converter stores only the mark position)
+  // body footnote marks number sequentially through the document (Apple
+  // shows superscript indexes; the converter stores only the mark position).
+  // Marks inside the page-bottom footnote areas already carry their number.
   let fnIndex = 0;
   view.querySelectorAll<HTMLElement>('.field[data-field-kind="footnote-mark"]').forEach((el) => {
+    if (el.closest(".pages-footnote-area")) return;
     fnIndex += 1;
     el.textContent = String(fnIndex);
   });
@@ -301,9 +471,11 @@ export function renderPages(doc: PagesDocument, hdoc: HydratedDoc, ctx: ViewerCt
   const geom = pageGeom(doc);
 
   if (wordProcessing && doc.body && geom) {
-    // paginated word-processing render: page frames + margins
+    // paginated word-processing render: page frames + margins. Footnotes
+    // render at their anchor pages' bottoms unless the document asks for
+    // endnotes (footnotePlacement: section/document endnotes).
     paginatedBody(doc, hdoc, ctx, view);
-    appendFootnotes(doc, hdoc, ctx, view);
+    if (doc.footnotePlacement) appendFootnotes(doc, hdoc, ctx, view);
     mount.appendChild(view);
     return;
   }

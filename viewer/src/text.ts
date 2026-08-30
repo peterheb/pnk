@@ -100,14 +100,23 @@ function toRoman(n: number, upper: boolean): string {
   return upper ? out.toUpperCase() : out;
 }
 
-/** Marker text for a numbered list position. */
-function numberMarker(n: number, kind: string | undefined): string {
+/** Marker text for a numbered list position. Surround per ListFormat
+ *  numberSurround: period (default) "1.", paren "1)", double-paren "(1)",
+ *  none bare "1" (G5: Apple renders the Harvard sub-level as "a)"). */
+function numberMarker(n: number, kind: string | undefined, surround: string | undefined): string {
+  let num: string;
   switch (kind) {
-    case "alpha-upper": return `${toAlpha(n, true)}.`;
-    case "alpha-lower": return `${toAlpha(n, false)}.`;
-    case "roman-upper": return `${toRoman(n, true)}.`;
-    case "roman-lower": return `${toRoman(n, false)}.`;
-    default: return `${n}.`;
+    case "alpha-upper": num = toAlpha(n, true); break;
+    case "alpha-lower": num = toAlpha(n, false); break;
+    case "roman-upper": num = toRoman(n, true); break;
+    case "roman-lower": num = toRoman(n, false); break;
+    default: num = String(n);
+  }
+  switch (surround) {
+    case "paren": return `${num})`;
+    case "double-paren": return `(${num})`;
+    case "none": return num;
+    default: return `${num}.`;
   }
 }
 
@@ -160,7 +169,7 @@ export function renderParagraph(
     listState.counters.set(key, n);
     listState.lastKey = key;
     const markerText = list!.markerKind === "number"
-      ? numberMarker(n, list!.numberKind)
+      ? numberMarker(n, list!.numberKind, list!.numberSurround)
       : (list!.markerText ?? "•");
 
     // marker hangs in a flex row; paragraph margins live on the wrapper
@@ -184,17 +193,52 @@ export function renderParagraph(
     marker.style.minWidth = "18px";
     wrap.appendChild(marker);
     wrap.appendChild(el);
-    renderParagraphContent(el, p, doc, ctx);
+    renderParagraphContent(el, p, doc, ctx, style?.dropCap);
     return wrap;
   }
 
-  renderParagraphContent(el, p, doc, ctx);
+  renderParagraphContent(el, p, doc, ctx, style?.dropCap);
   return el;
 }
 
-/** Items of a paragraph into the given element. */
-function renderParagraphContent(el: HTMLElement, p: Paragraph, doc: HydratedDoc, ctx: ViewerCtx): void {
-  for (const item of p.items) {
+/** Items of a paragraph into the given element. A dropCap (ParaStyle) carves
+ *  the leading characters off the first text run into a floated cap glyph
+ *  sized to span `lines` body lines (G5 page 5's big "T"). */
+function renderParagraphContent(
+  el: HTMLElement,
+  p: Paragraph,
+  doc: HydratedDoc,
+  ctx: ViewerCtx,
+  dropCap?: import("../../model/src/shared").ParaStyle["dropCap"],
+): void {
+  let items = p.items;
+  if (dropCap) {
+    const k = dropCap.characters ?? 1;
+    const first = items[0];
+    const text = typeof first === "string" ? first : !("type" in (first ?? {})) ? (first as TextRun).text : undefined;
+    if (text && text.length >= k) {
+      const capText = [...text].slice(0, k).join("");
+      const rest = [...text].slice(k).join("");
+      const cap = document.createElement("span");
+      cap.className = "drop-cap";
+      if (typeof first !== "string") applyCharStyle(cap, charStyleOf(doc, (first as TextRun).cStyle));
+      applyCharStyle(cap, dropCap.charStyle);
+      const lines = dropCap.lines ?? 3;
+      const scale = dropCap.characterScale ?? 1;
+      cap.style.fontSize = `${(lines * 1.2 * scale).toFixed(2)}em`;
+      cap.style.lineHeight = "0.85";
+      cap.style.cssFloat = "left";
+      cap.style.paddingRight = `${dropCap.paddingPt ?? 4}px`;
+      if (dropCap.outdentPt) cap.style.marginLeft = `${-dropCap.outdentPt}px`;
+      cap.textContent = capText;
+      el.appendChild(cap);
+      items = [
+        typeof first === "string" ? rest : { ...(first as TextRun), text: rest },
+        ...items.slice(1),
+      ];
+    }
+  }
+  for (const item of items) {
     // bare string = plain unstyled run; object = styled/typed run
     if (typeof item === "string") {
       appendRunText(el, item, undefined);
