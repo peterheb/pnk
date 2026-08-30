@@ -476,17 +476,17 @@ fn empty_template() -> PageTemplate {
 /// Mark a template placeholder drawable with its tag as role.
 fn tag_drawable(d: Drawable, tag: &str) -> Drawable {
     match d {
-        Drawable::Shape { common, geometry, text, vertical_alignment, text_insets } => {
+        Drawable::Shape { common, geometry, text, vertical_alignment, text_insets, text_fit } => {
             let mut common = common;
             common.placeholder =
                 Some(PlaceholderInfo { role: tag.to_string(), inherited: None });
-            Drawable::Shape { common, geometry, text, vertical_alignment, text_insets }
+            Drawable::Shape { common, geometry, text, vertical_alignment, text_insets, text_fit }
         }
-        Drawable::Textbox { common, text, vertical_alignment, text_insets } => {
+        Drawable::Textbox { common, text, vertical_alignment, text_insets, text_fit } => {
             let mut common = common;
             common.placeholder =
                 Some(PlaceholderInfo { role: tag.to_string(), inherited: None });
-            Drawable::Textbox { common, text, vertical_alignment, text_insets }
+            Drawable::Textbox { common, text, vertical_alignment, text_insets, text_fit }
         }
         other => other,
     }

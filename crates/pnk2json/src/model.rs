@@ -438,6 +438,16 @@ pub struct ListFormat {
     /// Number surround: "1." (period, default/omitted), "1)", "(1)", bare "1".
     #[serde(skip_serializing_if = "Option::is_none")]
     pub number_surround: Option<NumberSurround>,
+    /// Marker color from the list style's own look (ListStyleArchive font_color).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub marker_color: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub marker_font_name: Option<String>,
+    /// Marker glyph scale relative to text size (LabelGeometry.scale, default 1).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub marker_scale: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub marker_baseline_offset_pt: Option<f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -785,6 +795,13 @@ pub struct LineEnds {
     pub tail: Option<LineEnd>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TextFit {
+    Grow,
+    Shrink,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "kebab-case", rename_all_fields = "camelCase")]
 pub enum Drawable {
@@ -797,6 +814,10 @@ pub enum Drawable {
         vertical_alignment: Option<VerticalAlignment>,
         #[serde(skip_serializing_if = "Option::is_none")]
         text_insets: Option<TextInsets>,
+        /// "grow" = box grows to fit text; "shrink" = text scales down to fit;
+        /// absent = fixed box, viewer clips. Resolved at emission.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        text_fit: Option<TextFit>,
     },
     Textbox {
         common: DrawableCommon,
@@ -805,6 +826,9 @@ pub enum Drawable {
         vertical_alignment: Option<VerticalAlignment>,
         #[serde(skip_serializing_if = "Option::is_none")]
         text_insets: Option<TextInsets>,
+        /// See Shape.text_fit.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        text_fit: Option<TextFit>,
     },
     Image {
         common: DrawableCommon,

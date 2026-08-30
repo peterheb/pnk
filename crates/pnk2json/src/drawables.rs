@@ -353,6 +353,7 @@ fn shape_info_drawable(
             text: text.unwrap_or_default(),
             vertical_alignment: shape_vertical_alignment(ctx, &shape),
             text_insets: None,
+            text_fit: None,
         }
     } else {
         let mut d = shape_drawable(ctx, &shape, text, shape_vertical_alignment(ctx, &shape));
@@ -480,6 +481,7 @@ fn shape_drawable(
         text,
         vertical_alignment: v_align,
         text_insets: None,
+        text_fit: None,
     }
 }
 
@@ -739,6 +741,6 @@ fn mask_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
             callout: None,
         });
     // A bare mask at top level: represent as a shape carrying the mask path.
-    Drawable::Shape { common, geometry, text: None, vertical_alignment: None, text_insets: None }
+    Drawable::Shape { common, geometry, text: None, vertical_alignment: None, text_insets: None, text_fit: None }
 }
 

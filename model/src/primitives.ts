@@ -439,6 +439,15 @@ export interface ListFormat {
   start?: number;
   /** Indent of the marker relative to the paragraph's left indent, in points. */
   markerIndentPt?: number;
+  /** Marker color from the list style's own look; absent = inherit the first
+   * run's style. [proto: TSWP.ListStyleArchive font_color (21, null 20)] */
+  markerColor?: HexColor;
+  /** Marker font override. [proto: ListStyleArchive font_name (23, null 22)] */
+  markerFontName?: string;
+  /** Marker glyph scale relative to the text size. [proto: LabelGeometry.scale (14), default 1] */
+  markerScale?: number;
+  /** Marker baseline offset in points. [proto: LabelGeometry.baseline_offset] */
+  markerBaselineOffsetPt?: number;
 }
 
 export type NumberKind =

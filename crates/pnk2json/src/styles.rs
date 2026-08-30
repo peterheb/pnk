@@ -463,6 +463,10 @@ pub fn resolve_list_format(ctx: &mut Ctx, list_id: u64, level: u32) -> Option<Li
         marker_image,
         start: None,
         marker_indent_pt: at_level(&indents, level).map(|v| v as f64),
+        marker_color: None,
+        marker_font_name: None,
+        marker_scale: None,
+        marker_baseline_offset_pt: None,
     })
 }
 
@@ -625,6 +629,10 @@ pub fn resolve_list_format_minimal(ctx: &mut Ctx, list_id: u64, level: u32) -> L
     let full = resolve_list_format(ctx, list_id, level)
         .unwrap_or(ListFormat {
         number_surround: None,
+        marker_color: None,
+        marker_font_name: None,
+        marker_scale: None,
+        marker_baseline_offset_pt: None,
             level,
             marker_kind: ListMarkerKind::None,
             marker_text: None,

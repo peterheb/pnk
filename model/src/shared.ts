@@ -308,6 +308,11 @@ export interface ShapeDrawable {
   verticalAlignment?: VerticalAlignment;
   /** Text insets. [proto: TSWP text insets] */
   textInsets?: { top?: number; left?: number; bottom?: number; right?: number };
+  /** How hosted text relates to the box: "grow" = box grows vertically to fit,
+   * "shrink" = text scales down to fit (Keynote placeholder shrink-to-fit).
+   * Absent = fixed box, viewer clips. [proto: TSWP.ShapeStylePropertiesArchive
+   * shrink_to_fit; auto-grow per text-box flags — resolved at emission] */
+  textFit?: "grow" | "shrink";
 }
 
 export interface TextboxDrawable {
@@ -316,6 +321,8 @@ export interface TextboxDrawable {
   text: StyledText;
   verticalAlignment?: VerticalAlignment;
   textInsets?: { top?: number; left?: number; bottom?: number; right?: number };
+  /** See ShapeDrawable.textFit — absent = fixed box, viewer clips. */
+  textFit?: "grow" | "shrink";
 }
 
 /**
