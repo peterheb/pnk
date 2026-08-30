@@ -734,7 +734,7 @@ fn decode_cell(
             }
         }
     }
-    let cell_style_index = style.and_then(|s| cell_pool.intern(s));
+    let cell_style_index = style.and_then(|s| cell_pool.intern(crate::ctx::strip_cell_defaults(s)));
 
     // Formula placeholder (TSCE stays opaque; model-design §2.8).
     let formula = formula_id.map(|id| TsceFormulaRef::unparsed(id.to_string()));
@@ -1015,7 +1015,7 @@ fn decode_cell_v4(
             }
         }
     }
-    let cell_style_index = style.and_then(|s| cell_pool.intern(s));
+    let cell_style_index = style.and_then(|s| cell_pool.intern(crate::ctx::strip_cell_defaults(s)));
 
     // Format id (fixture-verified: duration/date cells carry it at slot 5;
     // the FORMAT list holds those keys).
@@ -1058,3 +1058,6 @@ fn number_from_f64(n: f64) -> serde_json::Number {
         serde_json::Number::from_f64(n).unwrap_or_else(|| serde_json::Number::from(0))
     }
 }
+
+/// Strip documented defaults from a resolved TableCellStyle.
+pub use crate::ctx::strip_char_defaults;

@@ -10,8 +10,9 @@ use iwadump::registry::{App, Registry};
 use crate::loader::{self, Loaded};
 use crate::members::Members;
 use crate::model::{
-    AppKind, CharStyle, DocumentMeta, MediaAsset, MediaKind, MediaRef, ParaStyle, Size, Warning,
-    WarningCode,
+    AppKind, BaselineScript, Capitalization, CharStyle, DocumentMeta, HorizontalAlignment,
+    ListMarkerKind, MediaAsset, MediaKind, MediaRef, ParaStyle, Size, StrikethroughStyle,
+    TableCellStyle, UnderlineStyle, Warning, WarningCode,
 };
 use crate::pb::Msg;
 
@@ -39,6 +40,60 @@ impl<T: serde::Serialize + PartialEq> StylePool<T> {
         self.keys.insert(key, idx);
         Some(idx)
     }
+}
+
+/// Strip documented default values from a resolved ParaStyle so pooled
+/// entries carry only overrides (absent = default per docs/model-design.md
+/// §1.5: indents/spacing 0, alignment auto, list none/level 0, booleans
+/// false). Fixture-verified: G1 body para style emits 12→5 fields.
+pub fn strip_para_defaults(mut s: ParaStyle) -> ParaStyle {
+    if s.left_indent_pt == Some(0.0) { s.left_indent_pt = None; }
+    if s.right_indent_pt == Some(0.0) { s.right_indent_pt = None; }
+    if s.first_line_indent_pt == Some(0.0) { s.first_line_indent_pt = None; }
+    if s.space_before_pt == Some(0.0) { s.space_before_pt = None; }
+    if s.space_after_pt == Some(0.0) { s.space_after_pt = None; }
+    if s.horizontal_alignment == Some(HorizontalAlignment::Auto) { s.horizontal_alignment = None; }
+    if s.keep_lines_together == Some(false) { s.keep_lines_together = None; }
+    if s.keep_with_next == Some(false) { s.keep_with_next = None; }
+    if s.hyphenate == Some(true) { s.hyphenate = None; }
+    if s.page_break_before == Some(false) { s.page_break_before = None; }
+    if s.outline_level == Some(0) { s.outline_level = None; }
+    // List: none/level 0 is default
+    if let Some(l) = &s.list {
+        if l.marker_kind == ListMarkerKind::None && l.level == 0
+            && l.marker_text.is_none() && l.number_kind.is_none()
+            && l.marker_image.is_none() && l.start.is_none()
+            && l.marker_indent_pt == Some(0.0)
+        {
+            s.list = None;
+        }
+        if let Some(l) = &mut s.list {
+            if l.marker_indent_pt == Some(0.0) { l.marker_indent_pt = None; }
+        }
+    }
+    if s.default_tab_stop_pt == Some(36.0) { s.default_tab_stop_pt = None; }
+    if s.writing_direction.is_none() {} // already Option
+    s
+}
+
+/// Strip documented defaults from a resolved TableCellStyle.
+pub fn strip_cell_defaults(mut s: TableCellStyle) -> TableCellStyle {
+    if s.text_wrap == Some(false) { s.text_wrap = None; }
+    s
+}
+
+/// Strip documented defaults from a resolved CharStyle.
+pub fn strip_char_defaults(mut s: CharStyle) -> CharStyle {
+    if s.font_size_pt == Some(12.0) { s.font_size_pt = None; }
+    if s.bold == Some(false) { s.bold = None; }
+    if s.italic == Some(false) { s.italic = None; }
+    if s.underline == Some(UnderlineStyle::None) { s.underline = None; }
+    if s.strikethrough == Some(StrikethroughStyle::None) { s.strikethrough = None; }
+    if s.capitalization == Some(Capitalization::None) { s.capitalization = None; }
+    if s.baseline == Some(BaselineScript::Normal) { s.baseline = None; }
+    if s.baseline_shift_pt == Some(0.0) { s.baseline_shift_pt = None; }
+    if s.tracking_pt == Some(0.0) { s.tracking_pt = None; }
+    s
 }
 
 /// Canonical form: serde_json::Value with alphabetically sorted keys,

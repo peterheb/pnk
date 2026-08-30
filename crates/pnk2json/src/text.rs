@@ -197,7 +197,7 @@ pub fn extract_from_msg(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText> {
                 Some(sid) => resolve_char_style(ctx, sid),
                 None => CharStyle::default(),
             };
-            let c_style = ctx.char_pool.intern(char_style);
+            let c_style = ctx.char_pool.intern(crate::ctx::strip_char_defaults(char_style));
 
             let seg_start_char = u16_to_char_index(&map, b0);
             let seg_end_char = u16_to_char_index(&map, b1);
@@ -245,7 +245,7 @@ pub fn extract_from_msg(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText> {
                     AttachmentResult::Field { style, value, field } => {
                         items.push(ParagraphItem::Field {
                             kind: FieldTag::Field,
-                            c_style: ctx.char_pool.intern(style),
+                            c_style: ctx.char_pool.intern(crate::ctx::strip_char_defaults(style)),
                             value: value.or(Some(seg.chars().skip(1).collect())),
                             field,
                         });
@@ -322,7 +322,7 @@ pub fn extract_from_msg(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText> {
             }
             pstyle.list = Some(lf);
         }
-        let p_style = ctx.para_pool.intern(pstyle);
+        let p_style = ctx.para_pool.intern(crate::ctx::strip_para_defaults(pstyle));
         paragraphs.push(Paragraph { p_style, items });
     }
 

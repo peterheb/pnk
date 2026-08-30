@@ -42,65 +42,12 @@
   "styles": {
     "para": [
       {
-        "horizontalAlignment": "auto",
-        "leftIndentPt": 0.0,
-        "rightIndentPt": 0.0,
-        "firstLineIndentPt": 0.0,
-        "spaceBeforePt": 0.0,
-        "spaceAfterPt": 0.0,
-        "defaultTabStopPt": 36.0,
-        "list": {
-          "level": 0,
-          "markerKind": "none",
-          "markerIndentPt": 0.0
-        },
-        "keepLinesTogether": false,
-        "keepWithNext": false,
-        "hyphenate": true,
-        "pageBreakBefore": false
-      },
-      {
-        "list": {
-          "level": 0,
-          "markerKind": "none",
-          "markerIndentPt": 0.0
-        }
-      },
-      {
         "horizontalAlignment": "center",
-        "leftIndentPt": 0.0,
-        "rightIndentPt": 0.0,
-        "firstLineIndentPt": 0.0,
-        "spaceBeforePt": 0.0,
-        "spaceAfterPt": 0.0,
         "defaultTabStopPt": 46.0,
-        "list": {
-          "level": 0,
-          "markerKind": "none",
-          "markerIndentPt": 0.0
-        },
-        "keepLinesTogether": true,
-        "keepWithNext": false,
-        "hyphenate": true,
-        "pageBreakBefore": false
+        "keepLinesTogether": true
       },
       {
-        "horizontalAlignment": "center",
-        "leftIndentPt": 0.0,
-        "rightIndentPt": 0.0,
-        "firstLineIndentPt": 0.0,
-        "spaceBeforePt": 0.0,
-        "spaceAfterPt": 0.0,
-        "defaultTabStopPt": 36.0,
-        "list": {
-          "level": 0,
-          "markerKind": "none",
-          "markerIndentPt": 0.0
-        },
-        "keepLinesTogether": false,
-        "keepWithNext": false,
-        "hyphenate": true,
-        "pageBreakBefore": false
+        "horizontalAlignment": "center"
       }
     ],
     "char": [
@@ -136,7 +83,6 @@
   "hiddenBody": {
     "paragraphs": [
       {
-        "pStyle": 0,
         "items": [
           "[where is this mystery text]"
         ]
@@ -194,13 +140,11 @@
           "text": {
             "paragraphs": [
               {
-                "pStyle": 0,
                 "items": [
                   "Shapes can hold text too."
                 ]
               },
               {
-                "pStyle": 1,
                 "items": [
                   "Paragraphs ",
                   {
@@ -272,7 +216,7 @@
           "text": {
             "paragraphs": [
               {
-                "pStyle": 2,
+                "pStyle": 0,
                 "items": []
               }
             ]
@@ -420,7 +364,7 @@
           "text": {
             "paragraphs": [
               {
-                "pStyle": 2,
+                "pStyle": 0,
                 "items": []
               }
             ]
@@ -518,7 +462,7 @@
           "text": {
             "paragraphs": [
               {
-                "pStyle": 2,
+                "pStyle": 0,
                 "items": []
               }
             ]
@@ -565,7 +509,7 @@
           "text": {
             "paragraphs": [
               {
-                "pStyle": 2,
+                "pStyle": 0,
                 "items": [
                   "Text"
                 ]
@@ -681,7 +625,7 @@
           "text": {
             "paragraphs": [
               {
-                "pStyle": 2,
+                "pStyle": 0,
                 "items": []
               }
             ]
@@ -788,7 +732,7 @@
           "text": {
             "paragraphs": [
               {
-                "pStyle": 2,
+                "pStyle": 0,
                 "items": []
               }
             ]
@@ -934,7 +878,7 @@
           "text": {
             "paragraphs": [
               {
-                "pStyle": 2,
+                "pStyle": 0,
                 "items": []
               }
             ]
@@ -996,7 +940,7 @@
                   "type": "line",
                   "points": [
                     {
-                      "x": 3.0886863910950524e-06,
+                      "x": 3.0886863910950524e-6,
                       "y": 57.11088943481445
                     }
                   ]
@@ -1046,7 +990,7 @@
           "text": {
             "paragraphs": [
               {
-                "pStyle": 2,
+                "pStyle": 0,
                 "items": []
               }
             ]
@@ -1238,7 +1182,7 @@
           "text": {
             "paragraphs": [
               {
-                "pStyle": 2,
+                "pStyle": 0,
                 "items": []
               }
             ]
@@ -1291,13 +1235,11 @@
           "text": {
             "paragraphs": [
               {
-                "pStyle": 0,
                 "items": [
                   "Source (CC0):"
                 ]
               },
               {
-                "pStyle": 1,
                 "items": [
                   {
                     "text": "https://commons.wikimedia.org/wiki/File:Tabby_cat_with_blue_eyes-3336579.jpg",
@@ -1432,7 +1374,7 @@
               "text": {
                 "paragraphs": [
                   {
-                    "pStyle": 2,
+                    "pStyle": 0,
                     "items": []
                   }
                 ]
@@ -1535,7 +1477,6 @@
               "text": {
                 "paragraphs": [
                   {
-                    "pStyle": 0,
                     "items": []
                   }
                 ]
@@ -1569,7 +1510,7 @@
           "text": {
             "paragraphs": [
               {
-                "pStyle": 3,
+                "pStyle": 1,
                 "items": [
                   "Page 2"
                 ]
@@ -1624,7 +1565,6 @@
           "text": {
             "paragraphs": [
               {
-                "pStyle": 0,
                 "items": [
                   "Once upon a time, in a GitHub repo far away, there was a project that got vibed into existence by an agent. And the project was OK but not great, but it had tests so we went with it anyway!…"
                 ]

@@ -17,53 +17,25 @@
   "styles": {
     "para": [
       {
-        "horizontalAlignment": "auto",
-        "leftIndentPt": 0.0,
-        "rightIndentPt": 0.0,
-        "firstLineIndentPt": 0.0,
-        "spaceBeforePt": 0.0,
-        "spaceAfterPt": 0.0,
-        "defaultTabStopPt": 36.0,
         "list": {
           "level": 0,
-          "markerKind": "none",
-          "markerIndentPt": 0.0
-        },
-        "keepLinesTogether": false,
-        "keepWithNext": false,
-        "hyphenate": true,
-        "pageBreakBefore": false
-      },
-      {
-        "list": {
-          "level": 0,
-          "markerKind": "none",
-          "markerIndentPt": 0.0
+          "markerKind": "number",
+          "numberKind": "decimal",
+          "start": 1.0
         }
       },
       {
         "list": {
           "level": 0,
           "markerKind": "number",
-          "numberKind": "decimal",
-          "start": 1.0,
-          "markerIndentPt": 0.0
-        }
-      },
-      {
-        "list": {
-          "level": 0,
-          "markerKind": "number",
-          "numberKind": "decimal",
-          "markerIndentPt": 0.0
+          "numberKind": "decimal"
         }
       },
       {
         "list": {
           "level": 0,
           "markerKind": "string",
-          "markerText": "•",
-          "markerIndentPt": 0.0
+          "markerText": "•"
         }
       },
       {
@@ -107,31 +79,26 @@
   "body": {
     "paragraphs": [
       {
-        "pStyle": 0,
         "items": [
           "Plain opening paragraph."
         ]
       },
       {
-        "pStyle": 1,
         "items": [
           "   a\tb  c\u00a0d"
         ]
       },
       {
-        "pStyle": 1,
         "items": [
           "café ﬁle 日本語テキスト مرحبا 👨\u200d👩\u200d👧 “quotes” …"
         ]
       },
       {
-        "pStyle": 1,
         "items": [
           "trailing spaces.   "
         ]
       },
       {
-        "pStyle": 1,
         "items": [
           "normal ",
           {
@@ -156,37 +123,36 @@
         ]
       },
       {
-        "pStyle": 2,
+        "pStyle": 0,
         "items": [
           "One"
         ]
       },
       {
-        "pStyle": 3,
+        "pStyle": 1,
         "items": [
           "Two"
         ]
       },
       {
-        "pStyle": 3,
+        "pStyle": 1,
         "items": [
           "Three"
         ]
       },
       {
-        "pStyle": 4,
+        "pStyle": 2,
         "items": [
           "Bullet Level 1"
         ]
       },
       {
-        "pStyle": 5,
+        "pStyle": 3,
         "items": [
           "Bullet Level 2"
         ]
       },
       {
-        "pStyle": 1,
         "items": [
           "Soft line\u2028break"
         ]
