@@ -224,8 +224,10 @@ const { chromium } = require(process.env.PW_MODULE);
   // tables/images settle after first paint
   await page.waitForTimeout(1500);
 
-  // Deck mode (.key): click through thumbnails and screenshot the STAGE only,
-  // one PNG per slide, so composites align 1:1 with Apple's per-page rasters.
+  // Deck mode (.key): the viewer shows all slides in one continuous scroll,
+  // lazily rendered. Click each thumbnail (forces render + scrolls there) and
+  // screenshot that slide's CANVAS FRAME only, one PNG per slide, so
+  // composites align 1:1 with Apple's per-page rasters (no caption/notes).
   let slideCount = 0;
   const items = page.locator(".slide-list-item");
   if ((await items.count()) > 0) {
@@ -234,10 +236,10 @@ const { chromium } = require(process.env.PW_MODULE);
     fs.mkdirSync(shotDir, { recursive: true });
     for (let i = 0; i < slideCount; i++) {
       await items.nth(i).click();
-      const stage = page.locator(".slide-stage").first();
-      await stage.waitFor({ state: "visible", timeout: 10000 });
+      const frame = page.locator(`.slide-stage[data-slide-index="${i}"] .canvas-frame`).first();
+      await frame.waitFor({ state: "visible", timeout: 10000 });
       await page.waitForTimeout(250);
-      await stage.screenshot({ path: `${shotDir}slide-${i + 1}.png` });
+      await frame.screenshot({ path: `${shotDir}slide-${i + 1}.png` });
     }
   }
 

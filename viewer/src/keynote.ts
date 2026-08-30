@@ -18,7 +18,10 @@ function buildCanvas(
   slideNumber: number,
 ): HTMLElement {
   const { width, height } = doc.slideSize;
-  const scale = widthPx / width;
+  // The frame's 1px border eats into its border-box: scale to the CONTENT
+  // box or the right/bottom edges of every canvas get clipped by
+  // overflow:hidden (~12 doc-px on a thumbnail — visibly truncated).
+  const scale = (widthPx - 2) / width;
 
   const frame = document.createElement("div");
   frame.className = "canvas-frame";
@@ -287,19 +290,19 @@ function hasVisibleText(d: Drawable): boolean {
   return false;
 }
 
-function renderStage(
+/** Fill one slide's stage holder: canvas, caption, notes strip, badge. */
+function fillStage(
+  stage: HTMLElement,
   doc: KeynoteDocument,
   hdoc: HydratedDoc,
   ctx: ViewerCtx,
   slide: Slide,
   index: number,
   widthPx: number,
-): HTMLElement {
-  const stage = document.createElement("div");
-  stage.className = "slide-stage";
+): void {
+  stage.replaceChildren();
 
   const frame = buildCanvas(slide, doc, hdoc, ctx, widthPx, index + 1);
-  frame.dataset.slideIndex = String(index);
   stage.appendChild(frame);
 
   const caption = document.createElement("div");
@@ -311,16 +314,22 @@ function renderStage(
   caption.textContent = bits.join("  ·  ");
   stage.appendChild(caption);
 
-  const notes = document.createElement("div");
-  notes.className = "notes-panel";
-  notes.dataset.hasNotes = slide.notes ? "true" : "false";
-  const h = document.createElement("h3");
-  h.textContent = "Presenter notes";
-  notes.appendChild(h);
-  notes.appendChild(slide.notes
-    ? renderStyledText(slide.notes, hdoc, ctx)
-    : Object.assign(document.createElement("p"), { textContent: "No notes on this slide.", className: "muted" }));
-  stage.appendChild(notes);
+  // Notes: a compact strip only when the slide HAS visible notes — nothing
+  // to scroll past otherwise (a notes storage of empty paragraphs counts as
+  // none). Typography is normalized to the strip (notes storages carry
+  // 18pt+ editor styles that read as bloat here); bold/color survive.
+  const hasNotes = slide.notes?.paragraphs.some((p) =>
+    p.items.some((it) => (typeof it === "string" ? it.trim() : "type" in it ? true : it.text.trim())),
+  );
+  if (slide.notes && hasNotes) {
+    const notes = document.createElement("div");
+    notes.className = "notes-panel";
+    const h = document.createElement("h3");
+    h.textContent = "Notes";
+    notes.appendChild(h);
+    notes.appendChild(renderStyledText(slide.notes, hdoc, ctx));
+    stage.appendChild(notes);
+  }
 
   // Corner badge only when no slide-number placeholder painted the number
   // on the canvas itself.
@@ -328,9 +337,8 @@ function renderStage(
     const num = document.createElement("div");
     num.className = "slide-number";
     num.textContent = String(index + 1);
-    stage.appendChild(num);
+    frame.appendChild(num);
   }
-  return stage;
 }
 
 export function renderKeynote(
@@ -345,17 +353,50 @@ export function renderKeynote(
   const list = document.createElement("div");
   list.className = "slide-list";
 
-  const stageSlot = document.createElement("div");
-  stageSlot.className = "slide-stage-slot";
+  // One continuous scroll of every slide (like the Pages flow). Stages start
+  // as aspect-ratio placeholders and render lazily as they approach the
+  // viewport — the 645-slide monster deck must not pay for 645 full
+  // canvases up front.
+  const scroll = document.createElement("div");
+  scroll.className = "slides-scroll";
+  const stages: HTMLElement[] = [];
+  const built = new Set<number>();
 
-  let active = doc.slides.findIndex((s) => !s.skipped);
-  if (active < 0) active = 0;
-
-  const activate = (index: number) => {
-    stageSlot.replaceChildren();
-    stageSlot.appendChild(renderStage(doc, hdoc, ctx, doc.slides[index], index, stageSlot.clientWidth || 800));
+  const buildStage = (i: number): void => {
+    if (built.has(i)) return;
+    built.add(i);
+    const stage = stages[i];
+    fillStage(stage, doc, hdoc, ctx, doc.slides[i], i, stage.clientWidth || 800);
     // Shrink-to-fit measurement pass needs the stage attached and laid out.
-    applyTextFit(stageSlot);
+    applyTextFit(stage);
+  };
+
+  doc.slides.forEach((slide, i) => {
+    const stage = document.createElement("div");
+    stage.className = "slide-stage";
+    stage.dataset.slideIndex = String(i);
+    const ph = document.createElement("div");
+    ph.className = "canvas-frame";
+    ph.style.aspectRatio = `${doc.slideSize.width} / ${doc.slideSize.height}`;
+    stage.appendChild(ph);
+    scroll.appendChild(stage);
+    stages.push(stage);
+  });
+
+  const io = new IntersectionObserver(
+    (entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        const i = Number((e.target as HTMLElement).dataset.slideIndex);
+        io.unobserve(e.target);
+        buildStage(i);
+      }
+    },
+    { rootMargin: "1500px 0px" },
+  );
+  stages.forEach((s) => io.observe(s));
+
+  const setActive = (index: number): void => {
     for (const item of list.children) {
       item.classList.toggle("active", (item as HTMLElement).dataset.slideIndex === String(index));
     }
@@ -370,14 +411,18 @@ export function renderKeynote(
     label.className = "label";
     label.textContent = `${i + 1}${slide.name ? ` · ${slide.name}` : ""}${slide.skipped ? " (skipped)" : ""}`;
     item.appendChild(label);
-    item.addEventListener("click", () => activate(i));
+    item.addEventListener("click", () => {
+      buildStage(i);
+      stages[i].scrollIntoView({ behavior: "smooth", block: "start" });
+      setActive(i);
+    });
     list.appendChild(item);
   });
 
   view.appendChild(list);
-  view.appendChild(stageSlot);
+  view.appendChild(scroll);
   mount.appendChild(view);
-  activate(active);
+  setActive(doc.slides.findIndex((s) => !s.skipped) < 0 ? 0 : doc.slides.findIndex((s) => !s.skipped));
   // Thumbnails were built detached; measure their shrink boxes now that the
   // whole view is attached.
   applyTextFit(list);

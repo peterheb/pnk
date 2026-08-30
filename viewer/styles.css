@@ -215,9 +215,9 @@ button:hover { border-color: var(--muted); }
 /* ---- Keynote -------------------------------------------------------------- */
 
 #keynote-view { display: flex; gap: 18px; align-items: flex-start; }
-.slide-stage-slot { flex: 1; min-width: 0; }
 .slide-list {
-  flex: 0 0 190px; max-height: 75vh; overflow-y: auto;
+  flex: 0 0 190px; overflow-y: auto;
+  position: sticky; top: 58px; max-height: calc(100vh - 74px);
   background: var(--card); border: 1px solid var(--line); border-radius: 10px;
   padding: 6px;
 }
@@ -229,12 +229,29 @@ button:hover { border-color: var(--muted); }
 .slide-list-item.active { border-color: var(--accent); }
 .slide-list-item .canvas-frame { position: relative; }
 .slide-list-item .label { display: block; margin-top: 4px; color: var(--muted); }
-.slide-stage { flex: 1; min-width: 0; }
+/* Continuous deck flow: every slide stacked, Pages-style. */
+.slides-scroll { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.slide-stage { min-width: 0; margin-bottom: 14px; }
+.slide-stage .canvas-frame { border-radius: 3px; }
+/* Compact presenter-notes strip: rendered only when a slide HAS notes.
+   Notes storages carry the editor's 18pt+ styles — normalize the strip's
+   typography (size/leading) while bold/italic/color survive. */
 .notes-panel {
-  background: #fffbe8; border: 1px solid #efe3b0; border-radius: 10px;
-  padding: 10px 16px; margin-top: 14px; font-size: 14px;
+  background: #fffbe8; border: 1px solid #efe3b0; border-radius: 8px;
+  padding: 6px 12px 8px; margin-top: 8px; font-size: 13px; line-height: 1.45;
+  max-height: 150px; overflow-y: auto; color: #1d1d1f;
 }
-.notes-panel h3 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; color: var(--muted); letter-spacing: 1px; }
+.notes-panel h3 {
+  margin: 0 0 4px; font-size: 10px; text-transform: uppercase;
+  color: #8a7b3a; letter-spacing: 1px;
+}
+.notes-panel .styled-text p { margin: 2px 0; font-size: inherit !important; line-height: inherit !important; }
+.notes-panel .styled-text span { font-size: inherit !important; }
+.slide-number {
+  position: absolute; right: 6px; bottom: 4px; font-size: 11px;
+  color: var(--muted); background: rgba(255,255,255,.7);
+  padding: 0 5px; border-radius: 4px; pointer-events: none;
+}
 
 /* ---- Numbers --------------------------------------------------------------- */
 

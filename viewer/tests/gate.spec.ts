@@ -74,7 +74,10 @@ test("keynote fixture renders slides with positioned content + notes", async ({ 
   await expect(page.locator("#app-badge")).toContainText(/keynote/i);
   const items = page.locator(".slide-list-item");
   await expect(items.count()).resolves.toBeGreaterThanOrEqual(2);
-  await expect(page.locator(".notes-panel")).toBeVisible();
+  // Continuous-scroll view: a .notes-panel renders only for slides with
+  // VISIBLE notes. This deck's notes storages are all empty paragraphs, so
+  // no panel may appear (the old UI showed 11 empty yellow strips).
+  await expect(page.locator(".notes-panel")).toHaveCount(0);
   // slide switching works; walk the deck until a slide carries a raster
   // image that decoded from local blob bytes (some master art is vector
   // PDF — those render blank in <img> and are skipped)
