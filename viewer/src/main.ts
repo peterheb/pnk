@@ -266,9 +266,10 @@ function wireEvents(): void {
 async function boot(): Promise<void> {
   await init("wasm/pnk2json_wasm_bg.wasm");
   wireEvents();
-  $("drop-hint").textContent = "encrypted and pre-2013 files are refused.";
 }
 
 boot().catch((err) => {
-  $("drop-hint").textContent = `Failed to load the local parser: ${err}`;
+  const hint = $("drop-hint");
+  hint.textContent = `Failed to load the local parser: ${err}`;
+  hint.classList.remove("hidden");
 });

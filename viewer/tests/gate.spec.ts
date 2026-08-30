@@ -59,7 +59,7 @@ test("landing shows the local-only drop zone", async ({ page }) => {
   await page.goto("/");
   trackRequests(page);
   await expect(page.locator("#drop-target")).toBeVisible();
-  await expect(page.locator("#drop-hint")).toContainText("encrypted and pre-2013 files are refused");
+  await expect(page.locator("#pick-btn")).toBeVisible();
   await shot(page, "landing.png");
 });
 
