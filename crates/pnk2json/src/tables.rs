@@ -870,6 +870,7 @@ fn pick_format(
                 kind,
                 decimals,
                 currency_code: f.string(3),
+                grouping: None,
                 format_string,
             }),
             false,
@@ -883,6 +884,7 @@ fn pick_format(
             kind: CellFormatKind::Custom,
             decimals: None,
             currency_code: None,
+            grouping: None,
             format_string: cf.string(3).or_else(|| cf.string(18)),
         });
     (custom, false)
@@ -1033,6 +1035,7 @@ fn decode_cell_v4(
                     },
                     decimals: f.varint(2).filter(|v| *v <= 20).map(|v| v as u32),
                     currency_code: f.string(3),
+                    grouping: None,
                     format_string: f.string(18),
                 })
             })

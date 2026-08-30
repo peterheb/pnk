@@ -560,6 +560,9 @@ export interface CellFormat {
   decimals?: number;
   /** Currency code for currency (e.g. "USD") when known. */
   currencyCode?: string;
+  /** Thousands separators shown (locale-appropriate grouping). Absent = off.
+   * [proto: TSK.FormatStructArchive.show_thousands_separator (field 5)] */
+  grouping?: boolean;
   /** Raw custom format string when kind = "custom". */
   formatString?: string;
 }

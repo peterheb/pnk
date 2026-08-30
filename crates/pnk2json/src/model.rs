@@ -1120,6 +1120,9 @@ pub struct CellFormat {
     pub decimals: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub currency_code: Option<String>,
+    /// Thousands separators shown (TSK.FormatStructArchive.show_thousands_separator).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub grouping: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub format_string: Option<String>,
 }
