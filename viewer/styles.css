@@ -298,3 +298,9 @@ table.sheet-table td.cell-error { color: #b03030; font-style: italic; }
    get 100%x100% from `.canvas-drawable > *`, so the second (text) block was
    pushed a full shape-height down. Pin it over the geometry instead. */
 .canvas-drawable > .drawable-text { position: absolute; inset: 0; }
+/* tabs + preserved spaces inside the printable area: pre-wrap keeps TAB and
+   runs of spaces visible (Apple preserves both); tab-size approximates the
+   36pt default tab interval (overridden per-paragraph from defaultTabStopPt) */
+.pages-print p, .pages-print h1, .pages-print h2, .pages-print h3,
+.pages-print h4, .pages-print h5, .pages-print h6,
+.pages-print .list-item { white-space: pre-wrap; tab-size: 36px; }

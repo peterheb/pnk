@@ -7,7 +7,7 @@
 //! textual/smart fields to FieldRuns. No offsets survive.
 
 use crate::ctx::Ctx;
-use crate::styles::{resolve_char_style, resolve_list_format_minimal, resolve_para_style};
+use crate::styles::{resolve_list_format_minimal, resolve_para_style};
 use crate::model::*;
 use crate::pb::Msg;
 
@@ -197,12 +197,13 @@ pub fn extract_from_msg(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText> {
             if b1 <= b0 {
                 continue;
             }
-            // Effective char style: last char-style entry at or before b0.
-            // A null object means "no override" → default style.
-            let char_style = match entry_at(&char_entries, b0).and_then(|e| e.object_id) {
-                Some(sid) => resolve_char_style(ctx, sid),
-                None => CharStyle::default(),
-            };
+            // Effective char style: last char-style entry at or before b0
+            // (null object = no run-level override), merged over the
+            // PARAGRAPH style's char_properties chain — heading/title fonts
+            // and placeholder text sizes live there (G5 goldens; RIPE deck).
+            let char_sid = entry_at(&char_entries, b0).and_then(|e| e.object_id);
+            let char_style =
+                crate::styles::resolve_effective_char_style(ctx, char_sid, style_ref);
             let c_style = ctx.char_pool.intern(crate::ctx::strip_char_defaults(char_style));
 
             let seg_start_char = u16_to_char_index(&map, b0);
@@ -252,9 +253,15 @@ pub fn extract_from_msg(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText> {
                         items.push(ParagraphItem::Field {
                             kind: FieldTag::Field,
                             c_style: ctx.char_pool.intern(crate::ctx::strip_char_defaults(style)),
-                            value: value.or(Some(seg.chars().skip(1).collect())),
+                            value,
                             field,
                         });
+                        // Remaining chars of the segment continue as a text
+                        // run (the FFFC anchor occupies exactly one char).
+                        if seg.len() > 1 {
+                            let rest: String = seg.chars().skip(1).collect();
+                            items.push(ParagraphItem::Plain(rest));
+                        }
                         continue;
                     }
                     AttachmentResult::None => {}
@@ -398,17 +405,26 @@ fn resolve_attachment(
                 field: kind,
             }
         }
-        // TSWP.NumberAttachmentArchive { super = 1, string_value = 3 } and
-        // TSWP.TSWPTOCPageNumberAttachmentArchive { super = 1, page_number = 2 }
+        // TSWP.NumberAttachmentArchive { super = 1 (TextualAttachment),
+        //   number_format = 2, string_value = 3, number_format_name = 4 }
+        // Field kind from the TextualAttachmentArchive super's kind (f2):
+        // 0 = page-number, 1 = page-count, 2 = footnote-mark.
         2043 | 2010 => {
-            let value = rec
-                .msg
-                .as_ref()
-                .and_then(|a| a.string(3).or_else(|| a.string(2)));
+            let msg = rec.msg.as_ref();
+            let value = msg.and_then(|a| a.string(3).or_else(|| a.string(2)));
+            let kind_val = msg
+                .and_then(|a| a.msg(1))
+                .and_then(|sup| sup.varint(2))
+                .unwrap_or(0);
+            let field = match kind_val {
+                1 => FieldKind::PageCount {},
+                2 => FieldKind::FootnoteMark {},
+                _ => FieldKind::PageNumber {},
+            };
             AttachmentResult::Field {
                 style: CharStyle::default(),
                 value,
-                field: FieldKind::PageNumber,
+                field,
             }
         }
         // TSWP.FootnoteReferenceAttachmentArchive

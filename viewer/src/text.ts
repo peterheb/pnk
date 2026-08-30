@@ -46,9 +46,16 @@ export function applyParaStyle(el: HTMLElement, ps: ParaStyle): void {
   const s = el.style;
   const align = ps.horizontalAlignment;
   if (align === "center" || align === "right" || align === "justify") s.textAlign = align;
-  if (ps.leftIndentPt) s.marginLeft = `${ps.leftIndentPt}px`;
+  // TSWP indents: first_line_indent is ABSOLUTE from the margin while
+  // left_indent applies to continuation lines (G5 fixture: styles storing
+  // left=36/first=0 render flush first lines in Apple's export; a hanging
+  // style stores left=72/first=36). CSS text-indent is RELATIVE to
+  // margin-left, so emit first - left; absent first means 0 (flush).
+  const leftIndent = ps.leftIndentPt ?? 0;
+  const firstIndent = ps.firstLineIndentPt ?? 0;
+  if (leftIndent) s.marginLeft = `${leftIndent}px`;
   if (ps.rightIndentPt) s.marginRight = `${ps.rightIndentPt}px`;
-  if (ps.firstLineIndentPt) s.textIndent = `${ps.firstLineIndentPt}px`;
+  if (firstIndent - leftIndent) s.textIndent = `${firstIndent - leftIndent}px`;
   if (ps.spaceBeforePt) s.marginTop = `${ps.spaceBeforePt}px`;
   if (ps.spaceAfterPt) s.marginBottom = `${ps.spaceAfterPt}px`;
   if (ps.lineSpacingMultiple) s.lineHeight = String(ps.lineSpacingMultiple);
@@ -59,6 +66,10 @@ export function applyParaStyle(el: HTMLElement, ps: ParaStyle): void {
     s.border = `${b.widthPt}px ${b.dash?.length ? "dashed" : "solid"} ${b.color}`;
   }
   if (ps.writingDirection === "right-to-left") s.direction = "rtl";
+  // tabs render via white-space: pre-wrap (set in CSS for print areas);
+  // tab-size approximates the default tab stop interval. Positioned
+  // center/right/decimal stops are not modeled in CSS — heuristic only.
+  if (ps.defaultTabStopPt) (s as CSSStyleDeclaration & { tabSize: string }).tabSize = `${ps.defaultTabStopPt}px`;
 }
 
 function fieldPlaceholderText(item: Extract<ParagraphItem, { type: "field" }>): string {
@@ -136,16 +147,18 @@ export function renderParagraph(
     listState.lastKey = null;
     if (style) applyParaStyle(el, style);
   } else {
-    // numbering: same list key as the previous paragraph continues its
-    // counter; a new key (or an explicit start) restarts it
+    // numbering: the stored restart flag (surfaced as list.start on the
+    // paragraph's pooled style) resets the counter; otherwise numbering
+    // CONTINUES the counter for this key — even across intervening
+    // paragraphs or nested levels, which is Pages' own "continue from
+    // previous" semantics (G5: "Four (Numbered, continued)" resumes 4 after
+    // a nested run; "Restart One" carries start=1).
     const key = `${list!.level}:${list!.markerKind}:${list!.markerKind === "number" ? list!.numberKind : list!.markerText}`;
-    if (listState.lastKey !== key) {
-      listState.counters.set(key, list!.start ?? 1);
-      listState.lastKey = key;
-    } else {
-      listState.counters.set(key, (listState.counters.get(key) ?? 0) + 1);
-    }
-    const n = listState.counters.get(key) ?? 1;
+    const n = list!.start !== undefined
+      ? list!.start
+      : (listState.counters.get(key) ?? 0) + 1;
+    listState.counters.set(key, n);
+    listState.lastKey = key;
     const markerText = list!.markerKind === "number"
       ? numberMarker(n, list!.numberKind)
       : (list!.markerText ?? "•");

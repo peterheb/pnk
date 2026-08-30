@@ -12,7 +12,9 @@
     "locale": "en_US"
   },
   "warnings": [],
-  "fonts": [],
+  "fonts": [
+    "HelveticaNeue"
+  ],
   "media": [],
   "styles": {
     "para": [
@@ -49,16 +51,31 @@
     ],
     "char": [
       {
-        "bold": true
+        "fontName": "HelveticaNeue",
+        "fontSizePt": 11.0,
+        "fontColor": "#000000"
       },
       {
-        "italic": true
+        "fontName": "HelveticaNeue",
+        "fontSizePt": 11.0,
+        "bold": true,
+        "fontColor": "#000000"
       },
       {
+        "fontName": "HelveticaNeue",
+        "fontSizePt": 11.0,
+        "italic": true,
+        "fontColor": "#000000"
+      },
+      {
+        "fontName": "HelveticaNeue",
+        "fontSizePt": 11.0,
         "fontColor": "#1db100"
       },
       {
-        "fontSizePt": 20.0
+        "fontName": "HelveticaNeue",
+        "fontSizePt": 20.0,
+        "fontColor": "#000000"
       }
     ]
   },
@@ -80,81 +97,123 @@
     "paragraphs": [
       {
         "items": [
-          "Plain opening paragraph."
-        ]
-      },
-      {
-        "items": [
-          "   a\tb  c\u00a0d"
-        ]
-      },
-      {
-        "items": [
-          "café ﬁle 日本語テキスト مرحبا 👨\u200d👩\u200d👧 “quotes” …"
-        ]
-      },
-      {
-        "items": [
-          "trailing spaces.   "
-        ]
-      },
-      {
-        "items": [
-          "normal ",
           {
-            "text": "bold",
+            "text": "Plain opening paragraph.",
+            "cStyle": 0
+          }
+        ]
+      },
+      {
+        "items": [
+          {
+            "text": "   a\tb  c\u00a0d",
+            "cStyle": 0
+          }
+        ]
+      },
+      {
+        "items": [
+          {
+            "text": "café ﬁle 日本語テキスト مرحبا 👨\u200d👩\u200d👧 “quotes” …",
+            "cStyle": 0
+          }
+        ]
+      },
+      {
+        "items": [
+          {
+            "text": "trailing spaces.   ",
+            "cStyle": 0
+          }
+        ]
+      },
+      {
+        "items": [
+          {
+            "text": "normal ",
             "cStyle": 0
           },
-          " normal ",
           {
-            "text": "italic",
+            "text": "bold",
             "cStyle": 1
           },
-          " normal ",
           {
-            "text": "green",
+            "text": " normal ",
+            "cStyle": 0
+          },
+          {
+            "text": "italic",
             "cStyle": 2
           },
-          " ",
+          {
+            "text": " normal ",
+            "cStyle": 0
+          },
+          {
+            "text": "green",
+            "cStyle": 3
+          },
+          {
+            "text": " ",
+            "cStyle": 0
+          },
           {
             "text": "large",
-            "cStyle": 3
+            "cStyle": 4
           }
         ]
       },
       {
         "pStyle": 0,
         "items": [
-          "One"
+          {
+            "text": "One",
+            "cStyle": 0
+          }
         ]
       },
       {
         "pStyle": 1,
         "items": [
-          "Two"
+          {
+            "text": "Two",
+            "cStyle": 0
+          }
         ]
       },
       {
         "pStyle": 1,
         "items": [
-          "Three"
+          {
+            "text": "Three",
+            "cStyle": 0
+          }
         ]
       },
       {
         "pStyle": 2,
         "items": [
-          "Bullet Level 1"
+          {
+            "text": "Bullet Level 1",
+            "cStyle": 0
+          }
         ]
       },
       {
         "pStyle": 3,
         "items": [
-          "Bullet Level 2"
+          {
+            "text": "Bullet Level 2",
+            "cStyle": 0
+          }
         ]
       },
       {
         "items": [
-          "Soft line\u2028break"
+          {
+            "text": "Soft line\u2028break",
+            "cStyle": 0
+          }
         ]
       }
     ]

@@ -90,6 +90,31 @@ pub fn resolve_char_style(ctx: &mut Ctx, style_id: u64) -> CharStyle {
     char_style_from(ctx, &msgs)
 }
 
+/// Effective character style of a run: the char-style chain first, then the
+/// PARAGRAPH style's char_properties chain as fallback. TSWP resolution
+/// runs run → paragraph style → (its parents, up to theme presets) — a
+/// paragraph style archive carries char_properties in the same slot 11
+/// [proto: TSWP.ParagraphStyleArchive char_properties; fixture G5: the
+/// Title/Heading look (HelveticaNeue-Bold 30/18pt) lives ONLY there, and
+/// Keynote placeholder runs carry e.g. {fontColor} overrides whose size
+/// rides on the paragraph chain]. Emitting the merged result keeps the
+/// pooled styles fully RESOLVED per model-design §1.5 (omit-default relies
+/// on it).
+pub fn resolve_effective_char_style(
+    ctx: &mut Ctx,
+    char_sid: Option<u64>,
+    para_sid: Option<u64>,
+) -> CharStyle {
+    let mut msgs = match char_sid {
+        Some(id) => chain(ctx, id, 11),
+        None => Vec::new(),
+    };
+    if let Some(pid) = para_sid {
+        msgs.extend(chain(ctx, pid, 11));
+    }
+    char_style_from(ctx, &msgs)
+}
+
 pub fn char_style_from(ctx: &mut Ctx, msgs: &[Msg]) -> CharStyle {
     let mut s = CharStyle::default();
 
@@ -449,4 +474,14 @@ pub fn resolve_list_format_minimal(ctx: &mut Ctx, list_id: u64, level: u32) -> L
             marker_indent_pt: None,
         });
     ListFormat { level, ..full }
+}
+
+/// Resolve char properties from a ParagraphStyleArchive's `char_properties`
+/// (field 11). These are the "style-driven text props" that apply to ALL
+/// runs in paragraphs using this style (Peter's header/heading font issue).
+pub fn resolve_para_char_style(ctx: &mut Ctx, style_id: u64) -> CharStyle {
+    let Some(m) = ctx.loaded.msg(style_id) else { return CharStyle::default() };
+    let Some(cp) = m.msg(11) else { return CharStyle::default() };
+    let msgs = vec![cp];
+    char_style_from(ctx, &msgs)
 }
