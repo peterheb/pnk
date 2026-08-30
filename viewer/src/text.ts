@@ -361,6 +361,15 @@ function renderParagraphContent(
       el.appendChild(span);
     }
   }
+  // A blank paragraph (items: [] or only empty runs) is a blank LINE in
+  // iWork, but an empty <p> collapses to zero height and the surrounding
+  // text fuses together (1eb960ba: the gaps around the title and between
+  // the attendee block and body vanished). A <br> gives the line box its
+  // strut at the paragraph's inherited size, and keeps it measurable for
+  // WP pagination.
+  if (el.textContent === "" && !el.querySelector("br, img")) {
+    el.appendChild(document.createElement("br"));
+  }
 }
 
 /** An inline-attachment image: flows with the sentence, baseline-aligned. */

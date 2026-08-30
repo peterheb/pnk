@@ -368,3 +368,9 @@ table.sheet-table.own-strokes td, table.sheet-table.own-strokes th { border: non
 .drawable-text p, .drawable-text h1, .drawable-text h2, .drawable-text h3,
 .drawable-text h4, .drawable-text h5, .drawable-text h6,
 .drawable-text .list-item { white-space: pre-wrap; tab-size: 36px; }
+/* Apple has no implicit paragraph margins in shape/textbox text either —
+   the UA's 1em <p> margin read as a phantom blank line between consecutive
+   paragraphs (G2's caption box). Spacing comes only from spaceBefore/After
+   on the paragraph style. */
+.drawable-text p, .drawable-text h1, .drawable-text h2, .drawable-text h3,
+.drawable-text h4, .drawable-text h5, .drawable-text h6 { margin: 0; }
