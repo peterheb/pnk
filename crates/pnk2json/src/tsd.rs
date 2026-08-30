@@ -111,10 +111,16 @@ fn editable_bezier(m: &Msg, natural: Option<Size>) -> ShapeGeometry {
 // ShapeGeometry — the six PathSourceArchive variants, priority per §2.5
 // ---------------------------------------------------------------------------
 
-/// Fit a `TSP.Path`'s tight bounds into the shape's naturalSize (uniform
-/// scale + centering). Apple renders bezier shapes this way: the stored
-/// coordinates carry no absolute unit, so the path's own bounds define the
-/// mapping onto the shape box.
+/// Fit a `TSP.Path`'s tight bounds onto the shape's naturalSize with a
+/// PER-AXIS stretch. The stored coordinates carry no absolute unit; Apple
+/// maps the path's own bounds onto the shape box axis by axis
+/// (fixture-verified 2026-08-30: 388ca218's white caption band stores a
+/// 100x100 canonical square against naturalSize 1023.5x216.5 and Apple
+/// draws the full-width band — the earlier uniform-scale-and-center read
+/// shrank it to a centered 216pt square; the ppd badge circle that
+/// motivated uniform scaling sits in a square box, where both readings
+/// agree). A degenerate axis (0-height rules) borrows the other axis'
+/// ratio, keeping the 24_Briefing canonical-141.42 line at 46.8pt.
 fn normalize_path(mut p: CurvePath, natural: Option<&Size>) -> CurvePath {
     let Some(n) = natural else { return p };
     let mut min = (f64::INFINITY, f64::INFINITY);
@@ -137,27 +143,18 @@ fn normalize_path(mut p: CurvePath, natural: Option<&Size>) -> CurvePath {
     if !min.0.is_finite() {
         return p;
     }
-    let bw = (max.0 - min.0).max(f64::EPSILON);
-    let bh = (max.1 - min.1).max(f64::EPSILON);
-    // A degenerate axis (0-height rules, 0-width vertical rules) contributes
-    // no usable ratio — scale by the other axis alone. Both degenerate: keep
-    // the path as-is. (24_Briefing master rules store the canonical 141.42
-    // (=100√2) editable-bezier line against naturalSize 46.8×0 — Apple
-    // renders it 46.8pt long, i.e. bounds fit to naturalSize per axis.)
+    let bw = max.0 - min.0;
+    let bh = max.1 - min.1;
     let eps = 1e-6;
-    let mut scale = f64::INFINITY;
-    if n.width > eps && bw > eps {
-        scale = scale.min(n.width / bw);
-    }
-    if n.height > eps && bh > eps {
-        scale = scale.min(n.height / bh);
-    }
-    if !scale.is_finite() {
+    let rx = if n.width > eps && bw > eps { Some(n.width / bw) } else { None };
+    let ry = if n.height > eps && bh > eps { Some(n.height / bh) } else { None };
+    // A degenerate axis (0-height rules, 0-width vertical rules) contributes
+    // no usable ratio — borrow the other axis' scale (24_Briefing rules:
+    // canonical 141.42 line, naturalSize 46.8x0 → 46.8pt long). Both
+    // degenerate: keep the path as-is.
+    let (Some(sx), Some(sy)) = (rx.or(ry), ry.or(rx)) else {
         return p;
-    }
-    // center the scaled path in the box (degenerate axes collapse to 0)
-    let ox = if n.width > eps { (n.width - bw * scale) / 2.0 } else { 0.0 };
-    let oy = if n.height > eps { (n.height - bh * scale) / 2.0 } else { 0.0 };
+    };
     for el in p.elements.iter_mut() {
         let pts: &mut Vec<f64> = match el {
             CurveElement::Move { points }
@@ -167,8 +164,8 @@ fn normalize_path(mut p: CurvePath, natural: Option<&Size>) -> CurvePath {
             | CurveElement::Close { points } => points,
         };
         for xy in pts.chunks_exact_mut(2) {
-            xy[0] = (xy[0] - min.0) * scale + ox;
-            xy[1] = (xy[1] - min.1) * scale + oy;
+            xy[0] = (xy[0] - min.0) * sx;
+            xy[1] = (xy[1] - min.1) * sy;
         }
     }
     p
