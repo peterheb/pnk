@@ -1,6 +1,6 @@
-// Envelope UI: fonts (font-ready indicator) and warnings (collapsible).
-// Warnings never block rendering — unknown-object-type and friends are shown
-// as context alongside the rendered document.
+// Envelope UI: the nav warnings indicator + dropdown. Warnings never block
+// rendering — unknown-object-type and friends are context alongside the
+// rendered document, and a clean decode shows no indicator at all.
 
 import type { Warning } from "../../model/src/shared";
 
@@ -16,27 +16,12 @@ const CODE_LABELS: Record<string, string> = {
   "formula-unparsed": "formula not parsed",
 };
 
-export function renderFonts(fonts: string[]): void {
-  const panel = document.getElementById("panel-fonts");
-  if (!panel) return;
-  panel.classList.remove("hidden");
-  document.getElementById("fonts-count")!.textContent = String(fonts.length);
-  const list = document.getElementById("fonts-list")!;
-  list.replaceChildren();
-  for (const f of fonts) {
-    const chip = document.createElement("span");
-    chip.className = "chip";
-    chip.textContent = f;
-    list.appendChild(chip);
-  }
-  if (fonts.length === 0) list.textContent = "none";
-}
-
 export function renderWarnings(warnings: Warning[]): void {
-  const panel = document.getElementById("panel-warnings");
+  const panel = document.getElementById("warnings-dd") as HTMLDetailsElement | null;
   if (!panel) return;
-  panel.classList.remove("hidden");
   const total = warnings.reduce((n, w) => n + (w.count ?? 1), 0);
+  panel.classList.toggle("hidden", total === 0);
+  panel.open = false;
   document.getElementById("warnings-count")!.textContent = String(total);
   const list = document.getElementById("warnings-list")!;
   list.replaceChildren();
@@ -72,5 +57,4 @@ export function renderWarnings(warnings: Warning[]): void {
     }
     list.appendChild(row);
   }
-  if (warnings.length === 0) list.textContent = "No warnings — clean decode.";
 }

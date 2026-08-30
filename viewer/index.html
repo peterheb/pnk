@@ -3,47 +3,38 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>pnk viewer — iWork, locally</title>
+  <title>pnk.vu — iWork, locally</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <nav id="topnav">
+    <a id="brand" href="#" title="pnk.vu — back to start">pnk<span class="brand-tld">.vu</span></a>
+    <span id="doc-filename" class="hidden"></span>
+    <span id="app-badge" class="badge hidden"></span>
+    <span id="doc-meta" class="muted hidden"></span>
+    <span class="spacer"></span>
+    <details id="warnings-dd" class="hidden">
+      <summary title="Decode warnings"><span class="warn-mark">▲</span> <span id="warnings-count">0</span></summary>
+      <div id="warnings-list"></div>
+    </details>
+    <button id="json-btn" type="button" class="hidden" title="Download the converted JSON model">json</button>
+    <button id="reset-btn" type="button" title="Open a file">open…</button>
+  </nav>
+
   <div id="app">
-    <header id="app-header" class="hidden">
-      <span id="doc-filename"></span>
-      <span id="app-badge" class="badge"></span>
-      <span id="doc-meta" class="muted"></span>
-      <span class="spacer"></span>
-      <button id="json-btn" type="button" title="Download the converted JSON model">JSON</button>
-      <button id="reset-btn" type="button" title="Open another file">Open another…</button>
-    </header>
-
-    <div id="panel-fonts" class="panel hidden">
-      <details>
-        <summary>Fonts <span class="pill" id="fonts-count">0</span></summary>
-        <div id="fonts-list" class="chips"></div>
-      </details>
-    </div>
-
-    <div id="panel-warnings" class="panel hidden">
-      <details>
-        <summary>Warnings <span class="pill" id="warnings-count">0</span></summary>
-        <div id="warnings-list"></div>
-      </details>
-    </div>
-
     <div id="drop-zone">
       <div id="drop-card">
-        <h1>pnk</h1>
-        <p class="tagline">Open a Pages, Numbers or Keynote file — <strong>entirely in this browser</strong>.<br>
-        No accounts, no upload, no backend: the file is parsed locally and never leaves your machine.</p>
+        <h1>pnk<span class="brand-tld">.vu</span></h1>
+        <p class="tagline">a client-side viewer for Apple iWork files.<br>
+        <strong>everything runs in this browser</strong> — no account, no upload, no backend.</p>
         <div class="fmt-chips">
-          <span class="fmt-chip fmt-pages">📄 Pages</span>
-          <span class="fmt-chip fmt-numbers">📊 Numbers</span>
-          <span class="fmt-chip fmt-keynote">🎞️ Keynote</span>
+          <span class="fmt-chip fmt-pages"><i></i>.pages</span>
+          <span class="fmt-chip fmt-numbers"><i></i>.numbers</span>
+          <span class="fmt-chip fmt-keynote"><i></i>.key</span>
         </div>
-        <div id="drop-target">Drop a <code>.pages</code>, <code>.numbers</code> or <code>.key</code> file here<br>
+        <div id="drop-target">drop a file anywhere<br>
           <span class="muted">or</span><br>
-          <button id="pick-btn" type="button">Choose a file…</button>
+          <button id="pick-btn" type="button">choose a file…</button>
         </div>
         <p class="muted" id="drop-hint">Encrypted (password-protected) and legacy pre-iWork&nbsp;'13 files are politely refused — nothing about them leaves the browser either.</p>
       </div>
@@ -53,7 +44,7 @@
   </div>
 
   <div id="drag-overlay" class="hidden" aria-hidden="true">
-    <div class="drag-overlay-card">Drop to open<br>
+    <div class="drag-overlay-card">drop to open<br>
       <span class="drag-overlay-sub"><code>.pages</code> · <code>.numbers</code> · <code>.key</code> — parsed locally, never uploaded</span>
     </div>
   </div>

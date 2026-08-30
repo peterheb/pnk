@@ -10,7 +10,7 @@ import { renderKeynote } from "./keynote";
 import { renderNumbers } from "./numbers";
 import { setTableLocale } from "./tables";
 import { renderPages } from "./pages";
-import { renderFonts, renderWarnings } from "./warnings";
+import { renderWarnings } from "./warnings";
 import type { PnkDocument } from "../../model/src/shared";
 
 let ctx: ViewerCtx | null = null;
@@ -21,9 +21,9 @@ const $ = (id: string) => document.getElementById(id)!;
 function showLanding(): void {
   ctx?.dispose();
   ctx = null;
-  $("app-header").classList.add("hidden");
-  $("panel-fonts").classList.add("hidden");
-  $("panel-warnings").classList.add("hidden");
+  for (const id of ["doc-filename", "app-badge", "doc-meta", "warnings-dd", "json-btn"]) {
+    $(id).classList.add("hidden");
+  }
   $("view").classList.add("hidden");
   $("view").replaceChildren();
   $("drop-zone").classList.remove("hidden");
@@ -31,16 +31,16 @@ function showLanding(): void {
 
 function renderHeader(doc: PnkDocument, filename: string): void {
   $("doc-filename").textContent = filename;
-  $("app-badge").textContent = doc.meta.application ?? doc.meta.app;
+  const badge = $("app-badge");
+  badge.textContent = doc.meta.application ?? doc.meta.app;
+  badge.dataset.app = doc.kind;
   const meta: string[] = [];
-  if (doc.meta.fileFormatVersion) meta.push(`format ${doc.meta.fileFormatVersion}`);
-  if (doc.meta.createdAt) meta.push(`created ${doc.meta.createdAt.slice(0, 10)}`);
-  if (doc.meta.modifiedAt) meta.push(`modified ${doc.meta.modifiedAt.slice(0, 10)}`);
+  if (doc.meta.fileFormatVersion) meta.push(`v${doc.meta.fileFormatVersion}`);
   if (doc.meta.locale) meta.push(doc.meta.locale);
-  if (doc.meta.documentId) meta.push(`id ${doc.meta.documentId.slice(0, 8)}`);
-  $("doc-meta").textContent = meta.join("  ·  ");
-  $("json-btn").classList.remove("hidden");
-  $("app-header").classList.remove("hidden");
+  $("doc-meta").textContent = meta.join(" · ");
+  for (const id of ["doc-filename", "app-badge", "doc-meta", "json-btn"]) {
+    $(id).classList.remove("hidden");
+  }
 }
 
 function renderDocument(doc: PnkDocument, filename: string): void {
@@ -59,7 +59,6 @@ function renderDocument(doc: PnkDocument, filename: string): void {
 
   renderHeader(doc, filename);
   setTableLocale(doc.meta.locale);
-  renderFonts(doc.fonts);
   renderWarnings(doc.warnings);
 
   const view = $("view");
@@ -75,11 +74,16 @@ function renderDocument(doc: PnkDocument, filename: string): void {
 function showError(err: unknown, filename: string): void {
   lastJson = null;
   $("json-btn").classList.add("hidden");
+  $("warnings-dd").classList.add("hidden");
   $("drop-zone").classList.add("hidden");
-  $("app-header").classList.remove("hidden");
   $("doc-filename").textContent = filename;
-  $("app-badge").textContent = "rejected";
+  $("doc-filename").classList.remove("hidden");
+  const badge = $("app-badge");
+  badge.textContent = "rejected";
+  delete badge.dataset.app;
+  badge.classList.remove("hidden");
   $("doc-meta").textContent = "";
+  $("doc-meta").classList.add("hidden");
   const view = $("view");
   view.replaceChildren();
   view.classList.remove("hidden");
@@ -146,8 +150,13 @@ function wireEvents(): void {
   const input = $("file-input") as HTMLInputElement;
 
   $("pick-btn").addEventListener("click", () => input.click());
+  // nav "open…" goes straight to the picker; the brand is the way home
   $("reset-btn").addEventListener("click", () => {
     input.value = "";
+    input.click();
+  });
+  $("brand").addEventListener("click", (e) => {
+    e.preventDefault();
     showLanding();
   });
   // Download the converted JSON model (blob URL — still no network, no upload)
