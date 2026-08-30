@@ -95,7 +95,14 @@ function valueToText(cell: TableCell, format: CellFormat | undefined): string {
     }
     case "bool": return typeof v === "boolean" ? (v ? "true" : "false") : String(v);
     case "date": return String(v).slice(0, 10);
-    case "duration": return `${v}s`;
+    case "duration": {
+      // Apple duration rendering: h:mm:ss (h omitted when 0)
+      const total = typeof v === "number" ? Math.round(v) : Math.round(Number(v));
+      const h = Math.floor(total / 3600);
+      const m = Math.floor((total % 3600) / 60);
+      const s = total % 60;
+      return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    }
     case "currency": return `${cell.cur ?? "$"} ${formatNumber(typeof v === "number" ? v : Number(v), format?.decimals, format?.decimals !== undefined)}`;
     case "error": return String(v);
     case "richtext": {
