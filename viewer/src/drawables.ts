@@ -297,10 +297,18 @@ function imageEl(
     img.style.objectFit = "fill";
     return img;
   }
+  if (vector && fileName) {
+    // Placed vector art with no raster twin: a neutral gray shape with a
+    // small filename caption — not an error card (the artwork exists, we
+    // just cannot rasterize PDF/AI/EPS in-browser).
+    const box = el("div", "media-vector");
+    const cap = el("span", "media-vector-caption");
+    cap.textContent = fileName.replace(/\.(pdf|ai|eps)$/i, "").replace(/-\d+$/, "");
+    box.appendChild(cap);
+    return box;
+  }
   const miss = el("div", "media-missing");
-  miss.textContent = fileName
-    ? vector ? `vector art: ${fileName.replace(/\.(pdf|ai|eps)$/i, "")}` : `${fileName} (media missing)`
-    : "media missing";
+  miss.textContent = fileName ? `${fileName} (media missing)` : "media missing";
   return miss;
 }
 
