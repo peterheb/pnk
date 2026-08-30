@@ -102,6 +102,7 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
                     .collect();
                 converted.sort_by_key(|(id, _)| zrank.get(id).copied().unwrap_or(usize::MAX));
                 floating.push(FloatingPage {
+                    template_drawables: None,
                     page_index: pg.varint(1).map(|v| v as u32),
                     drawables: converted.into_iter().map(|(_, d)| d).collect(),
                 });

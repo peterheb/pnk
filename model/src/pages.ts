@@ -119,6 +119,16 @@ export interface Footnote {
  */
 export interface FloatingPage {
   pageIndex?: number;
+  /**
+   * Page-layout flavor: resolved template underlay for this canvas — the
+   * page template's drawables that show under the page content, in paint
+   * order, filtered the way Pages renders them (superseded placeholders
+   * removed). Painted before `drawables`, verbatim; a viewer must not need
+   * `pageTemplates` to render a layout canvas (docs/model-review.md §3c).
+   * Word-processing flavor: absent — pages are viewer-paginated, so template
+   * furniture composes per page from `pageTemplates` + section names.
+   */
+  templateDrawables?: Drawable[];
   drawables: Drawable[];
 }
 

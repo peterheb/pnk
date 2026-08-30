@@ -1379,6 +1379,9 @@ pub struct Slide {
     pub skipped: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub master_name: Option<String>,
+    /// Resolved master underlay painted before `drawables` (docs/model-review.md §3b).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub master_drawables: Option<Vec<Drawable>>,
     pub drawables: Vec<Drawable>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notes: Option<StyledText>,
@@ -1386,8 +1389,8 @@ pub struct Slide {
     pub transition: Option<TransitionSpec>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub slide_number_visible: Option<bool>,
-    /// Slide background fill [proto: KN.SlideStyleArchive.slide_properties.fill];
-    /// absent = inherit the master's.
+    /// Slide background fill, RESOLVED through the master chain at emission;
+    /// absent = no effective fill (docs/model-review.md §3b).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub background: Option<Fill>,
 }
@@ -1634,6 +1637,10 @@ pub struct Footnote {
 pub struct FloatingPage {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub page_index: Option<u32>,
+    /// Page-layout flavor: resolved template underlay painted before
+    /// `drawables` (docs/model-review.md §3c). Absent for word-processing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub template_drawables: Option<Vec<Drawable>>,
     pub drawables: Vec<Drawable>,
 }
 

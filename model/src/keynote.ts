@@ -105,6 +105,14 @@ export interface Slide {
   skipped?: boolean;
   /** Master this slide follows (by MasterSlide.name). */
   masterName?: string;
+  /**
+   * Resolved master underlay: the master's drawables that actually show
+   * under this slide (furniture kept; placeholder prompts superseded or
+   * emptied by the slide are filtered out), in paint order. A viewer paints
+   * these before `drawables`, verbatim — it must never need to consult
+   * `masters[]` to render correctly (docs/model-review.md §3b).
+   */
+  masterDrawables?: Drawable[];
   /** All drawables in paint order (z-order), placeholders included. */
   drawables: Drawable[];
   /** Presenter notes. [proto: KN.NoteArchive.containedStorage → TSWP.StorageArchive] */
@@ -114,8 +122,10 @@ export interface Slide {
   /** Show slide number on this slide. [proto: KN.SlideNodeArchive.isSlideNumberVisible] */
   slideNumberVisible?: boolean;
   /**
-   * Slide background fill [proto: KN.SlideStyleArchive.slide_properties.fill];
-   * absent = inherit the master's.
+   * Slide background fill, RESOLVED by the converter (slide value, else the
+   * master chain's) [proto: KN.SlideStyleArchive.slide_properties.fill].
+   * Absent = no effective fill — never "go look up the master"
+   * (docs/model-review.md §3b).
    */
   background?: Fill;
 }

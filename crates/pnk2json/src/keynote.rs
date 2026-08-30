@@ -330,6 +330,7 @@ fn convert_slide_raw(ctx: &mut Ctx, slide_id: u64, is_master: bool) -> (Slide, O
 
     (
         Slide {
+        master_drawables: None,
             name: name.clone(),
             skipped: None,
             master_name: None,
@@ -345,6 +346,7 @@ fn convert_slide_raw(ctx: &mut Ctx, slide_id: u64, is_master: bool) -> (Slide, O
 
 fn empty_slide() -> Slide {
     Slide {
+        master_drawables: None,
         name: None,
         skipped: None,
         master_name: None,
