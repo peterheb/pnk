@@ -345,6 +345,73 @@ function textLayer(d: Drawable & { text?: unknown; common?: DrawableCommon }, do
 }
 
 // ---------------------------------------------------------------------------
+// Text fit (model textFit: "grow" | "shrink"; absent = fixed box, clipped)
+// ---------------------------------------------------------------------------
+
+/**
+ * "grow": a plain Keynote/Pages text box auto-sizes its height to its
+ * content; the stored height is Apple's layout under Apple's font metrics,
+ * so browsers (taller line boxes, fallback fonts) treat it as a MINIMUM and
+ * let the box grow downward instead of clipping the last line.
+ * "shrink": tag the box for the post-attach measurement pass (applyTextFit).
+ */
+function applyTextFitMode(
+  div: HTMLElement,
+  layer: HTMLElement,
+  fit: "grow" | "shrink" | undefined,
+  verticalAlignment?: string,
+): void {
+  if (fit === "grow") {
+    // keep the stored height as a minimum so vertical alignment still works
+    // when the content is shorter than the box
+    const storedH = div.style.height;
+    div.style.height = "auto";
+    if (storedH && storedH !== "auto") div.style.minHeight = storedH;
+    div.style.display = "flex";
+    div.style.flexDirection = "column";
+    div.style.justifyContent = verticalAlignStyle({ verticalAlignment });
+    layer.style.position = "relative";
+    layer.style.overflow = "visible";
+    layer.style.height = "auto";
+  } else if (fit === "shrink") {
+    div.dataset.textFit = "shrink";
+  }
+}
+
+/**
+ * Post-attach pass for boxes tagged "shrink" (Keynote's "shrink text on
+ * overflow"): when the laid-out text is taller than its box, scale it down.
+ * `scale(s)` with an inverse width (100/s %) reproduces a font-size
+ * reduction — same wrap width in text space — and the transform origin
+ * follows the box's vertical alignment. MUST run with `root` attached and
+ * displayed (measurement). Idempotent: safe to re-run.
+ */
+export function applyTextFit(root: HTMLElement): void {
+  for (const box of root.querySelectorAll<HTMLElement>('[data-text-fit="shrink"]')) {
+    const layer = box.querySelector<HTMLElement>(":scope > .drawable-text");
+    const inner = layer?.querySelector<HTMLElement>(":scope > .drawable-text-inner");
+    if (!layer || !inner) continue;
+    inner.style.transform = "";
+    inner.style.width = "";
+    const boxH = layer.clientHeight;
+    if (boxH <= 0) continue;
+    const align = layer.style.alignItems;
+    const origin = align === "flex-end" ? "left bottom" : align === "center" ? "left center" : "left top";
+    let s = 1;
+    // Rewrapping at the compensated width changes the height, so iterate;
+    // s only ever decreases, which converges without oscillation.
+    for (let i = 0; i < 3; i++) {
+      const contentH = inner.offsetHeight;
+      if (contentH * s <= boxH + 0.5) break;
+      s = Math.max(Math.min(s, boxH / contentH), 0.35);
+      inner.style.width = `${(100 / s).toFixed(3)}%`;
+      inner.style.transform = `scale(${s.toFixed(4)})`;
+      inner.style.transformOrigin = origin;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Chart (minimal: inline numeric series -> SVG bars, else a summary card)
 // ---------------------------------------------------------------------------
 
@@ -513,6 +580,8 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
         layer.style.whiteSpace = "nowrap";
         layer.style.width = "max-content"; // percentage of an auto box is meaningless
         layer.style.height = "auto";
+      } else {
+        applyTextFitMode(div, layer, d.textFit, d.verticalAlignment);
       }
       div.appendChild(layer);
     } else div.textContent = "";
@@ -520,7 +589,12 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
     const svg = shapeSvg(d.geometry, w, h, c.style);
     div.appendChild(svg);
     const layer = textLayer({ ...d, text: d.text, verticalAlignment: d.verticalAlignment, common: c }, doc, ctx);
-    if (layer) div.appendChild(layer);
+    if (layer) {
+      // Shapes keep their geometry: only the shrink mode applies (a shape
+      // never grows for its text).
+      if (d.textFit === "shrink") applyTextFitMode(div, layer, "shrink", d.verticalAlignment);
+      div.appendChild(layer);
+    }
   } else if (d.type === "image") {
     const img = imageEl(d.image.dataId, d.image.preferredFileName ?? d.image.fileName, ctx, d.image.preferredFileName, d.thumbnail);
     const m = d.mask?.common;
@@ -558,7 +632,7 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
     div.appendChild(svg);
   } else if (d.type === "table") {
     const wrap = el("div", "canvas-table-wrap");
-    wrap.appendChild(renderTable(d.table));
+    wrap.appendChild(renderTable(d.table, ctx));
     div.appendChild(wrap);
   } else if (d.type === "chart") {
     const svg = chartSvg(d.chart, w, h);
@@ -602,7 +676,7 @@ export function renderFlowDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerCtx
   }
   if (d.type === "table") {
     const wrap = el("div", "flow-table");
-    wrap.appendChild(renderTable(d.table));
+    wrap.appendChild(renderTable(d.table, ctx));
     return wrap;
   }
   if (d.type === "group") {

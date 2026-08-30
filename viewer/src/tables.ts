@@ -14,6 +14,7 @@ import type {
 } from "../../model/src/shared";
 import { applyCharStyle } from "./text";
 import { cellStyleOf } from "./hydrate";
+import type { ViewerCtx } from "./ctx";
 
 // Document locale, set from meta.locale after parse. Comma-decimal
 // separators follow the CLDR region when one is present (Apple renders
@@ -355,9 +356,32 @@ function valueToText(cell: TableCell, format: CellFormat | undefined): string {
   }
 }
 
-function applyCellStyle(td: HTMLTableCellElement, style: TableCellStyle | undefined, header: boolean, footer: boolean): void {
+function applyCellStyle(td: HTMLTableCellElement, style: TableCellStyle | undefined, header: boolean, footer: boolean, ctx?: ViewerCtx): void {
   const s = td.style;
-  if (style?.fill) s.backgroundColor = style.fill.type === "solid" ? style.fill.color : "#e8e8ee";
+  if (style?.fill) {
+    if (style.fill.type === "solid") {
+      s.backgroundColor = style.fill.color;
+    } else if (style.fill.type === "image") {
+      // Cell image fills (LED price-list v3 doc: product photos live in the
+      // cell style). technique maps onto background-size; without bytes the
+      // tint or a neutral tone stands in.
+      const url = ctx?.url(style.fill.image.dataId);
+      if (url) {
+        s.backgroundImage = `url("${url}")`;
+        s.backgroundPosition = "center";
+        const t = style.fill.technique;
+        s.backgroundRepeat = t === "tile" ? "repeat" : "no-repeat";
+        s.backgroundSize = t === "scale-to-fill" ? "cover"
+          : t === "stretch" ? "100% 100%"
+          : t === "tile" || t === "natural-size" ? "auto"
+          : "contain";
+      } else {
+        s.backgroundColor = style.fill.tint ?? "#e8e8ee";
+      }
+    } else {
+      s.backgroundColor = "#e8e8ee";
+    }
+  }
   if (style?.borders) {
     const b = style.borders;
     // width 0 = explicit "no line" (erases the base gridline); dash
@@ -382,7 +406,7 @@ function applyCellStyle(td: HTMLTableCellElement, style: TableCellStyle | undefi
 }
 
 /** One TableModel as a real table; hidden rows/columns are skipped. */
-export function renderTable(model: TableModel): HTMLTableElement {
+export function renderTable(model: TableModel, ctx?: ViewerCtx): HTMLTableElement {
   const table = document.createElement("table");
   table.className = "sheet-table";
   if (model.name) {
@@ -479,9 +503,9 @@ export function renderTable(model: TableModel): HTMLTableElement {
       if (banded !== undefined && !header && !footer && bodyOrdinal % 2 === 1) {
         td.style.backgroundColor = banded;
       }
-      if (section) applyCellStyle(td, section, header, footer);
+      if (section) applyCellStyle(td, section, header, footer, ctx);
       const style = cellStyleOf(model, norm?.cellStyleIndex);
-      applyCellStyle(td, style, header, footer);
+      applyCellStyle(td, style, header, footer, ctx);
       if (norm) {
         const format = norm.fmt !== undefined ? formats[norm.fmt] : undefined;
         // Apple convention: numeric-formatted values right-align; an
@@ -491,7 +515,11 @@ export function renderTable(model: TableModel): HTMLTableElement {
         const numeric = typeof norm.v === "number" || typedAligns || (norm.type === undefined && formatAligns && typeof norm.v !== "string" && typeof norm.v !== "boolean");
         if (!td.style.textAlign && numeric && norm.type !== "error") td.style.textAlign = "right";
         if (norm.type === "error") td.classList.add("cell-error");
-        td.textContent = valueToText(norm, format);
+        const text = valueToText(norm, format);
+        td.textContent = text;
+        // multi-paragraph cell text (rich-text cells join with \n) keeps
+        // its line structure like Apple
+        if (text.includes("\n")) td.style.whiteSpace = "pre-line";
       }
       td.dataset.row = String(r);
       td.dataset.col = String(c);

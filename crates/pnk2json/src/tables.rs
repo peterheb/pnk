@@ -1010,7 +1010,19 @@ fn convert_tile(
             if cell_buf.len() < 12 {
                 continue;
             }
-            let decoded = if cell_buf[0] == 4 {
+            let decoded = if cell_buf[0] == 3 {
+                decode_cell_v3(
+                    ctx,
+                    model_row,
+                    slot as u32,
+                    cell_buf,
+                    string_table,
+                    style_table,
+                    format_table,
+                    rich_text_table,
+                    cell_pool,
+                )
+            } else if cell_buf[0] == 4 {
                 decode_cell_v4(
                     ctx,
                     model_row,
@@ -1491,6 +1503,185 @@ fn pick_format(
             format_string: cf.msg(3).and_then(|df| df.string(18)),
         });
     (custom, false)
+}
+
+/// iWork '13-era (storage_version 3) cell block decoder — fixture-verified
+/// against two 2014-saved Pages docs (LED price list 6478639…, HEE appendix
+/// b31db82…; corpus census class 1). Layout [inferred, all cells in both docs
+/// consistent]:
+/// `[03][00][cell_type][?]` + flags u64 LE at 4..12 + payload at 12,
+/// fields in fixed order, each present iff its flag bit is set:
+///   bit 1 cell style key · bit 7 text style key · bit 2 format key ·
+///   bit 4 string key · bit 5 f64 value · bit 9 rich-text key ·
+///   bit 48 trailing u32 (repeats the format key on number cells; skipped).
+/// High bits 20/22/23/27 vary without consuming payload (metadata).
+/// cell_type at byte 2 matches the v5 enum: 0 empty (style-only), 2 number,
+/// 3 text, 9 rich text. Keys index the same DataLists as v5.
+#[allow(clippy::too_many_arguments)]
+fn decode_cell_v3(
+    ctx: &mut Ctx,
+    row: u32,
+    col: u32,
+    buf: &[u8],
+    string_table: &DataList,
+    style_table: &DataList,
+    format_table: &DataList,
+    rich_text_table: &DataList,
+    cell_pool: &mut StylePool<TableCellStyle>,
+) -> Option<(u32, u32, TableCell, Option<CellFormat>)> {
+    if buf.len() < 12 {
+        return None;
+    }
+    let cell_type = buf[2];
+    let flags = u64::from_le_bytes(buf[4..12].try_into().unwrap());
+
+    // Unknown low bits would shift every later field — refuse to guess.
+    const KNOWN_CONSUMING: u64 = (1 << 1) | (1 << 2) | (1 << 4) | (1 << 5) | (1 << 7) | (1 << 9);
+    if flags & 0xffff & !KNOWN_CONSUMING != 0 {
+        ctx.warn_detail(
+            WarningCode::TableDegraded,
+            format!(
+                "v3 cell with unknown storage flags {:#x}; cell r{row}c{col} dropped",
+                flags & 0xffff
+            ),
+            format!("r{row}c{col}"),
+        );
+        return None;
+    }
+
+    let mut off = 12usize;
+    macro_rules! take_u32_if {
+        ($bit:expr) => {
+            if flags & (1 << $bit) != 0 {
+                if let Some(b) = buf.get(off..off + 4) {
+                    let v = i32::from_le_bytes(b.try_into().unwrap());
+                    off += 4;
+                    Some(v)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+    }
+    let cell_style_id = take_u32_if!(1);
+    let text_style_id = take_u32_if!(7);
+    let format_id = take_u32_if!(2);
+    let string_id = take_u32_if!(4);
+    let double = if flags & (1 << 5) != 0 {
+        buf.get(off..off + 8).map(|b| {
+            off += 8;
+            f64::from_le_bytes(b.try_into().unwrap())
+        })
+    } else {
+        None
+    };
+    let rich_id = take_u32_if!(9);
+    let _ = off;
+
+    let value = match cell_type {
+        0 | 1 => CellValue::Empty, // style-only cell (image/fill cells in the LED doc)
+        2 => CellValue::Number { value: double? },
+        3 => {
+            let sid = string_id?;
+            match string_table.entries.get(&sid).and_then(|e| e.string.clone()) {
+                Some(s) => CellValue::Text { value: s },
+                None => {
+                    ctx.warn_detail(
+                        WarningCode::TableDegraded,
+                        format!("v3 string key {sid} not resolvable in the string table; cell r{row}c{col} dropped"),
+                        format!("r{row}c{col}"),
+                    );
+                    return None;
+                }
+            }
+        }
+        9 => {
+            // RichTextPayloadArchive { storage = 1 } via the rich-text list.
+            let storage_id = rich_id
+                .and_then(|id| rich_text_table.entries.get(&id))
+                .and_then(|e| e.reference)
+                .and_then(|rtp| ctx.loaded.msg(rtp))
+                .and_then(|p| p.reference(1));
+            match storage_id.and_then(|sid| crate::text::extract(ctx, sid)) {
+                Some(ex) => CellValue::Richtext { text: ex.text },
+                None => {
+                    ctx.warn_detail(
+                        WarningCode::TableDegraded,
+                        format!("v3 rich-text key {rich_id:?} not decodable; cell r{row}c{col} dropped"),
+                        format!("r{row}c{col}"),
+                    );
+                    return None;
+                }
+            }
+        }
+        _ => {
+            ctx.warn_detail(
+                WarningCode::TableDegraded,
+                format!("unrecognized v3 cell type {cell_type}; cell skipped"),
+                format!("r{row}c{col}"),
+            );
+            return None;
+        }
+    };
+
+    // Styles resolve through the shared STYLE list exactly like v5.
+    let mut style = cell_style_id.and_then(|id| {
+        style_table
+            .entries
+            .get(&id)
+            .and_then(|e| e.reference)
+            .and_then(|cid| styles::resolve_cell_style(ctx, cid))
+    });
+    if let Some(tref) = text_style_id
+        .and_then(|tid| style_table.entries.get(&tid))
+        .and_then(|e| e.reference)
+    {
+        let text = crate::ctx::strip_char_defaults(styles::resolve_char_style(ctx, tref));
+        let para = crate::ctx::strip_para_defaults(styles::resolve_para_style(ctx, tref));
+        if text != CharStyle::default() || para != ParaStyle::default() {
+            let s = style.get_or_insert_with(TableCellStyle::default);
+            if text != CharStyle::default() {
+                s.text = Some(text);
+            }
+            if para != ParaStyle::default() {
+                s.paragraph = Some(para);
+            }
+        }
+    }
+    let cell_style_index = style.and_then(|s| cell_pool.intern(crate::ctx::strip_cell_defaults(s)));
+    if matches!(value, CellValue::Empty) && cell_style_index.is_none() {
+        return None;
+    }
+
+    // The single v3 format key routes through the same FORMAT list as v5.
+    let format = format_id.and_then(|id| {
+        format_table.entries.get(&id).and_then(|e| {
+            e.format.as_ref().map(|f| CellFormat {
+                kind: match f.varint(1).unwrap_or(0) {
+                    257 => CellFormatKind::Currency,
+                    258 => CellFormatKind::Percent,
+                    261 => CellFormatKind::Date,
+                    268 => CellFormatKind::Duration,
+                    260 => CellFormatKind::Text,
+                    _ => CellFormatKind::Number,
+                },
+                decimals: f.varint(2).filter(|v| *v <= 20).map(|v| v as u32),
+                currency_code: f.string(3),
+                grouping: f.boolean(5),
+                format_string: f.string(18).or_else(|| f.string(14).filter(|s| !s.is_empty())),
+            })
+        })
+    });
+
+    let (v, type_tag, cur) = value_into_parts(value);
+    Some((
+        row,
+        col,
+        TableCell { v, r#type: type_tag, cur, fmt: None, cell_style_index, formula: None },
+        format,
+    ))
 }
 
 /// Pre-BNC (storage_version 4) cell block decoder — fixture-verified against
