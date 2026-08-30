@@ -273,10 +273,14 @@ fn shape_info_drawable(
         _ => None,
     };
 
-    // Text: owned_storage (4) wins, else text_flow (3) → FlowInfo.text_storage (1).
+    // Text: owned_storage (4) wins, else text_flow (3) → FlowInfo.text_storage (1),
+    // else deprecated_storage (2) — older docs (pre-flow) reference the
+    // StorageArchive there directly [proto: TSWPArchives.proto ShapeInfoArchive
+    // field 2, deprecated=true; fixture 5008407355… stores its template text so].
     let storage_id = info
         .reference(4)
-        .or_else(|| info.msg(3).and_then(|f| f.reference(1)));
+        .or_else(|| info.msg(3).and_then(|f| f.reference(1)))
+        .or_else(|| info.reference(2));
     let mut text = storage_id.and_then(|sid| crate::text::extract(ctx, sid)).map(|e| e.text);
     // Keynote placeholders and title/body shapes keep their look on the
     // referenced paragraph style (their storage char-style tables hold null
