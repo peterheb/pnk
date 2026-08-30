@@ -11,6 +11,10 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 wasm-bindgen = "0.2"
 pnk2json = { path = "../pnk2json" }
+# TIFF -> PNG transcoding for browser display (browsers cannot decode TIFF).
+# image 0.25.x is MIT OR Apache-2.0 (license-compatible, see AGENTS.md);
+# only the two codecs we use are enabled.
+image = { version = "0.25", default-features = false, features = ["tiff", "png"] }
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false
