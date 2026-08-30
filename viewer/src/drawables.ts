@@ -264,6 +264,15 @@ function textLayer(d: Drawable & { text?: unknown; common?: DrawableCommon }, do
   if (!("text" in d) || !d.text || (d.text as { paragraphs?: unknown[] }).paragraphs === undefined) return null;
   const layer = el("div", "drawable-text");
   layer.style.alignItems = verticalAlignStyle(d as { verticalAlignment?: string });
+  // Text styles are emitted in CSS `pt` units (text.ts), but canvas geometry
+  // renders 1 document-point = 1px; CSS makes 1pt = 4/3px, so unscaled text
+  // runs 33% oversized and overflows its box (verified vs Keynote's own PDF
+  // export: 71pt title measured 94.7 canvas px). Lay the subtree out in a
+  // 4/3-sized box and scale it down so 1pt of text = 1px of canvas.
+  layer.style.width = "133.3333%";
+  layer.style.height = "133.3333%";
+  layer.style.transform = "scale(0.75)";
+  layer.style.transformOrigin = "0 0";
   const inner = el("div", "drawable-text-inner");
   inner.appendChild(renderStyledText(d.text as never, doc, ctx));
   layer.appendChild(inner);
@@ -354,6 +363,8 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
         layer.style.overflow = "visible";
         layer.style.position = "relative";
         layer.style.whiteSpace = "nowrap";
+        layer.style.width = "max-content"; // percentage of an auto box is meaningless
+        layer.style.height = "auto";
       }
       div.appendChild(layer);
     } else div.textContent = "";

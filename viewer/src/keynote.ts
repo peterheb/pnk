@@ -51,7 +51,7 @@ function buildCanvas(
       if (key && slideGeoms.has(key)) continue;
       if (textOf(d)) {
         const f = frameOf(d);
-        if (f && slideTextFrames.some((sf) => covers(f, sf))) continue;
+        if (f && slideTextFrames.some((sf) => covers(sf, f))) continue;
       }
       inner.appendChild(renderCanvasDrawable(d, hdoc, ctx));
     }

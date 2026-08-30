@@ -280,3 +280,21 @@ table.sheet-table td.cell-error { color: #b03030; font-style: italic; }
 .list-item > p, .list-item > h1, .list-item > h2, .list-item > h3,
 .list-item > h4, .list-item > h5, .list-item > h6 { flex: 1; }
 .list-marker { flex: 0 0 auto; white-space: pre; }
+
+/* === pages/text (agent P) === */
+/* Word-processing pagination: .pages-print is the printable area inside a
+   page frame (positioned at the document margins). display:flow-root keeps
+   paragraph margins from collapsing out, so offscreen measurement and the
+   final page agree. Tight defaults: Apple has no implicit paragraph margins;
+   spacing comes from the paragraph styles. */
+.pages-print { display: flow-root; color: #1d1d1f; line-height: 1.25; font-size: 11pt; }
+.pages-print p { margin: 0; }
+.pages-print h1, .pages-print h2, .pages-print h3,
+.pages-print h4, .pages-print h5, .pages-print h6 { margin: 0; }
+.pages-wp-page { margin: 18px auto; max-width: 720px; }
+
+/* === keynote/drawables (agent K) === */
+/* A shape's text layer must overlay its SVG, not flow below it: both children
+   get 100%x100% from `.canvas-drawable > *`, so the second (text) block was
+   pushed a full shape-height down. Pin it over the geometry instead. */
+.canvas-drawable > .drawable-text { position: absolute; inset: 0; }
