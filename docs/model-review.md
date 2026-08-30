@@ -107,10 +107,18 @@ bounded two-level rule (role default → cell override), documented, and
 pooling pre-composed styles per role×cell would bloat the pools. Keep.
 Banding parity likewise stays a viewer rule.
 
-## Dispatch
-- 3a: agent P (converter styles.rs) — in flight.
-- 3b: model fields landed (this commit); extraction = agent K (keynote.rs).
-- 3c: model field landed (this commit); extraction = agent P (pages.rs).
-- 1A warning aggregation + 1B sparse rows/columns: steward (ctx.rs/model.rs)
-  after the current agent wave lands, to avoid churn under their feet.
-- §2 hygiene nits: owners fix opportunistically with a steward ping.
+## Dispatch — status of record (updated 2026-08-30)
+- 3a resolved-style chain: DONE (fc89bbd runs merge the paragraph chain;
+  36a128a gates phantom borders on the enable fields).
+- 3b masterDrawables + resolved background: DONE (3a54c81 extraction;
+  c248353/23a5a81 tightened paint-list membership to z-order/owned refs and
+  sage-tag prompt slots).
+- 3c templateDrawables: DONE (f73f7a6 fills page-layout underlays).
+- 1A warning aggregation: DONE (counted rows + example paths; 376→2 on the
+  worst doc). 1B sparse rows/columns: DONE (ratified truncation, 1b0bd5f).
+- Post-review model additions, all through the steward loop: CellFormat
+  .grouping, numberSurround, SectionColumns, footnotePlacement, DropCap,
+  ListFormat marker-look fields, Shape/Textbox textFit ("grow"/"shrink",
+  extracted from the real shrink_to_fit flags in 5fc9bcc).
+- §2 hygiene nits (Sheet.style typing, legendFrame→Rect, adjustments index
+  signature): still open, owners fix opportunistically with a steward ping.
