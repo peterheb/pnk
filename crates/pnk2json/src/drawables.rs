@@ -373,10 +373,41 @@ fn promote_para_font(ctx: &mut Ctx, storage_id: u64, text: &mut StyledText) {
     }
 }
 
-fn shape_vertical_alignment(_ctx: &Ctx, _shape: &Msg) -> Option<VerticalAlignment> {
-    // TSWP.ShapeStylePropertiesArchive.VerticalAlignmentType lives on the
-    // shape style's properties; the shape style archive is resolved through
-    // drawable_style, so keep this best-effort at the shape level: none.
+/// TSWP.ShapeStylePropertiesArchive.vertical_alignment (field 2, enum top=0/
+/// middle=1/bottom=2/justify=3 — TSWPArchives.proto:495-513) read off the
+/// text shape's TSWP.ShapeStyleArchive OWN `shape_properties` (11); the TSD
+/// super's field 11 is fill/stroke and must not be misread (its field 2 is a
+/// stroke). Theme presets keep the alignment on ancestor styles, so walk the
+/// TSS.StyleArchive parent chain (field 3). Fixture: Home.key's title
+/// placeholder is bottom-aligned in Apple's export.
+fn shape_vertical_alignment(ctx: &Ctx, shape: &Msg) -> Option<VerticalAlignment> {
+    let mut sid = shape.reference(2)?;
+    for _ in 0..16 {
+        let m = ctx.loaded.msg(sid)?;
+        let is_tswp = ctx
+            .loaded
+            .record(sid)
+            .and_then(|r| r.name.as_deref())
+            .map(|n| n.starts_with("TSWP."))
+            .unwrap_or(false);
+        if is_tswp {
+            if let Some(v) = m.msg(11).and_then(|p| p.varint(2)) {
+                return Some(match v {
+                    1 => VerticalAlignment::Middle,
+                    2 => VerticalAlignment::Bottom,
+                    3 => VerticalAlignment::Justify,
+                    _ => VerticalAlignment::Top,
+                });
+            }
+        }
+        // TSS.StyleArchive.parent (3): the TSWP wrapper nests supers twice
+        // (TSWP → TSD → TSS), a plain TSD style once.
+        let tss = if is_tswp { m.msg(1).and_then(|t| t.msg(1)) } else { m.msg(1) };
+        match tss.and_then(|t| t.reference(3)) {
+            Some(p) => sid = p,
+            None => return None,
+        }
+    }
     None
 }
 
@@ -384,7 +415,7 @@ fn shape_drawable(
     ctx: &mut Ctx,
     shape: &Msg,
     text: Option<StyledText>,
-    _vAlign: Option<VerticalAlignment>,
+    v_align: Option<VerticalAlignment>,
 ) -> Drawable {
     let common = common_from_shape(ctx, shape);
     let geometry = shape
@@ -401,7 +432,7 @@ fn shape_drawable(
         common,
         geometry,
         text,
-        vertical_alignment: None,
+        vertical_alignment: v_align,
         text_insets: None,
     }
 }

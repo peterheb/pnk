@@ -314,7 +314,11 @@ fn gradient_fill(ctx: &mut Ctx, g: &Msg) -> Option<Fill> {
     }
     let mut gradient = Gradient { kind, stops, angle_deg: None, start_point: None, end_point: None };
     if let Some(a) = g.msg(5) {
-        gradient.angle_deg = a.f32v(2).map(|v| v as f64);
+        // TSD.AngleGradientArchive.gradientangle is RADIANS (fixture-verified:
+        // 22_ColorGradient.key stores exactly 3π/2 = 4.71239 for its
+        // top-to-bottom backdrop) — unlike TSD.Geometry.angle, which is
+        // degrees. The model field is degrees.
+        gradient.angle_deg = a.f32v(2).map(|v| (v as f64).to_degrees());
     }
     if let Some(t) = g.msg(6) {
         gradient.start_point = t.point(1).map(|(x, y)| Point { x, y });

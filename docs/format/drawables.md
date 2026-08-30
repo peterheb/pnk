@@ -219,7 +219,9 @@ closeSubpath = 5 }`. This is what `bezier_path_source.path` carries and what
 - `TSD.GradientArchive` (121-137): `type` Linear=0/Radial=1, repeated stops
   `{ color = TSP.Color, fraction = float, inflection = float }`, `opacity`,
   `advancedGradient`, plus `anglegradient = 5` → `TSD.AngleGradientArchive
-  { gradientangle = 2 (float) }` and `transformgradient = 6` →
+  { gradientangle = 2 (float, RADIANS — fixture-verified 2026-08-29:
+  22_ColorGradient.key stores exactly 3π/2 for its vertical backdrop; note the
+  contrast with TSD.Geometry `angle`, which is degrees) }` and `transformgradient = 6` →
   `TSD.TransformGradientArchive { start = TSP.Point, end = TSP.Point,
   baseNaturalSize = TSP.Size }` (111-119). The angle/transform sub-messages
   are how a linear gradient's direction is stored.

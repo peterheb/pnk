@@ -92,6 +92,9 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> KeynoteDocument {
         collect_node_flags(ctx, tree.reference(1), &mut node_flags);
     }
 
+    let master_index: HashMap<u64, usize> =
+        template_ids.iter().enumerate().map(|(i, t)| (*t, i)).collect();
+
     let mut slides = Vec::new();
     for sid in &slide_ids {
         let (mut slide, _) = convert_slide_raw(ctx, *sid, false);
@@ -106,6 +109,17 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> KeynoteDocument {
         // Placeholder inheritance from the master (model-design §3.2); also
         // resolves masterName via the slide's template_slide (17).
         inherit_placeholders(ctx, *sid, &mut slide, &master_names);
+        // Resolved-inheritance contract (model-review §3b): the slide carries
+        // its effective background (master chain walked) and the filtered
+        // master underlay — a viewer paints background, masterDrawables,
+        // drawables, and never consults masters[].
+        if let Some(mi) = resolve_template_id(ctx, *sid).and_then(|mid| master_index.get(&mid)) {
+            let master = &masters[*mi];
+            if slide.background.is_none() {
+                slide.background = master.background.clone();
+            }
+            slide.master_drawables = Some(master_underlay(master, &slide));
+        }
         slides.push(slide);
     }
 
@@ -454,6 +468,16 @@ fn set_build(d: &mut Drawable, spec: BuildSpec) {
     }
 }
 
+/// The slide's master (template_slide, field 17), dereferencing the
+/// KN.SlideNodeArchive navigator wrapper (type 4) when present.
+fn resolve_template_id(ctx: &Ctx, slide_id: u64) -> Option<u64> {
+    let tid = ctx.loaded.msg(slide_id)?.reference(17)?;
+    Some(match ctx.loaded.record(tid).map(|r| r.type_id) {
+        Some(4) => ctx.loaded.msg(tid).and_then(|n| n.reference(2)).unwrap_or(tid),
+        _ => tid,
+    })
+}
+
 /// Placeholder inheritance (model-design §3.2): a slide placeholder without
 /// text or geometry overrides inherits geometry + style from the master's
 /// placeholder of the same role and gets `inherited = true`.
@@ -463,17 +487,7 @@ fn inherit_placeholders(
     slide: &mut Slide,
     master_names: &HashMap<u64, String>,
 ) {
-    let template_id = ctx
-        .loaded
-        .msg(slide_id)
-        .and_then(|m| m.reference(17))
-        .map(|tid| {
-            match ctx.loaded.record(tid).map(|r| r.type_id) {
-                Some(4) => ctx.loaded.msg(tid).and_then(|n| n.reference(2)).unwrap_or(tid),
-                _ => tid,
-            }
-        });
-    let Some(mid) = template_id else { return };
+    let Some(mid) = resolve_template_id(ctx, slide_id) else { return };
     if let Some(mn) = master_names.get(&mid) {
         slide.master_name = Some(mn.clone());
     }
@@ -582,4 +596,107 @@ fn slide_background_fill(ctx: &mut Ctx, style_id: u64, depth: u32) -> Option<Fil
     }
     let parent = m.msg(1).and_then(|base| base.reference(3))?;
     slide_background_fill(ctx, parent, depth + 1)
+}
+
+// ---------------------------------------------------------------------------
+// Master underlay (model-review §3b): which master drawables actually paint
+// under a given slide. Ported from the viewer's compositing rules so the
+// contract lives in ONE place — the converter — and viewers paint verbatim.
+// ---------------------------------------------------------------------------
+
+fn drawable_common(d: &Drawable) -> Option<&DrawableCommon> {
+    match d {
+        Drawable::Shape { common, .. }
+        | Drawable::Textbox { common, .. }
+        | Drawable::Image { common, .. }
+        | Drawable::Movie { common, .. }
+        | Drawable::Group { common, .. }
+        | Drawable::ConnectionLine { common, .. }
+        | Drawable::Table { common, .. }
+        | Drawable::Chart { common, .. } => Some(common),
+        _ => None,
+    }
+}
+
+fn drawable_role(d: &Drawable) -> Option<&str> {
+    drawable_common(d)?.placeholder.as_ref().map(|p| p.role.as_str())
+}
+
+/// (x, y, w, h) when fully placed.
+fn drawable_frame(d: &Drawable) -> Option<(f64, f64, f64, f64)> {
+    let c = drawable_common(d)?;
+    let p = c.position?;
+    let s = c.size?;
+    Some((p.x, p.y, s.width, s.height))
+}
+
+/// Rounded position+size signature for exact-overlap detection.
+fn frame_key(d: &Drawable) -> Option<(i64, i64, i64, i64)> {
+    let (x, y, w, h) = drawable_frame(d)?;
+    Some((x.round() as i64, y.round() as i64, w.round() as i64, h.round() as i64))
+}
+
+/// True when the drawable carries at least one non-whitespace text run.
+fn drawable_has_text(d: &Drawable) -> bool {
+    let text = match d {
+        Drawable::Textbox { text, .. } => Some(text),
+        Drawable::Shape { text, .. } => text.as_ref(),
+        _ => None,
+    };
+    let Some(t) = text else { return false };
+    t.paragraphs.iter().any(|p| {
+        p.items.iter().any(|i| match i {
+            ParagraphItem::Plain(s) => !s.trim().is_empty(),
+            ParagraphItem::Text { text, .. } => !text.trim().is_empty(),
+            _ => false,
+        })
+    })
+}
+
+/// True when `outer` covers at least 60% of `inner`'s area.
+fn covers(outer: (f64, f64, f64, f64), inner: (f64, f64, f64, f64)) -> bool {
+    let ix = ((outer.0 + outer.2).min(inner.0 + inner.2) - outer.0.max(inner.0)).max(0.0);
+    let iy = ((outer.1 + outer.3).min(inner.1 + inner.3) - outer.1.max(inner.1)).max(0.0);
+    let area = inner.2 * inner.3;
+    area > 0.0 && (ix * iy) / area >= 0.6
+}
+
+/// Master furniture that shows under this slide, in master paint order:
+/// - placeholder-tagged prompts (title/body/object/slide-number) never paint
+///   on slides — Apple shows their prompt text only in the editor;
+/// - furniture at exactly a slide drawable's frame is superseded by it;
+/// - role-less text prompts (e.g. a "Section Title" shape) are superseded by
+///   any slide text drawable covering >=60% of their frame.
+fn master_underlay(master: &MasterSlide, slide: &Slide) -> Vec<Drawable> {
+    let slide_geoms: std::collections::HashSet<(i64, i64, i64, i64)> =
+        slide.drawables.iter().filter_map(frame_key).collect();
+    let slide_text_frames: Vec<(f64, f64, f64, f64)> = slide
+        .drawables
+        .iter()
+        .filter(|d| drawable_has_text(d))
+        .filter_map(drawable_frame)
+        .collect();
+    master
+        .drawables
+        .iter()
+        .filter(|d| {
+            if drawable_role(d).is_some() {
+                return false;
+            }
+            if let Some(k) = frame_key(d) {
+                if slide_geoms.contains(&k) {
+                    return false;
+                }
+            }
+            if drawable_has_text(d) {
+                if let Some(f) = drawable_frame(d) {
+                    if slide_text_frames.iter().any(|sf| covers(*sf, f)) {
+                        return false;
+                    }
+                }
+            }
+            true
+        })
+        .cloned()
+        .collect()
 }
