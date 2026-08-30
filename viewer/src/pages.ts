@@ -88,8 +88,9 @@ function pageCanvas(
     frame.style.aspectRatio = `${doc.pageSize.width} / ${doc.pageSize.height}`;
     const inner = document.createElement("div");
     inner.className = "canvas-inner";
-    // scale: pages render at a fixed 720px logical width, scaled responsively
-    const scale = 720 / doc.pageSize.width;
+    // scale: pages render at a 720px logical width, or the container's on
+    // narrow (mobile) screens — display-only, layout metrics are in pt
+    const scale = pageDisplayWidth / doc.pageSize.width;
     inner.style.width = `${doc.pageSize.width}px`;
     inner.style.height = `${doc.pageSize.height}px`;
     inner.style.transform = `scale(${scale})`;
@@ -107,7 +108,7 @@ function pageCanvas(
     const inner = document.createElement("div");
     inner.className = "canvas-inner";
     inner.style.position = "relative";
-    inner.style.width = "720px";
+    inner.style.width = `${pageDisplayWidth}px`;
     inner.style.minHeight = "400px";
     for (const d of templateDrawables ?? []) inner.appendChild(renderCanvasDrawable(d, hdoc, ctx));
     for (const d of drawables) inner.appendChild(renderCanvasDrawable(d, hdoc, ctx));
@@ -386,7 +387,7 @@ function paginatedBody(
     });
   }
 
-  const scale = 720 / g.w;
+  const scale = pageDisplayWidth / g.w;
   for (let i = 0; i < pageCount; i++) {
     const frame = document.createElement("div");
     frame.className = "canvas-frame pages-page pages-wp-page";
@@ -505,7 +506,13 @@ function paginatedBody(
   });
 }
 
+/** Display width for a page frame: 720px logical, or the container width on
+ *  narrow screens so pages default to full width on mobile. Set per render
+ *  from the mount; pagination itself measures in page POINTS regardless. */
+let pageDisplayWidth = 720;
+
 export function renderPages(doc: PagesDocument, hdoc: HydratedDoc, ctx: ViewerCtx, mount: HTMLElement): void {
+  pageDisplayWidth = Math.max(280, Math.min(720, mount.clientWidth || 720));
   const view = document.createElement("div");
   view.id = "pages-view";
 
