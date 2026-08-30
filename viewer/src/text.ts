@@ -132,6 +132,31 @@ function toAlpha(n: number, upper: boolean): string {
 }
 
 /**
+ * Unicode stand-ins for symbol-font marker glyphs addressed via the U+F0xx
+ * private-use range (PowerPoint-import decks store e.g. Wingdings3 0x75).
+ * Keyed "family:lowbyte" with the family lowercased/despaced; anything
+ * unmapped degrades to a plain bullet. [inferred: standard Wingdings/Symbol
+ * glyph charts; fixture 1249b390 stores wingdings3:0x75 for its ▶ lists]
+ */
+const PUA_MARKERS: Record<string, string> = {
+  "wingdings:108": "●", // l
+  "wingdings:109": "○", // m
+  "wingdings:110": "■", // n
+  "wingdings:111": "□", // o
+  "wingdings:117": "◆", // u
+  "wingdings:118": "❖", // v
+  "wingdings:167": "▪", // §
+  "wingdings:216": "➢", // Ø
+  "wingdings:252": "✓", // ü
+  "wingdings3:116": "◀", // t
+  "wingdings3:117": "▶", // u
+  "wingdings3:112": "▲", // p
+  "wingdings3:113": "▼", // q
+  "symbol:183": "•", // ·
+  "symbol:45": "−",
+};
+
+/**
  * One paragraph, styled from the hydrated pools. Headings by outlineLevel;
  * list membership renders a marker (• / 1. …) with restart-aware numbering
  * tracked in the shared ListNumberingState.
@@ -144,7 +169,14 @@ export function renderParagraph(
 ): HTMLElement {
   const style = paraStyleOf(doc, p.pStyle);
   const list = style?.list;
-  const hasMarker = !!list && list.markerKind !== "none" &&
+  // Apple draws no marker on an EMPTY list paragraph (blank bullet lines
+  // exist only while editing — 1249b390's preview shows clean gaps between
+  // items where we drew lone ▶ glyphs); inline objects/fields still count
+  // as content.
+  const hasContent = p.items.some((it) =>
+    typeof it === "string" ? it.length > 0 : "type" in it ? true : (it as TextRun).text.length > 0,
+  );
+  const hasMarker = !!list && hasContent && list.markerKind !== "none" &&
     (list.markerKind === "string" ? !!list.markerText : list.markerKind === "number");
 
   const level = style?.outlineLevel ?? 0;
@@ -183,8 +215,12 @@ export function renderParagraph(
     }
     // Nesting: the marker indent (absolute, per level) shifts the whole
     // row when the paragraph style itself has no left indent — G5's nested
-    // bullets step 9/18pt per level, numbered 18/36/54pt.
-    if (!style?.leftIndentPt && list!.markerIndentPt) {
+    // bullets step 9/18pt per level, numbered 18/36/54pt. A NEGATIVE indent
+    // (PowerPoint-import decks store -27 at level 0: marker hangs left of
+    // the text origin) must not become a negative margin — that shifted the
+    // whole row out of the box, clipping the first glyph of every line and
+    // hiding the marker entirely (1249b390 'FileMaker Clipboard' deck).
+    if (!style?.leftIndentPt && list!.markerIndentPt && list!.markerIndentPt > 0) {
       wrap.style.marginLeft = `${list!.markerIndentPt}px`;
     }
     const marker = document.createElement("span");
@@ -214,6 +250,14 @@ export function renderParagraph(
     // default 15px, not the paragraph's size.
     if (list!.markerColor) marker.style.color = list!.markerColor;
     if (list!.markerFontName) marker.style.fontFamily = `"${list!.markerFontName}", sans-serif`;
+    // Symbol-font markers (Wingdings/Webdings/Symbol) address glyphs through
+    // the U+F0xx private-use range; machines without the font draw tofu.
+    // Substitute the Unicode equivalent and let any real font draw it.
+    if (/^[-]$/.test(markerText)) {
+      const uni = PUA_MARKERS[`${(list!.markerFontName ?? "").replace(/\s+/g, "").toLowerCase()}:${markerText.charCodeAt(0) & 0xff}`];
+      marker.textContent = uni ?? "•";
+      marker.style.fontFamily = "";
+    }
     if (list!.markerScale) {
       const basePt = runCs?.fontSizePt;
       marker.style.fontSize = basePt
