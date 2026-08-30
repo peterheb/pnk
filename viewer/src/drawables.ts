@@ -406,7 +406,30 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
     const layer = textLayer({ ...d, text: d.text, verticalAlignment: d.verticalAlignment, common: c }, doc, ctx);
     if (layer) div.appendChild(layer);
   } else if (d.type === "image") {
-    div.appendChild(imageEl(d.image.dataId, d.image.preferredFileName ?? d.image.fileName, ctx, d.image.preferredFileName, d.thumbnail));
+    const img = imageEl(d.image.dataId, d.image.preferredFileName ?? d.image.fileName, ctx, d.image.preferredFileName, d.thumbnail);
+    const m = d.mask?.common;
+    if (m?.position && m.size && m.size.width > 0 && m.size.height > 0) {
+      // TSD.ImageArchive.mask: the mask frame is in the image drawable's own
+      // space — show only that window, keeping the full-size image behind it
+      // (ppd deck cover photo: 1770x1508 image cropped to a 1770x577 band).
+      const wrap = el("div");
+      wrap.style.position = "absolute";
+      wrap.style.left = `${m.position.x}px`;
+      wrap.style.top = `${m.position.y}px`;
+      wrap.style.width = `${m.size.width}px`;
+      wrap.style.height = `${m.size.height}px`;
+      wrap.style.overflow = "hidden";
+      img.style.position = "absolute";
+      img.style.left = `${-m.position.x}px`;
+      img.style.top = `${-m.position.y}px`;
+      img.style.width = `${w}px`;
+      img.style.height = `${h}px`;
+      img.style.maxWidth = "none";
+      wrap.appendChild(img);
+      div.appendChild(wrap);
+    } else {
+      div.appendChild(img);
+    }
   } else if (d.type === "movie") {
     div.appendChild(movieEl(d, ctx));
   } else if (d.type === "group") {
