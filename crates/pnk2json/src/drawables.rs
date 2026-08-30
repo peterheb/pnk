@@ -341,6 +341,20 @@ fn shape_info_drawable(
         }
     }
     let is_text_box = info.boolean(6).unwrap_or(false);
+    let frame = shape_text_frame_props(ctx, &shape);
+    // Text-fit semantics: "shrink text on overflow" (resolved flag) scales
+    // text down to the stored box; a plain text box (is_text_box, not a
+    // placeholder) auto-grows its height as content wraps — Keynote stores
+    // the height laid out with Apple's font metrics, so renderers with
+    // different metrics must treat it as a minimum, not a clip [inferred:
+    // Keynote app behavior; placeholders keep layout-fixed frames].
+    let text_fit = if frame.shrink_to_fit == Some(true) {
+        Some(TextFit::Shrink)
+    } else if is_text_box && placeholder_role.is_none() {
+        Some(TextFit::Grow)
+    } else {
+        None
+    };
 
     let mut drawable = if is_text_box || type_id == 7 || type_id == 12 {
         // Textbox (or placeholder, which renders like a textbox).
@@ -351,12 +365,17 @@ fn shape_info_drawable(
         Drawable::Textbox {
             common,
             text: text.unwrap_or_default(),
-            vertical_alignment: shape_vertical_alignment(ctx, &shape),
+            vertical_alignment: frame.vertical_alignment,
             text_insets: None,
-            text_fit: None,
+            text_fit,
         }
     } else {
-        let mut d = shape_drawable(ctx, &shape, text, shape_vertical_alignment(ctx, &shape));
+        let mut d = shape_drawable(ctx, &shape, text, frame.vertical_alignment);
+        if text_fit.is_some() {
+            if let Drawable::Shape { text_fit: tf, .. } = &mut d {
+                *tf = text_fit;
+            }
+        }
         if let Some(role) = placeholder_role {
             if let Drawable::Shape { common, .. } = &mut d {
                 common.placeholder = Some(PlaceholderInfo { role, inherited: None });
@@ -420,31 +439,57 @@ fn promote_para_font(ctx: &mut Ctx, storage_id: u64, text: &mut StyledText) {
     }
 }
 
+/// Text-frame properties resolved through the style parent chain.
+struct TextFrameProps {
+    vertical_alignment: Option<VerticalAlignment>,
+    /// "Shrink text on overflow": TSWP.ShapeStylePropertiesArchive
+    /// .shrink_to_fit (field 1) [proto: TSWPArchives.proto:502]; the older
+    /// TSWP.ColumnStyleArchive keeps it in column_properties.shrink_to_fit
+    /// (field 2) with vertical_alignment at field 5 [proto:
+    /// TSWPArchives.proto:468-493].
+    shrink_to_fit: Option<bool>,
+}
+
 /// TSWP.ShapeStylePropertiesArchive.vertical_alignment (field 2, enum top=0/
-/// middle=1/bottom=2/justify=3 — TSWPArchives.proto:495-513) read off the
-/// text shape's TSWP.ShapeStyleArchive OWN `shape_properties` (11); the TSD
-/// super's field 11 is fill/stroke and must not be misread (its field 2 is a
-/// stroke). Theme presets keep the alignment on ancestor styles, so walk the
-/// TSS.StyleArchive parent chain (field 3). Fixture: Home.key's title
-/// placeholder is bottom-aligned in Apple's export.
-fn shape_vertical_alignment(ctx: &Ctx, shape: &Msg) -> Option<VerticalAlignment> {
-    let mut sid = shape.reference(2)?;
+/// middle=1/bottom=2/justify=3 — TSWPArchives.proto:495-513) and
+/// shrink_to_fit (field 1) read off the text shape's TSWP.ShapeStyleArchive
+/// OWN `shape_properties` (11); the TSD super's field 11 is fill/stroke and
+/// must not be misread (its field 2 is a stroke). Theme presets keep these
+/// on ancestor styles, so walk the TSS.StyleArchive parent chain (field 3);
+/// each property resolves independently at its nearest present level.
+/// Fixture: Home.key's title placeholder is bottom-aligned in Apple's export.
+fn shape_text_frame_props(ctx: &Ctx, shape: &Msg) -> TextFrameProps {
+    let mut props = TextFrameProps { vertical_alignment: None, shrink_to_fit: None };
+    let Some(mut sid) = shape.reference(2) else { return props };
     for _ in 0..16 {
-        let m = ctx.loaded.msg(sid)?;
-        let is_tswp = ctx
+        let Some(m) = ctx.loaded.msg(sid) else { return props };
+        let name = ctx
             .loaded
             .record(sid)
             .and_then(|r| r.name.as_deref())
-            .map(|n| n.starts_with("TSWP."))
-            .unwrap_or(false);
+            .unwrap_or("");
+        let is_tswp = name.starts_with("TSWP.");
         if is_tswp {
-            if let Some(v) = m.msg(11).and_then(|p| p.varint(2)) {
-                return Some(match v {
-                    1 => VerticalAlignment::Middle,
-                    2 => VerticalAlignment::Bottom,
-                    3 => VerticalAlignment::Justify,
-                    _ => VerticalAlignment::Top,
-                });
+            // Field slots differ between the two TSWP text-frame styles.
+            let is_column = name == "TSWP.ColumnStyleArchive";
+            let (va_field, fit_field) = if is_column { (5, 2) } else { (2, 1) };
+            if props.vertical_alignment.is_none() {
+                if let Some(v) = m.msg(11).and_then(|p| p.varint(va_field)) {
+                    props.vertical_alignment = Some(match v {
+                        1 => VerticalAlignment::Middle,
+                        2 => VerticalAlignment::Bottom,
+                        3 => VerticalAlignment::Justify,
+                        _ => VerticalAlignment::Top,
+                    });
+                }
+            }
+            if props.shrink_to_fit.is_none() {
+                if let Some(b) = m.msg(11).and_then(|p| p.boolean(fit_field)) {
+                    props.shrink_to_fit = Some(b);
+                }
+            }
+            if props.vertical_alignment.is_some() && props.shrink_to_fit.is_some() {
+                return props;
             }
         }
         // TSS.StyleArchive.parent (3): the TSWP wrapper nests supers twice
@@ -452,10 +497,10 @@ fn shape_vertical_alignment(ctx: &Ctx, shape: &Msg) -> Option<VerticalAlignment>
         let tss = if is_tswp { m.msg(1).and_then(|t| t.msg(1)) } else { m.msg(1) };
         match tss.and_then(|t| t.reference(3)) {
             Some(p) => sid = p,
-            None => return None,
+            None => return props,
         }
     }
-    None
+    props
 }
 
 fn shape_drawable(
