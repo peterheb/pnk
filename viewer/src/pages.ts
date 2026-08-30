@@ -202,14 +202,39 @@ function paginatedBody(
   const g = pageGeom(doc)!;
   const body = doc.body!;
 
-  // 1. render all paragraphs once, in order (list numbering is stateful)
+  // 1. render all paragraphs once, in order (list numbering is stateful).
+  // A paragraph carrying a PAGE-SIZED inline group (template covers: 00C
+  // Textbook stores the whole cover as one inline group) renders as a
+  // full-bleed canvas layer on its own page instead of flowing inside the
+  // printable area; its positioned inline siblings ride along.
+  const pageSizedDrawables = (p: (typeof body.paragraphs)[number]): Drawable[] | null => {
+    let pageSized = false;
+    const positioned: Drawable[] = [];
+    for (const it of p.items) {
+      if (typeof it === "string" || !("type" in it) || it.type !== "inline-object") continue;
+      const d = it.drawable;
+      const sz = d.type !== "unknown" ? d.common?.size : undefined;
+      if (!sz) continue;
+      positioned.push(d);
+      if (sz.width >= g.w * 0.85 && sz.height >= g.h * 0.85) pageSized = true;
+    }
+    return pageSized ? positioned : null;
+  };
   const listState = newListNumberingState();
   const els: HTMLElement[] = [];
   const forceBreak: boolean[] = [];
-  for (const p of body.paragraphs) {
+  const fullBleed: (Drawable[] | null)[] = [];
+  body.paragraphs.forEach((p, i) => {
+    const fb = pageSizedDrawables(p);
+    fullBleed.push(fb);
+    if (fb) {
+      els.push(document.createElement("div")); // zero-height stand-in
+      forceBreak.push(true);
+      return;
+    }
     els.push(renderParagraph(p, hdoc, ctx, listState));
-    forceBreak.push(!!paraStyleOf(hdoc, p.pStyle)?.pageBreakBefore);
-  }
+    forceBreak.push(!!paraStyleOf(hdoc, p.pStyle)?.pageBreakBefore || !!fullBleed[i - 1]);
+  });
 
   // per-paragraph column spec from the sections' body ranges; a section
   // start (beyond paragraph 0) is a page break
@@ -279,7 +304,10 @@ function paginatedBody(
   // (column sections, stacked-column budget)
   const pages: PageBlock[][] = [[]];
   const pageOfPara: number[] = new Array(els.length).fill(0);
-  const pageHasContent = () => pages[pages.length - 1].some((b) => b.els.length > 0);
+  const fullBleedByPage = new Map<number, Drawable[]>();
+  const pageHasContent = () =>
+    pages[pages.length - 1].some((b) => b.els.length > 0) ||
+    fullBleedByPage.has(pages.length - 1);
   const newPage = () => pages.push([]);
   segments.forEach((seg, si) => {
     if (si > 0 && pageHasContent()) newPage();
@@ -293,6 +321,13 @@ function paginatedBody(
           newPage();
           pageTop = seg.tops[j];
           blk = null;
+        }
+        if (fullBleed[k]) {
+          // full-bleed cover page: the drawables own the page; the zero-
+          // height stand-in element stays out of the flow entirely
+          fullBleedByPage.set(pages.length - 1, fullBleed[k]!);
+          pageOfPara[k] = pages.length - 1;
+          return;
         }
         if (!blk) {
           const page = pages[pages.length - 1];
@@ -357,6 +392,9 @@ function paginatedBody(
     frame.className = "canvas-frame pages-page pages-wp-page";
     frame.style.aspectRatio = `${g.w} / ${g.h}`;
     frame.style.height = `${g.h * scale}px`;
+    // clip at the paper edge like Pages (full-bleed covers store images
+    // taller than the page: 00C's is 1155pt on a 1024pt page)
+    frame.style.overflow = "hidden";
     frame.dataset.pageIndex = String(i);
     const inner = document.createElement("div");
     inner.className = "canvas-inner";
@@ -370,6 +408,10 @@ function paginatedBody(
 
     // floating drawables first: behind the body text, like Apple's default
     for (const d of floatingByPage.get(i) ?? []) {
+      inner.appendChild(renderCanvasDrawable(d, hdoc, ctx));
+    }
+    // full-bleed cover drawables paint at page coordinates (not inset)
+    for (const d of fullBleedByPage.get(i) ?? []) {
       inner.appendChild(renderCanvasDrawable(d, hdoc, ctx));
     }
 

@@ -454,6 +454,32 @@ pub fn resolve_list_format(ctx: &mut Ctx, list_id: u64, level: u32) -> Option<Li
         .map(|m| m.packed_f32s(13))
         .find(|v| !v.is_empty())
         .unwrap_or_default();
+    // Marker LOOK from the list style itself [proto: TSWPArchives.proto
+    // ListStyleArchive font_color = 21 (null 20), font_name = 23 (null 22),
+    // geometries = 14 (LabelGeometry { scale = 1 [default 1],
+    // baseline_offset = 2 }, one per level)]. First message along the chain
+    // carrying the field wins; a set null flag clears it (TSS pattern).
+    let first_prop = |field: u32, null_field: u32| -> Option<&Msg> {
+        for m in &msgs {
+            if m.boolean(null_field) == Some(true) {
+                return None;
+            }
+            if m.has(field) {
+                return Some(m);
+            }
+        }
+        None
+    };
+    let marker_color = first_prop(21, 20).and_then(|m| crate::tsd::color_of(ctx, m, 21));
+    let marker_font_name = first_prop(23, 22).and_then(|m| m.string(23));
+    let geoms = msgs.iter().map(|m| m.msgs(14)).find(|v| !v.is_empty()).unwrap_or_default();
+    let geom = geoms.get(level as usize).or_else(|| geoms.last());
+    let marker_scale = geom
+        .and_then(|g| g.f32v(1))
+        .map(|v| v as f64)
+        .filter(|v| *v != 1.0 && *v > 0.0);
+    let marker_baseline_offset_pt =
+        geom.and_then(|g| g.f32v(2)).map(|v| v as f64).filter(|v| *v != 0.0);
     Some(ListFormat {
         number_surround,
         level,
@@ -463,10 +489,10 @@ pub fn resolve_list_format(ctx: &mut Ctx, list_id: u64, level: u32) -> Option<Li
         marker_image,
         start: None,
         marker_indent_pt: at_level(&indents, level).map(|v| v as f64),
-        marker_color: None,
-        marker_font_name: None,
-        marker_scale: None,
-        marker_baseline_offset_pt: None,
+        marker_color,
+        marker_font_name,
+        marker_scale,
+        marker_baseline_offset_pt,
     })
 }
 

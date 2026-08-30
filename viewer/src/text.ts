@@ -196,11 +196,31 @@ export function renderParagraph(
     // slides 2/5: 28pt white body, default marker). Apple actually colors
     // markers from the list style's own font_color/scale — not yet in the
     // model (proposal sent) — so the run style is the faithful fallback.
-    const firstRun = p.items.find(
-      (it): it is TextRun => typeof it !== "string" && !("type" in it),
+    // Style source: the first run with visible text (writers prepend empty
+    // runs whose styles carry no size — RIPE), preferring one that resolves
+    // to an explicit font size.
+    const runs = p.items.filter(
+      (it): it is TextRun => typeof it !== "string" && !("type" in it) && it.text.length > 0,
     );
-    if (firstRun) applyCharStyle(marker, charStyleOf(doc, firstRun.cStyle));
+    const runCs =
+      runs.map((r) => charStyleOf(doc, r.cStyle)).find((cs) => cs?.fontSizePt) ??
+      (runs.length ? charStyleOf(doc, runs[0].cStyle) : undefined);
+    if (runCs) applyCharStyle(marker, runCs);
     marker.style.paddingRight = "0.3em"; // marker-to-text gap, scales with size
+    // The list style's OWN marker look wins over run inheritance when stored
+    // (ListFormat markerColor/markerFontName/markerScale — RIPE orange dots).
+    // markerScale multiplies the RUN size (LabelGeometry scale_with_text), so
+    // resolve to px against it — an em here would key off the wrapper's
+    // default 15px, not the paragraph's size.
+    if (list!.markerColor) marker.style.color = list!.markerColor;
+    if (list!.markerFontName) marker.style.fontFamily = `"${list!.markerFontName}", sans-serif`;
+    if (list!.markerScale) {
+      const basePt = runCs?.fontSizePt;
+      marker.style.fontSize = basePt
+        ? `${basePt * list!.markerScale}px`
+        : `${list!.markerScale}em`;
+    }
+    if (list!.markerBaselineOffsetPt) marker.style.verticalAlign = `${list!.markerBaselineOffsetPt}px`;
     wrap.appendChild(marker);
     wrap.appendChild(el);
     renderParagraphContent(el, p, doc, ctx, style?.dropCap);
