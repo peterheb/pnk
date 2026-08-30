@@ -5,7 +5,7 @@ files entirely in your browser. The file is parsed from raw bytes by Rust
 compiled to WebAssembly, emitted as a typed JSON model, and rendered by a
 vanilla-TS viewer. No account, no upload, no backend.
 
-Live at **[pnk.live](https://pnk.live)**. Built solo for
+Live at **[pnk.vu](https://pnk.vu)**. Built solo for
 [Hackyard Yard #1](https://hackyard.tech/yards/yard-1) ("no accounts",
 48 hours, 2026-08-28 → 30).
 
