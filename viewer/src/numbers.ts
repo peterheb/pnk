@@ -3,7 +3,7 @@
 
 import type { NumbersDocument, Sheet } from "../../model/src/numbers";
 import type { ViewerCtx } from "./ctx";
-import { renderCanvasDrawable } from "./drawables";
+import { applyTextFit, renderCanvasDrawable } from "./drawables";
 import type { HydratedDoc } from "./hydrate";
 
 function drawableExtent(
@@ -53,6 +53,10 @@ export function renderNumbers(doc: NumbersDocument, hdoc: HydratedDoc, ctx: View
   const activate = (index: number) => {
     areaSlot.replaceChildren();
     areaSlot.appendChild(renderSheet(doc.sheets[index], hdoc, ctx, index));
+    // Font-metric tolerance shrink for shape/textbox text (measurement
+    // pass; keynote has run it since c94861a — sheets clipped instead:
+    // proteger-les-donnees red banner cut its own caption).
+    applyTextFit(areaSlot);
     for (const tab of tabs.children) {
       tab.classList.toggle("active", (tab as HTMLElement).dataset.sheetIndex === String(index));
     }

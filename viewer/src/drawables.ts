@@ -811,11 +811,18 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
       div.appendChild(layer);
     } else div.textContent = "";
   } else if (d.type === "shape") {
-    const svg = shapeSvg(d.geometry, w, h, c.style);
+    // A 0-height shape whose PATH carries a real natural height is a full
+    // box stored degenerate (proteger-les-donnees red banner: size 471x0,
+    // path 471x32) — adopt the path height so its white caption gets the
+    // band as its layout/fit box instead of spilling invisibly below it.
+    const naturalH = d.geometry.naturalSize?.height ?? 0;
+    const effH = h === 0 && d.geometry.path && naturalH > 1 ? naturalH : h;
+    if (effH !== h) div.style.height = `${effH}px`;
+    const svg = shapeSvg(d.geometry, w, effH, c.style);
     div.appendChild(svg);
     const layer = textLayer({ ...d, text: d.text, verticalAlignment: d.verticalAlignment, common: c }, doc, ctx);
     if (layer) {
-      if (h === 0) {
+      if (effH === 0) {
         // 0-height shape carrying text (RIPE ea785d2e subtitle): the box is
         // an anchor, not a clip — let the text flow down from it.
         layer.style.bottom = "auto";

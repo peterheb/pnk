@@ -7,7 +7,7 @@ import type { PagesDocument, PageTemplate } from "../../model/src/pages";
 import type { ViewerCtx } from "./ctx";
 import type { Drawable, StyledText } from "../../model/src/shared";
 import { newListNumberingState, renderParagraph, renderStyledText } from "./text";
-import { renderCanvasDrawable } from "./drawables";
+import { applyTextFit, renderCanvasDrawable } from "./drawables";
 import { paraStyleOf, type HydratedDoc } from "./hydrate";
 
 /** Any visible text in a styled-text block? */
@@ -519,6 +519,7 @@ export function renderPages(doc: PagesDocument, hdoc: HydratedDoc, ctx: ViewerCt
     paginatedBody(doc, hdoc, ctx, view);
     if (doc.footnotePlacement) appendFootnotes(doc, hdoc, ctx, view);
     mount.appendChild(view);
+    applyTextFit(view);
     return;
   }
 
@@ -543,6 +544,8 @@ export function renderPages(doc: PagesDocument, hdoc: HydratedDoc, ctx: ViewerCt
     floatingSection(doc, hdoc, ctx, view, trailing, "Floating objects");
   }
   mount.appendChild(view);
+  // measurement pass (attached): bounded shrink absorbs font-metric drift
+  applyTextFit(view);
 }
 
 function appendFootnotes(doc: PagesDocument, hdoc: HydratedDoc, ctx: ViewerCtx, view: HTMLElement): void {
