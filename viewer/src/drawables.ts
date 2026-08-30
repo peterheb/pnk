@@ -21,7 +21,7 @@ import type {
 import type { ViewerCtx } from "./ctx";
 import { renderTable } from "./tables";
 import { renderStyledText } from "./text";
-import type { HydratedDoc } from "./hydrate";
+import { paraStyleOf, type HydratedDoc } from "./hydrate";
 
 function el(tag: string, className?: string): HTMLElement {
   const e = document.createElement(tag);
@@ -763,6 +763,15 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
   if (contact) div.appendChild(contact);
 
   if (d.type === "textbox") {
+    // Textboxes carry shape styling too: a filled label box loses its
+    // background if only the text layer paints (monster deck: lavender
+    // "Transverse density" tags, dark-red banner boxes rendered as ghost
+    // text on nothing).
+    const bg = fillToCss(c.style?.fill);
+    if (bg) div.style.background = bg;
+    if (c.style?.stroke && c.style.stroke.widthPt > 0) {
+      div.style.border = `${c.style.stroke.widthPt}px solid ${c.style.stroke.color}`;
+    }
     const layer = textLayer(d, doc, ctx);
     if (layer) {
       // Zero-size textboxes (Keynote emits some badge labels at 0×0) carry
@@ -776,10 +785,26 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
         layer.style.whiteSpace = "nowrap";
         layer.style.width = "max-content"; // percentage of an auto box is meaningless
         layer.style.height = "auto";
-        // Auto-sized boxes lay out at Apple's metrics; browser faces run
-        // wider, so a label Apple fits to the slide edge can spill past it
-        // ("James 3:13-18" bottom-right badges). The measurement pass clamps.
-        div.dataset.textFit = "edge-clamp";
+        // A 0-size box is a point ANCHOR: text laid out in it overflows
+        // equally per its alignment, so centered paragraphs center ON the
+        // stored position and right-aligned ones end there; same vertically
+        // via the box's own vertical alignment. Monster deck fixture: the
+        // centered "DGLAP, ERBL" tag stores (888, 477) and Apple draws its
+        // box spanning 767..1016 x 456..507 — dead-center on the point;
+        // the left-aligned "Transverse" label anchors top-left as before.
+        const firstPara = d.text.paragraphs?.[0];
+        const hAlign = paraStyleOf(doc, firstPara?.pStyle)?.horizontalAlignment;
+        const tx = hAlign === "center" ? "-50%" : hAlign === "right" ? "-100%" : "0%";
+        const ty = d.verticalAlignment === "middle" ? "-50%" : d.verticalAlignment === "bottom" ? "-100%" : "0%";
+        if (tx !== "0%" || ty !== "0%") {
+          div.style.transform = `${div.style.transform ?? ""} translate(${tx}, ${ty})`.trim();
+        } else {
+          // Auto-sized boxes lay out at Apple's metrics; browser faces run
+          // wider, so a label Apple fits to the slide edge can spill past it
+          // ("James 3:13-18" bottom-right badges). The measurement pass
+          // clamps (offset-based, so only valid untransformed).
+          div.dataset.textFit = "edge-clamp";
+        }
       } else {
         applyTextFitMode(div, layer, d.textFit, d.verticalAlignment);
       }
