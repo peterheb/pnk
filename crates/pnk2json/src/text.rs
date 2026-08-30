@@ -147,11 +147,17 @@ pub fn extract_from_msg(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText> {
 
         // Paragraph style: entry exactly at the paragraph start sets/overrides
         // the style; a null object (or no entry) carries the previous
-        // paragraph's style forward (docs/format/text.md §Paragraph model).
+        // paragraph's style forward (docs/format/text.md §Paragraph model,
+        // [parser: iwork@02c26ebf] "A null style seems to mean keep the
+        // previous one" — KVKK fixture: 15/20 body paragraphs sit on null
+        // entries and must inherit the justify+8pt style, not reset to
+        // default).
         let mut style_ref = last_style;
         if let Some(e) = entry_at(&para_entries, p_start_u16) {
-            if e.utf16_off == p_start_u16 || style_ref.is_none() {
-                style_ref = e.object_id;
+            if let Some(oid) = e.object_id {
+                if e.utf16_off == p_start_u16 || style_ref.is_none() {
+                    style_ref = Some(oid);
+                }
             }
         }
         if style_ref.is_some() {
