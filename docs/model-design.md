@@ -82,6 +82,20 @@ for a present-but-valueless cell); **`fmt`** = index into the table's
 into `styles.para`; **`cur`** = ISO 4217 currency code when
 `type: "currency"`.
 
+**STYLES OMIT-DEFAULT** (approved): pooled styles (`styles.para`,
+`styles.char`, per-table `cellStyles`) emit only NON-DEFAULT values; an
+absent key means the documented default applies (for resolved styles this
+coincides with "not specified": the inheritance chain was exhausted, so the
+app default wins). Defaults: indents and spacing (`leftIndentPt`,
+`rightIndentPt`, `firstLineIndentPt`, `spaceBeforePt`, `spaceAfterPt`,
+`baselineShiftPt`, `trackingPt`) **0.0**; `lineSpacingMultiple` **1.0**
+(single); `horizontalAlignment` **"auto"**; `list.markerKind` **"none"**,
+`list.level` **0**; booleans (`bold`, `italic`, `keepLinesTogether`,
+`keepWithNext`, `hyphenate`, `pageBreakBefore`, `textWrap`) **false**;
+`underline`/`strikethrough` **"none"**. Colors and `fontName`/`fontSizePt`
+have no format default — absent means the viewer picks (black / its font
+stack).
+
 **CellFormat kind is a CLOSED enum** (`CellFormat.kind`): exotic number
 displays emit as `kind: "number"` with the semantic carried in
 `formatString` — hex/binary/octal as `"base-16"` / `"base-2"` / `"base-8"`,
