@@ -17,6 +17,7 @@ import type {
   LineEnd,
   ShapeGeometry,
   Stroke,
+  StyledText,
 } from "../../model/src/shared";
 import type { ViewerCtx } from "./ctx";
 import { renderTable } from "./tables";
@@ -584,6 +585,13 @@ export function applyTextFit(root: HTMLElement): void {
     const minScale = box.dataset.textFit === "shrink" ? 0.35 : 0.6;
     inner.style.transform = "";
     inner.style.width = "";
+    // The inner is a flex ITEM (.drawable-text is the flex container for
+    // vertical alignment); its default flex-shrink:1 silently squashed the
+    // compensated >100% width back to the container's, so text wrapped at
+    // the ORIGINAL width and the scale left a right-side gap — centered
+    // lines drifted left by (1−s)/2·width (0d5851c0 slide 9 subtitle,
+    // ~45pt off-center at s=0.89).
+    inner.style.flex = "0 0 auto";
     const boxH = layer.clientHeight;
     if (boxH <= 0) continue;
     const align = layer.style.alignItems;
@@ -686,6 +694,46 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
 // Public entry points
 // ---------------------------------------------------------------------------
 
+/**
+ * A 0-size box is a point ANCHOR: text laid out in it overflows per its
+ * alignment, so centered paragraphs center ON the stored position and
+ * right-aligned ones end there; same vertically via the box's own vertical
+ * alignment. Monster deck fixture: the centered "DGLAP, ERBL" tag stores
+ * (888, 477) and Apple draws its box spanning 767..1016 x 456..507 —
+ * dead-center on the point; the left-aligned "Transverse" label anchors
+ * top-left as before. Applies to 0×0 textboxes and 0×0 shapes alike.
+ */
+function anchorZeroSizeText(
+  div: HTMLElement,
+  layer: HTMLElement,
+  text: StyledText | undefined,
+  verticalAlignment: string | undefined,
+  doc: HydratedDoc,
+): void {
+  div.style.width = "auto";
+  div.style.height = "auto";
+  div.style.overflow = "visible";
+  layer.style.overflow = "visible";
+  layer.style.position = "relative";
+  layer.style.whiteSpace = "nowrap";
+  layer.style.width = "max-content"; // percentage of an auto box is meaningless
+  layer.style.height = "auto";
+  const paras = text?.paragraphs;
+  const firstPara = paras?.find((p) => typeof p !== "string" && p.items.length > 0) ?? paras?.[0];
+  const hAlign = paraStyleOf(doc, typeof firstPara === "string" ? undefined : firstPara?.pStyle)?.horizontalAlignment;
+  const tx = hAlign === "center" ? "-50%" : hAlign === "right" ? "-100%" : "0%";
+  const ty = verticalAlignment === "middle" ? "-50%" : verticalAlignment === "bottom" ? "-100%" : "0%";
+  if (tx !== "0%" || ty !== "0%") {
+    div.style.transform = `${div.style.transform ?? ""} translate(${tx}, ${ty})`.trim();
+  } else {
+    // Auto-sized boxes lay out at Apple's metrics; browser faces run
+    // wider, so a label Apple fits to the slide edge can spill past it
+    // ("James 3:13-18" bottom-right badges). The measurement pass
+    // clamps (offset-based, so only valid untransformed).
+    div.dataset.textFit = "edge-clamp";
+  }
+}
+
 /** Position + rotate + opacity from DrawableCommon, 1pt = 1px. */
 export function applyCommonGeometry(div: HTMLElement, c: DrawableCommon): void {
   const s = div.style;
@@ -780,34 +828,7 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
       // Zero-size textboxes (Keynote emits some badge labels at 0×0) carry
       // their text unclipped: let the content size the box instead.
       if (!c.size || (c.size.width === 0 && c.size.height === 0)) {
-        div.style.width = "auto";
-        div.style.height = "auto";
-        div.style.overflow = "visible";
-        layer.style.overflow = "visible";
-        layer.style.position = "relative";
-        layer.style.whiteSpace = "nowrap";
-        layer.style.width = "max-content"; // percentage of an auto box is meaningless
-        layer.style.height = "auto";
-        // A 0-size box is a point ANCHOR: text laid out in it overflows
-        // equally per its alignment, so centered paragraphs center ON the
-        // stored position and right-aligned ones end there; same vertically
-        // via the box's own vertical alignment. Monster deck fixture: the
-        // centered "DGLAP, ERBL" tag stores (888, 477) and Apple draws its
-        // box spanning 767..1016 x 456..507 — dead-center on the point;
-        // the left-aligned "Transverse" label anchors top-left as before.
-        const firstPara = d.text.paragraphs?.[0];
-        const hAlign = paraStyleOf(doc, firstPara?.pStyle)?.horizontalAlignment;
-        const tx = hAlign === "center" ? "-50%" : hAlign === "right" ? "-100%" : "0%";
-        const ty = d.verticalAlignment === "middle" ? "-50%" : d.verticalAlignment === "bottom" ? "-100%" : "0%";
-        if (tx !== "0%" || ty !== "0%") {
-          div.style.transform = `${div.style.transform ?? ""} translate(${tx}, ${ty})`.trim();
-        } else {
-          // Auto-sized boxes lay out at Apple's metrics; browser faces run
-          // wider, so a label Apple fits to the slide edge can spill past it
-          // ("James 3:13-18" bottom-right badges). The measurement pass
-          // clamps (offset-based, so only valid untransformed).
-          div.dataset.textFit = "edge-clamp";
-        }
+        anchorZeroSizeText(div, layer, d.text, d.verticalAlignment, doc);
       } else {
         applyTextFitMode(div, layer, d.textFit, d.verticalAlignment);
       }
@@ -825,7 +846,13 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
     div.appendChild(svg);
     const layer = textLayer({ ...d, text: d.text, verticalAlignment: d.verticalAlignment, common: c }, doc, ctx);
     if (layer) {
-      if (effH === 0) {
+      if (w === 0 && effH === 0) {
+        // 0×0 shape carrying text: a point anchor exactly like the 0×0
+        // textbox labels (0d5851c0 slide 29's 51pt quote — Apple lays it
+        // out natural-width from the anchor; our 0-width box wrapped it
+        // into a 4-line sliver).
+        anchorZeroSizeText(div, layer, d.text, d.verticalAlignment, doc);
+      } else if (effH === 0) {
         // 0-height shape carrying text (RIPE ea785d2e subtitle): the box is
         // an anchor, not a clip — let the text flow down from it.
         layer.style.bottom = "auto";

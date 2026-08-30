@@ -52,6 +52,11 @@ export function applyCharStyle(el: HTMLElement, cs: CharStyle | undefined): void
   if (cs.baseline === "superscript") s.verticalAlign = "super";
   else if (cs.baseline === "subscript") s.verticalAlign = "sub";
   if (cs.baselineShiftPt) s.verticalAlign = `${cs.baselineShiftPt}px`;
+  // A shifted run must not grow the LINE box (Apple's baseline shifts never
+  // change line spacing; 0d5851c0 slide 19's raised red labels stretched
+  // 40px-exact rows to 41.7px — visibly loose over 8 rows). line-height: 0
+  // removes the shifted inline box from line-height calculation.
+  if (cs.baseline === "superscript" || cs.baseline === "subscript" || cs.baselineShiftPt) s.lineHeight = "0";
   if (cs.trackingPt) s.letterSpacing = `${cs.trackingPt}px`;
   if (cs.fontColor) s.color = cs.fontColor;
   if (cs.backgroundColor) s.backgroundColor = cs.backgroundColor;
@@ -192,7 +197,11 @@ export function renderParagraph(
     typeof it === "string" ? it.length > 0 : "type" in it ? true : (it as TextRun).text.length > 0,
   );
   const hasMarker = !!list && hasContent && list.markerKind !== "none" &&
-    (list.markerKind === "string" ? !!list.markerText : list.markerKind === "number");
+    (list.markerKind === "string"
+      ? !!list.markerText
+      : list.markerKind === "image"
+        ? !!list.markerImage
+        : list.markerKind === "number");
 
   const level = style?.outlineLevel ?? 0;
   const el = level >= 1 && level <= 5
@@ -253,7 +262,7 @@ export function renderParagraph(
     }
     const marker = document.createElement("span");
     marker.className = "list-marker";
-    marker.textContent = markerText;
+    if (list!.markerKind !== "image") marker.textContent = markerText;
     marker.style.minWidth = "18px";
     // The marker inherits the first run's look (size + color): an unstyled
     // span rendered 15px near-black bullets INVISIBLE on dark decks (RIPE
@@ -286,13 +295,29 @@ export function renderParagraph(
       marker.textContent = uni ?? "•";
       marker.style.fontFamily = "";
     }
-    if (list!.markerScale) {
+    if (list!.markerScale && list!.markerKind !== "image") {
       const basePt = runCs?.fontSizePt;
       marker.style.fontSize = basePt
         ? `${basePt * list!.markerScale}px`
         : `${list!.markerScale}em`;
     }
     if (list!.markerBaselineOffsetPt) marker.style.verticalAlign = `${list!.markerBaselineOffsetPt}px`;
+    // Image marker (0d5851c0 rightArrow bullets): the PNG scales with the
+    // text like a glyph would — markerScale × the run's size (same
+    // scale_with_text rule as string markers), hung on the baseline.
+    if (list!.markerKind === "image" && list!.markerImage) {
+      const url = ctx.url(list!.markerImage.dataId);
+      if (url) {
+        const img = document.createElement("img");
+        img.src = url;
+        const basePt = runCs?.fontSizePt;
+        const hPx = (list!.markerScale ?? 0.5) * (basePt ?? 15);
+        img.style.height = `${hPx.toFixed(1)}px`;
+        img.style.width = "auto";
+        img.style.verticalAlign = "baseline";
+        marker.appendChild(img);
+      } else marker.textContent = "•"; // media bytes missing: glyph fallback
+    }
     wrap.appendChild(marker);
     wrap.appendChild(el);
     renderParagraphContent(el, p, doc, ctx, style?.dropCap);
