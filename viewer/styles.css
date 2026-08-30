@@ -8,6 +8,28 @@
   --card: #ffffff;
   --line: #d2d2d7;
   font-size: 15px;
+  color-scheme: light dark;
+}
+
+/* Dark chrome — the app shell follows the OS; document canvases stay paper
+   (.canvas-frame/.canvas-inner/.sheet-* keep their explicit whites). */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #ececf0;
+    --muted: #9a9aa2;
+    --surface: #1c1c1f;
+    --card: #28282c;
+    --line: #414147;
+  }
+  #drop-target.dragover { background: #3a2523; }
+  #drag-overlay { background: rgba(28, 28, 31, .82); }
+  /* document content areas render on paper regardless of OS theme
+     (body-prefixed: this block sits above the base rules, and media queries
+     don't add specificity — source order would otherwise undo these) */
+  body .sheet-area, body .pages-flow, body .notes-panel, body .error-card { color: #1d1d1f; }
+  body .sheet-area, body .pages-flow { background: #ffffff; border-color: #d2d2d7; }
+  .drag-overlay-card { background: #28282c; }
+  #parse-status { background: #ececf0; color: #1d1d1f; }
 }
 
 * { box-sizing: border-box; }
@@ -35,7 +57,16 @@ body {
   text-align: center;
 }
 #drop-card h1 { margin: 0; font-size: 44px; letter-spacing: 2px; color: var(--accent); }
-#drop-card .tagline { margin: 12px 0 28px; }
+#drop-card .tagline { margin: 12px 0 16px; }
+
+.fmt-chips { display: flex; justify-content: center; gap: 10px; margin: 0 0 24px; }
+.fmt-chip {
+  border: 1px solid var(--line); border-radius: 999px;
+  padding: 4px 14px; font-size: 13px; font-weight: 600; background: var(--surface);
+}
+.fmt-pages   { color: #b3730d; }
+.fmt-numbers { color: #1e7e34; }
+.fmt-keynote { color: #1a6ec0; }
 
 #drop-target {
   border: 2px dashed var(--line);
