@@ -1,42 +1,48 @@
 # pnk
 
-**Client-side Apple iWork document viewer** — open `.pages`, `.numbers`, and
-`.key` files entirely in your browser. Drop a file, it's parsed in-page from the
-raw file bytes by Rust compiled to WebAssembly, rendered as JSON, and displayed.
-No account, no login, no email, no upload — nothing ever leaves your machine.
+**Client-side Apple iWork viewer** — open `.pages`, `.numbers`, and `.key`
+files entirely in your browser. The file is parsed from raw bytes by Rust
+compiled to WebAssembly, emitted as a typed JSON model, and rendered by a
+vanilla-TS viewer. No account, no upload, no backend.
 
-Built for [Hackyard Yard #1](https://hackyard.tech/yards/yard-1) ("no accounts",
-48-hour solo build).
+Live at **[pnk.live](https://pnk.live)**. Built solo for
+[Hackyard Yard #1](https://hackyard.tech/yards/yard-1) ("no accounts",
+48 hours, 2026-08-28 → 30).
 
-## What it does
+## Features
 
-- **Drag & drop** a Keynote / Numbers / Pages document (iWork '13 and newer,
-  flat file or package directory) onto the page.
-- It is parsed **in your browser** by a Rust pipeline compiled to WebAssembly:
-  ZIP container → Snappy-compressed IWA streams → protobuf (TSP) object
-  database → a typed JSON document model.
-- The viewer renders that JSON: Keynote slides with positioned shapes, images
-  and presenter notes; Numbers sheets with styled tables; Pages word-processing
-  flow with headings, paragraphs, and floating covers.
-- Friendly error cards for the things it deliberately refuses: password-protected
-  files (`.iwph` / `.iwpv2` — we never ask for a password) and legacy pre-2013
-  iWork formats.
-- **Zero network calls after load** — asserted in the Playwright gate. No
-  accounts, no analytics, no server.
+- Drag & drop anywhere; iWork '13+ flat files and package directories.
+- **Keynote**: continuous slide scroll, master/theme underlays, shapes with
+  arrowheads and reflections, image bullets, shrink-to-fit text, presenter
+  notes.
+- **Numbers**: per-sheet tabs, styled tables — merges, exact column widths,
+  cell borders and outer frames, number/currency/fraction/base-n/duration
+  formats.
+- **Pages**: paginated word-processing with margins, headers/footers,
+  footnotes, drop caps, lists; page-layout canvases with template underlays.
+- Syntax-colored JSON model view (`json` in the nav) with download.
+- Encrypted and pre-2013 legacy files are refused with a clear error card;
+  no password prompt, nothing inspected server-side.
+- Zero network requests after load — asserted in the test gate.
+- Dark mode, mobile layout.
 
 ## Quick start
 
 ```bash
-# viewer (TS + esbuild, no framework)
+# viewer: wasm + bundle + static shell -> viewer/dist/
 cd viewer && npm install && npm run build && npm run serve
+# gate: strict tsc + Playwright (includes a zero-network assertion)
+npm test
 
-# CLI converters
+# CLI
 cargo build --release
 target/release/pnk2json document.pages > out.json      # compact JSON
 target/release/pnk2json document.numbers --markdown    # readable fallback
+target/release/iwadump document.key                    # raw IWA inspector
 ```
 
-Playwright gate: `cd viewer && npm install && npm run build && npm test`.
+Prerequisites: rust + `wasm32-unknown-unknown` target, `wasm-bindgen` 0.2.127,
+node 22+.
 
 ## Repo layout
 
@@ -47,37 +53,36 @@ Playwright gate: `cd viewer && npm install && npm run build && npm test`.
 | `viewer/` | vanilla-TS web app consuming `pnk2json.wasm` |
 | `model/src/` | the TypeScript contract the JSON output obeys (strict tsc) |
 | `docs/format/` | provenance-tagged iWork format reference — start at `INDEX.md` |
-| `docs/CONFORMANCE.md` | how correctness is proven; corpus + cross-validation results |
-| `scripts/` | research tooling, conformance + cross-validation harnesses |
-| `fixtures/` | local corpus (gitignored; `provenance.json` committed) |
+| `docs/model-design.md` | JSON model rationale and conventions |
+| `docs/CONFORMANCE.md` | corpus + cross-validation results |
+| `scripts/` | conformance / visual-diff / research harnesses |
+| `fixtures/` | corpus (gitignored; `provenance.json` and golden checklists committed) |
 
-## How the format works (short version)
+## Format, short version
 
-An iWork '13+ file is a ZIP whose `Index.zip` holds `.iwa` members: sequences
-of Snappy-compressed blocks wrapping protobuf messages — a small object database
-(TSWP text, TST tables, TSD drawables, TSCH charts, TSCE formulas, KN Keynote,
-TSP shared storage). We decode it from scratch in Rust; every format claim in
-`docs/format/` is provenance-tagged (`proto` / `parser` / `fixture-verified` /
-`inferred`). Start at [`docs/format/INDEX.md`](docs/format/INDEX.md).
+An iWork '13+ file is a ZIP whose `Index/` members are `.iwa` streams:
+Snappy-compressed blocks wrapping a protobuf object database (TSWP text, TST
+tables, TSD drawables, TSCH charts, TSCE formulas, KN Keynote, TSP storage).
+Decoded from scratch in Rust. Every format claim in `docs/format/` carries a
+provenance tag (`proto` / `parser` / `fixture-verified` / `inferred`); start
+at [`docs/format/INDEX.md`](docs/format/INDEX.md).
 
 ## Verification
 
-- `scripts/conformance.py` — the whole corpus × JSON + markdown: 2,488 ok,
-  8 controlled encrypted rejects, 0 defects; timing stays linear.
-- `scripts/crossval.py` — every file's embedded QuickLook preview (rendered by
-  Apple's own importer) is compared against our output: table censuses, text
-  tokens, empty-grid detection. 960/968 clean; every flag investigated.
-- Viewer gate: one real fixture per app, encrypted + legacy error cards, and an
-  assertion that **zero non-blob network requests** occur after load — the
-  no-upload theme, enforced by test.
-
-## Status
-
-Built for Hackyard Yard #1 (2026-08-28/30). See `docs/CONFORMANCE.md` for the
-reliability work and `docs/model-design.md` for the JSON model rationale.
+- `scripts/conformance.py` — 1,248-file Common Crawl corpus × JSON + markdown:
+  2,488 ok, 8 controlled encrypted rejects, 0 defects, linear timing.
+- `scripts/visual_diff.py` — side-by-side composites of our render vs PDF
+  exported from the real apps (driven by AppleScript), judged per page.
+- Golden fixtures (`fixtures/golden/`) hand-built in the real apps from
+  one-feature-per-item checklists; converter output is byte-pinned in
+  `cargo test`.
+- Viewer gate: one real fixture per app, error cards, and zero non-blob
+  network requests after load.
 
 ## License
 
-Dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your
-option. Format research is documented with per-claim provenance and source
-commit hashes in `docs/format/`.
+MIT ([LICENSE-MIT](LICENSE-MIT)) or Apache-2.0
+([LICENSE-APACHE](LICENSE-APACHE)), at your option.
+
+Pages, Numbers, Keynote, and iWork are trademarks of Apple Inc. This project
+is not affiliated with or endorsed by Apple.

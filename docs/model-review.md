@@ -122,3 +122,5 @@ Banding parity likewise stays a viewer rule.
   extracted from the real shrink_to_fit flags in 5fc9bcc).
 - §2 hygiene nits (Sheet.style typing, legendFrame→Rect, adjustments index
   signature): still open, owners fix opportunistically with a steward ping.
+- 2026-08-30: submission freeze. All rulings above are landed; §2 nits carry
+  over as post-hackathon work.
