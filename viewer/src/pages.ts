@@ -1,13 +1,14 @@
-// Pages (.pages): word-processing flavor = flowing body + footnotes;
+// Pages (.pages): word-processing flavor = flowing body paginated into
+// page-shaped frames (page size + margins from the document archive);
 // page-layout flavor = stacked positioned page canvases. Floating objects
-// render as page-anchored canvases in both flavors.
+// render into their anchor page's canvas.
 
 import type { PagesDocument } from "../../model/src/pages";
 import type { ViewerCtx } from "./ctx";
 import type { Drawable } from "../../model/src/shared";
 import { newListNumberingState, renderParagraph, renderStyledText } from "./text";
 import { renderCanvasDrawable } from "./drawables";
-import type { HydratedDoc } from "./hydrate";
+import { paraStyleOf, type HydratedDoc } from "./hydrate";
 
 function pageCanvas(
   doc: PagesDocument,
@@ -71,13 +72,144 @@ function floatingSection(
   mount.appendChild(wrap);
 }
 
+/** Printable-area geometry in points, from the document archive
+ *  (TP.DocumentArchive page_width/height 30/31, margins 32-35 [proto]). */
+interface PageGeom {
+  w: number;
+  h: number;
+  left: number;
+  top: number;
+  contentW: number;
+  contentH: number;
+}
+
+function pageGeom(doc: PagesDocument): PageGeom | null {
+  const ps = doc.pageSize;
+  if (!ps || !(ps.width > 0) || !(ps.height > 0)) return null;
+  const m = doc.pageMargins;
+  const left = m?.left ?? 72;
+  const right = m?.right ?? 72;
+  const top = m?.top ?? 72;
+  const bottom = m?.bottom ?? 72;
+  const contentW = ps.width - left - right;
+  const contentH = ps.height - top - bottom;
+  if (contentW < 36 || contentH < 36) return null;
+  return { w: ps.width, h: ps.height, left, top, contentW, contentH };
+}
+
+/**
+ * Word-processing pagination: paragraphs measured offscreen at the printable
+ * width, then greedily packed into page frames of the printable height.
+ * Paragraph-level breaks only (an oversized paragraph gets its own page and
+ * clips) — a heuristic, not Apple's line-exact layout, but page count and
+ * margins track the original closely. `pageBreakBefore` (paragraph style)
+ * forces a break.
+ */
+function paginatedBody(
+  doc: PagesDocument,
+  hdoc: HydratedDoc,
+  ctx: ViewerCtx,
+  view: HTMLElement,
+): void {
+  const g = pageGeom(doc)!;
+  const body = doc.body!;
+
+  // 1. render all paragraphs once, in order (list numbering is stateful)
+  const listState = newListNumberingState();
+  const els: HTMLElement[] = [];
+  const forceBreak: boolean[] = [];
+  for (const p of body.paragraphs) {
+    els.push(renderParagraph(p, hdoc, ctx, listState));
+    forceBreak.push(!!paraStyleOf(hdoc, p.pStyle)?.pageBreakBefore);
+  }
+
+  // 2. measure at printable width in a hidden flow-root (transform scaling
+  // does not affect layout metrics, so these heights match the page frames)
+  const meas = document.createElement("div");
+  meas.className = "pages-print";
+  meas.style.cssText =
+    `position:absolute;visibility:hidden;left:-100000px;top:0;width:${g.contentW}px;`;
+  for (const el of els) meas.appendChild(el);
+  document.body.appendChild(meas);
+  const pagesEls: HTMLElement[][] = [[]];
+  let pageStartY = 0;
+  els.forEach((el, i) => {
+    const top = el.offsetTop;
+    const bottom = top + el.offsetHeight;
+    const overflows = bottom - pageStartY > g.contentH && i > 0;
+    if ((forceBreak[i] && i > 0 && pagesEls[pagesEls.length - 1].length > 0) || overflows) {
+      pagesEls.push([]);
+      pageStartY = top;
+    }
+    pagesEls[pagesEls.length - 1].push(el);
+  });
+  meas.remove();
+
+  // 3. page frames: printable area positioned at the margins; floating
+  // drawables anchored to page i render into the same canvas
+  const floatingByPage = new Map<number, Drawable[]>();
+  let maxFloatPage = -1;
+  for (const gr of doc.floating) {
+    const idx = gr.pageIndex ?? 0;
+    floatingByPage.set(idx, [...(floatingByPage.get(idx) ?? []), ...gr.drawables]);
+    if (idx > maxFloatPage) maxFloatPage = idx;
+  }
+  const pageCount = Math.max(pagesEls.length, maxFloatPage + 1);
+
+  const scale = 720 / g.w;
+  for (let i = 0; i < pageCount; i++) {
+    const frame = document.createElement("div");
+    frame.className = "canvas-frame pages-page pages-wp-page";
+    frame.style.aspectRatio = `${g.w} / ${g.h}`;
+    frame.style.height = `${g.h * scale}px`;
+    frame.dataset.pageIndex = String(i);
+    const inner = document.createElement("div");
+    inner.className = "canvas-inner";
+    inner.style.width = `${g.w}px`;
+    inner.style.height = `${g.h}px`;
+    inner.style.transform = `scale(${scale})`;
+    inner.style.position = "absolute";
+    inner.style.top = "0";
+    inner.style.left = "50%";
+    inner.style.marginLeft = `${-g.w * scale / 2}px`;
+
+    // floating drawables first: behind the body text, like Apple's default
+    for (const d of floatingByPage.get(i) ?? []) {
+      inner.appendChild(renderCanvasDrawable(d, hdoc, ctx));
+    }
+
+    const content = document.createElement("div");
+    content.className = "pages-print";
+    content.style.position = "absolute";
+    content.style.left = `${g.left}px`;
+    content.style.top = `${g.top}px`;
+    content.style.width = `${g.contentW}px`;
+    content.style.height = `${g.contentH}px`;
+    for (const el of pagesEls[i] ?? []) content.appendChild(el);
+    inner.appendChild(content);
+
+    frame.appendChild(inner);
+    view.appendChild(frame);
+  }
+}
+
 export function renderPages(doc: PagesDocument, hdoc: HydratedDoc, ctx: ViewerCtx, mount: HTMLElement): void {
   const view = document.createElement("div");
   view.id = "pages-view";
 
+  const wordProcessing = doc.flavor === "word-processing";
+  const geom = pageGeom(doc);
+
+  if (wordProcessing && doc.body && geom) {
+    // paginated word-processing render: page frames + margins
+    paginatedBody(doc, hdoc, ctx, view);
+    appendFootnotes(doc, hdoc, ctx, view);
+    mount.appendChild(view);
+    return;
+  }
+
   // document order: floating groups anchored to page 1 (a cover) belong
   // above the flowing body; later pages trail it
-  const wordProcessing = doc.flavor === "word-processing";
   const leading = doc.floating.filter((g) => (g.pageIndex ?? 0) === 0);
   const trailing = doc.floating.filter((g) => (g.pageIndex ?? 0) !== 0);
   if (!wordProcessing || doc.body) {
@@ -90,29 +222,31 @@ export function renderPages(doc: PagesDocument, hdoc: HydratedDoc, ctx: ViewerCt
     const listState = newListNumberingState();
     for (const p of doc.body.paragraphs) flow.appendChild(renderParagraph(p, hdoc, ctx, listState));
     view.appendChild(flow);
-
-    if (doc.footnotes?.length) {
-      const section = document.createElement("section");
-      section.className = "footnotes-section";
-      const h = document.createElement("h3");
-      h.textContent = "Footnotes";
-      section.appendChild(h);
-      doc.footnotes.forEach((fn, i) => {
-        const row = document.createElement("div");
-        row.className = "footnote";
-        const mark = document.createElement("span");
-        mark.className = "mark";
-        mark.textContent = `${i + 1}.`;
-        row.appendChild(mark);
-        row.appendChild(renderStyledText(fn.text, hdoc, ctx));
-        section.appendChild(row);
-      });
-      view.appendChild(section);
-    }
+    appendFootnotes(doc, hdoc, ctx, view);
   }
 
   if (trailing.length > 0) {
     floatingSection(doc, hdoc, ctx, view, trailing, "Floating objects");
   }
   mount.appendChild(view);
+}
+
+function appendFootnotes(doc: PagesDocument, hdoc: HydratedDoc, ctx: ViewerCtx, view: HTMLElement): void {
+  if (!doc.footnotes?.length) return;
+  const section = document.createElement("section");
+  section.className = "footnotes-section";
+  const h = document.createElement("h3");
+  h.textContent = "Footnotes";
+  section.appendChild(h);
+  doc.footnotes.forEach((fn, i) => {
+    const row = document.createElement("div");
+    row.className = "footnote";
+    const mark = document.createElement("span");
+    mark.className = "mark";
+    mark.textContent = `${i + 1}.`;
+    row.appendChild(mark);
+    row.appendChild(renderStyledText(fn.text, hdoc, ctx));
+    section.appendChild(row);
+  });
+  view.appendChild(section);
 }

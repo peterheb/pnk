@@ -287,7 +287,7 @@ table.sheet-table td.cell-error { color: #b03030; font-style: italic; }
    paragraph margins from collapsing out, so offscreen measurement and the
    final page agree. Tight defaults: Apple has no implicit paragraph margins;
    spacing comes from the paragraph styles. */
-.pages-print { display: flow-root; color: #1d1d1f; line-height: 1.25; font-size: 11pt; }
+.pages-print { display: flow-root; color: #1d1d1f; line-height: 1.2; font-size: 11px; }
 .pages-print p { margin: 0; }
 .pages-print h1, .pages-print h2, .pages-print h3,
 .pages-print h4, .pages-print h5, .pages-print h6 { margin: 0; }

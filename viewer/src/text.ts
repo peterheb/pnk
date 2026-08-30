@@ -15,11 +15,16 @@ import type { ViewerCtx } from "./ctx";
 import { renderFlowDrawable } from "./drawables";
 import { charStyleOf, paraStyleOf, type HydratedDoc } from "./hydrate";
 
+// Unit convention: canvases (slides, sheets, pages) size their inner frame at
+// 1 CSS px per document POINT, so all point-valued style properties emit `px`
+// numerically equal to the pt value. Emitting CSS `pt` here would inflate
+// text 4/3 relative to the page geometry (browsers map 1pt = 4/3px) — the
+// KVKK fixture paginated a 1-page doc onto 2 pages that way.
 export function applyCharStyle(el: HTMLElement, cs: CharStyle | undefined): void {
   if (!cs) return;
   const s = el.style;
   if (cs.fontName) s.fontFamily = `"${cs.fontName}", sans-serif`;
-  if (cs.fontSizePt) s.fontSize = `${cs.fontSizePt}pt`;
+  if (cs.fontSizePt) s.fontSize = `${cs.fontSizePt}px`;
   if (cs.bold) s.fontWeight = "700";
   if (cs.italic) s.fontStyle = "italic";
   if (cs.underline && cs.underline !== "none") s.textDecorationLine = "underline";
@@ -31,8 +36,8 @@ export function applyCharStyle(el: HTMLElement, cs: CharStyle | undefined): void
   else if (cs.capitalization === "title") s.textTransform = "capitalize";
   if (cs.baseline === "superscript") s.verticalAlign = "super";
   else if (cs.baseline === "subscript") s.verticalAlign = "sub";
-  if (cs.baselineShiftPt) s.verticalAlign = `${cs.baselineShiftPt}pt`;
-  if (cs.trackingPt) s.letterSpacing = `${cs.trackingPt}pt`;
+  if (cs.baselineShiftPt) s.verticalAlign = `${cs.baselineShiftPt}px`;
+  if (cs.trackingPt) s.letterSpacing = `${cs.trackingPt}px`;
   if (cs.fontColor) s.color = cs.fontColor;
   if (cs.backgroundColor) s.backgroundColor = cs.backgroundColor;
 }
@@ -41,17 +46,17 @@ export function applyParaStyle(el: HTMLElement, ps: ParaStyle): void {
   const s = el.style;
   const align = ps.horizontalAlignment;
   if (align === "center" || align === "right" || align === "justify") s.textAlign = align;
-  if (ps.leftIndentPt) s.marginLeft = `${ps.leftIndentPt}pt`;
-  if (ps.rightIndentPt) s.marginRight = `${ps.rightIndentPt}pt`;
-  if (ps.firstLineIndentPt) s.textIndent = `${ps.firstLineIndentPt}pt`;
-  if (ps.spaceBeforePt) s.marginTop = `${ps.spaceBeforePt}pt`;
-  if (ps.spaceAfterPt) s.marginBottom = `${ps.spaceAfterPt}pt`;
+  if (ps.leftIndentPt) s.marginLeft = `${ps.leftIndentPt}px`;
+  if (ps.rightIndentPt) s.marginRight = `${ps.rightIndentPt}px`;
+  if (ps.firstLineIndentPt) s.textIndent = `${ps.firstLineIndentPt}px`;
+  if (ps.spaceBeforePt) s.marginTop = `${ps.spaceBeforePt}px`;
+  if (ps.spaceAfterPt) s.marginBottom = `${ps.spaceAfterPt}px`;
   if (ps.lineSpacingMultiple) s.lineHeight = String(ps.lineSpacingMultiple);
-  else if (ps.lineSpacingExactPt) s.lineHeight = `${ps.lineSpacingExactPt}pt`;
+  else if (ps.lineSpacingExactPt) s.lineHeight = `${ps.lineSpacingExactPt}px`;
   if (ps.backgroundColor) s.backgroundColor = ps.backgroundColor;
   if (ps.border) {
     const b = ps.border;
-    s.border = `${b.widthPt}pt ${b.dash?.length ? "dashed" : "solid"} ${b.color}`;
+    s.border = `${b.widthPt}px ${b.dash?.length ? "dashed" : "solid"} ${b.color}`;
   }
   if (ps.writingDirection === "right-to-left") s.direction = "rtl";
 }
