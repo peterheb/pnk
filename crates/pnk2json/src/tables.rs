@@ -36,7 +36,7 @@ fn load_data_list(ctx: &Ctx, list_id: Option<u64>) -> DataList {
         let key = e.varint(1).unwrap_or(0) as i32;
         out.entries.entry(key).or_insert_with(|| ListEntry {
             string: e.string(3),
-            reference: e.reference(4),
+            reference: e.reference(4).or_else(|| e.reference(9)),
             has_formula: e.has(5),
             format: e.msg(6),
             custom_format: e.msg(8),
@@ -52,7 +52,7 @@ fn load_data_list(ctx: &Ctx, list_id: Option<u64>) -> DataList {
                 let key = base_key + i as i32;
                 out.entries.entry(key).or_insert_with(|| ListEntry {
                     string: e.string(3),
-                    reference: e.reference(4),
+                    reference: e.reference(4).or_else(|| e.reference(9)),
                     has_formula: e.has(5),
                     format: e.msg(6),
                     custom_format: e.msg(8),
@@ -952,10 +952,13 @@ fn decode_cell_v4(
         9 => {
             // v4 rich-text cells: the rich-text table key is at slot 5
             // (byte 20-23), fixture-verified on IVS doc bc5e6bd1 — cells map
-            let rid = u32s.get(5).map(|v| *v as i32)?;
+            let rid = u32s.get(5).map(|v| *v as i32);
+            let found = rid.map(|id| rich_text_table.entries.get(&id).map(|e| (e.reference, e.string.clone())));
+            eprintln!("v4 type9 r{row}c{col} rid={rid:?} rt_entries={} found={found:?}", rich_text_table.entries.len());
 
 
-            match rich_text_table.entries.get(&rid).and_then(|e| e.reference) {
+            let rtp_id = rid.and_then(|id| rich_text_table.entries.get(&id).and_then(|e| e.reference));
+            match rtp_id {
                 Some(rtp_id) => {
                     // RichTextPayloadArchive { storage = 1, range = 2, cellid = 3 }
                     let storage_id = ctx
@@ -977,7 +980,7 @@ fn decode_cell_v4(
                 None => {
                     ctx.warn_detail(
                         WarningCode::TableDegraded,
-                        format!("v4 rich-text key {rid} not in the rich-text table; cell r{row}c{col} dropped"),
+                        format!("v4 rich-text key {rid:?} not in the rich-text table; cell r{row}c{col} dropped"),
                         format!("r{row}c{col}"),
                     );
                     return None;
