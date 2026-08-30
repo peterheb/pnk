@@ -36,12 +36,13 @@ export function renderWarnings(warnings: Warning[]): void {
   const panel = document.getElementById("panel-warnings");
   if (!panel) return;
   panel.classList.remove("hidden");
-  document.getElementById("warnings-count")!.textContent = String(warnings.length);
+  const total = warnings.reduce((n, w) => n + (w.count ?? 1), 0);
+  document.getElementById("warnings-count")!.textContent = String(total);
   const list = document.getElementById("warnings-list")!;
   list.replaceChildren();
   // summary: count per code, so a pile of unknown-type-ids stays one line
   const byCode = new Map<string, number>();
-  for (const w of warnings) byCode.set(w.code, (byCode.get(w.code) ?? 0) + 1);
+  for (const w of warnings) byCode.set(w.code, (byCode.get(w.code) ?? 0) + (w.count ?? 1));
   const summary = document.createElement("div");
   summary.className = "chips";
   for (const [code, count] of byCode) {
@@ -60,12 +61,13 @@ export function renderWarnings(warnings: Warning[]): void {
     code.textContent = CODE_LABELS[w.code] ?? w.code;
     row.appendChild(code);
     const msg = document.createElement("span");
-    msg.textContent = w.message;
+    msg.textContent = w.count && w.count > 1 ? `${w.message} (×${w.count})` : w.message;
     row.appendChild(msg);
-    if (w.path) {
+    const pathText = w.path ?? (w.paths ? w.paths.join(", ") + (w.count && w.count > w.paths.length ? ", …" : "") : undefined);
+    if (pathText) {
       const path = document.createElement("span");
       path.className = "path";
-      path.textContent = w.path;
+      path.textContent = pathText;
       row.appendChild(path);
     }
     list.appendChild(row);
