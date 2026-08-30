@@ -952,12 +952,9 @@ fn decode_cell_v4(
         9 => {
             // v4 rich-text cells: the rich-text table key is at slot 5
             // (byte 20-23), fixture-verified on IVS doc bc5e6bd1 — cells map
-            // to rich_text_table entries containing IVS sequences.
             let rid = u32s.get(5).map(|v| *v as i32)?;
-            if std::env::var("PNK_DEBUG").is_ok() {
-                eprintln!("v4 richtext r{row}c{col} rid={rid:?} found={:?}",
-                    rid.and_then(|id| rich_text_table.entries.get(&id)).map(|e| e.reference));
-            }
+
+
             match rich_text_table.entries.get(&rid).and_then(|e| e.reference) {
                 Some(rtp_id) => {
                     // RichTextPayloadArchive { storage = 1, range = 2, cellid = 3 }
