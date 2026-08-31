@@ -90,19 +90,31 @@ impl Registry {
         if let Some(name) = self.common.get(&id) {
             return Some(name.clone());
         }
-        // No app table (or id absent from it): is the id unambiguous across
-        // all three app tables?
+        // Id absent from the selected table and Common: consult the other
+        // app tables, but never hand a KNOWN app another app's schema. For a
+        // known app only a shared-namespace name (TS*) that every holding
+        // table agrees on may fall through — e.g. Pages id 195 exists only
+        // in the Keynote table as a KN.* command and must stay unknown
+        // ("never guess", docs/format/registry.md).
         let mut names: Vec<&String> = Vec::new();
         for table in [&self.keynote, &self.numbers, &self.pages] {
             if let Some(name) = table.get(&id) {
                 names.push(name);
             }
         }
-        match names.len() {
+        let unambiguous = match names.len() {
             0 => None,
             1 => Some(names[0].clone()),
             _ if names.iter().all(|n| *n == names[0]) => Some(names[0].clone()),
             _ => None, // KN.DocumentArchive vs TN.DocumentArchive etc.: unknown
+        };
+        let app_prefixed = |n: &str| {
+            n.starts_with("KN.") || n.starts_with("TN.") || n.starts_with("TP.")
+        };
+        match (app, unambiguous) {
+            (App::Unknown, resolved) => resolved,
+            (_, Some(n)) if !app_prefixed(&n) => Some(n),
+            _ => None,
         }
     }
 
