@@ -44,6 +44,19 @@ fn aggregate_warnings(warnings: Vec<model::Warning>) -> Vec<model::Warning> {
     use std::collections::HashMap;
     let mut order: Vec<model::Warning> = Vec::new();
     let mut index: HashMap<(model::WarningCode, String), usize> = HashMap::new();
+    // Codes whose `detail` IS the warning's identity (a type id, an asset
+    // name): digit-normalized messages would merge distinct identities into
+    // the first row (FINDINGS.md M-9 — e.g. type ids 0x2222 and 0x3333 both
+    // normalize to "0x#"). Their details join the key; coordinate-flood
+    // codes keep the message-only key so per-cell spam still collapses.
+    let identity_coded = |c: model::WarningCode| {
+        matches!(
+            c,
+            model::WarningCode::UnknownObjectType
+                | model::WarningCode::UndecodableObject
+                | model::WarningCode::MediaMissing
+        )
+    };
     let normalize = |m: &str| {
         let mut out = String::with_capacity(m.len());
         let mut in_digits = false;
@@ -61,7 +74,14 @@ fn aggregate_warnings(warnings: Vec<model::Warning>) -> Vec<model::Warning> {
         out
     };
     for w in warnings {
-        let key = (w.code, normalize(&w.message));
+        let mut key_text = normalize(&w.message);
+        if identity_coded(w.code) {
+            if let Some(d) = &w.detail {
+                key_text.push('\u{1f}');
+                key_text.push_str(d);
+            }
+        }
+        let key = (w.code, key_text);
         match index.get(&key) {
             Some(&i) => {
                 let first = &mut order[i];
