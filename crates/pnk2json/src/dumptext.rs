@@ -61,7 +61,7 @@ fn para_markdown(p: &Paragraph, char_styles: &[CharStyle]) -> String {
     for item in &p.items {
         match item {
             ParagraphItem::Plain(text) => {
-                s.push_str(&text.replace('\t', "    "));
+                s.push_str(&escape_html(&text.replace('\t', "    ")));
             }
             ParagraphItem::Text { text, c_style, .. } => {
                 let style = c_style.and_then(|i| char_styles.get(i as usize));
@@ -71,7 +71,7 @@ fn para_markdown(p: &Paragraph, char_styles: &[CharStyle]) -> String {
                 } else {
                     text.clone()
                 };
-                let t = text.replace('\t', "    ");
+                let t = escape_html(&text.replace('\t', "    "));
                 let bold = style.and_then(|s| s.bold) == Some(true);
                 let italic = style.and_then(|s| s.italic) == Some(true);
                 if t.trim().is_empty() {
@@ -89,7 +89,7 @@ fn para_markdown(p: &Paragraph, char_styles: &[CharStyle]) -> String {
             ParagraphItem::InlineObject { .. } => s.push(' '),
             ParagraphItem::Field { value, .. } => {
                 if let Some(v) = value {
-                    s.push_str(v);
+                    s.push_str(&escape_html(v));
                 }
             }
         }
@@ -102,7 +102,16 @@ fn styled_plain(st: &StyledText) -> String {
 }
 
 fn escape_md(s: &str) -> String {
-    s.replace('|', "\\|").replace('\n', " ")
+    escape_html(s).replace('|', "\\|").replace('\n', " ")
+}
+
+/// Neutralize raw HTML so document text can never smuggle `<script>` (or any
+/// tag) into a Markdown consumer that renders inline HTML (FINDINGS.md
+/// M-13). Markdown punctuation stays as-is — the output is documented as
+/// generated from untrusted documents, and `&`/`<` are the HTML injection
+/// points.
+fn escape_html(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;")
 }
 
 fn fmt_num(n: f64) -> String {
@@ -455,19 +464,32 @@ fn table_markdown(t: &TableModel, out: &mut String) {
     let nrows = t.row_count.min(200) as usize; // cap dump size per table
     let ncols = t.column_count.min(40) as usize;
 
-    if hr > 0 {
+    // Markdown allows exactly one header line. Row 0 fills it when the
+    // table declares headers (extra header rows continue as body — they
+    // used to be dropped entirely); a zero-header table gets an empty
+    // header line so the pipe block still parses as a table
+    // (FINDINGS.md M-13).
+    let body_start = if hr > 0 {
         out.push('|');
         for c in 0..ncols {
             out.push_str(&format!(" {} |", cell_text(0, c)));
         }
         out.push('\n');
+        1
+    } else {
         out.push('|');
         for _ in 0..ncols {
-            out.push_str(" --- |");
+            out.push_str("   |");
         }
         out.push('\n');
+        0
+    };
+    out.push('|');
+    for _ in 0..ncols {
+        out.push_str(" --- |");
     }
-    for r in hr..nrows {
+    out.push('\n');
+    for r in body_start..nrows {
         out.push('|');
         for c in 0..ncols {
             out.push_str(&format!(" {} |", cell_text(r, c)));
