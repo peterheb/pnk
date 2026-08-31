@@ -35,6 +35,11 @@ pub struct IwaStream {
     pub decoded: Vec<u8>,
 }
 
+/// Cumulative decoded-bytes ceiling per stream. The largest real corpus
+/// streams decode to a few tens of MiB; a crafted file chaining many
+/// maximum-ratio blocks must not be able to grow `decoded` without bound.
+pub const MAX_STREAM_DECODED: u64 = 1024 * 1024 * 1024;
+
 impl IwaStream {
     /// Frame + decompress one `.iwa` member's raw bytes.
     pub fn parse(name: &str, raw: &[u8]) -> Result<IwaStream, Error> {
@@ -89,6 +94,15 @@ impl IwaStream {
                 ));
             }
             let data = snappy::decode_block(&raw[start..end], index)?;
+            if (decoded.len() as u64).saturating_add(data.len() as u64) > MAX_STREAM_DECODED {
+                return Err(Error::new(
+                    Kind::Corrupt,
+                    Layer::Iwa,
+                    format!(
+                        "stream exceeds {MAX_STREAM_DECODED} decoded bytes at block {index}; refusing further decompression"
+                    ),
+                ));
+            }
             decoded.extend_from_slice(&data);
             blocks.push(Block { compressed_len, data });
             pos = end;

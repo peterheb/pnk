@@ -552,3 +552,25 @@ fn iwpv2_member_rejects_as_encrypted() {
     assert!(e.message.contains("encrypted"), "{}", e.message);
     std::fs::remove_file(&path).ok();
 }
+
+// ------------------------------------------------- adversarial resource caps
+
+#[test]
+fn snappy_bomb_declared_length_is_refused_not_allocated() {
+    // A five-byte payload whose leading varint declares ~4 GiB decoded. The
+    // decoder must refuse based on the declared length, never allocate it
+    // (FINDINGS.md H-1). 0xff 0xff 0xff 0xff 0x0f = 4,294,967,295.
+    let bomb = frame_block(&[0xff, 0xff, 0xff, 0xff, 0x0f]);
+    let e = IwaStream::parse("bomb.iwa", &bomb).unwrap_err();
+    assert_eq!(e.layer, iwadump::Layer::Snappy);
+    assert!(e.message.contains("refusing the allocation"), "{}", e.message);
+}
+
+#[test]
+fn snappy_block_under_cap_still_decodes() {
+    // Sanity: the cap must not reject ordinary blocks.
+    let data = vec![0x42u8; 200_000]; // > 64 KiB decoded, well under 64 MiB
+    let raw = frame_block(&snappy::encode_block(&data));
+    let s = IwaStream::parse("ok.iwa", &raw).unwrap();
+    assert_eq!(s.decoded, data);
+}
