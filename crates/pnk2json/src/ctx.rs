@@ -47,60 +47,108 @@ impl<T: serde::Serialize + PartialEq> StylePool<T> {
 /// §1.5: indents/spacing 0, alignment auto, list none/level 0, booleans
 /// false). Fixture-verified: G1 body para style emits 12→5 fields.
 pub fn strip_para_defaults(mut s: ParaStyle) -> ParaStyle {
-    if s.left_indent_pt == Some(0.0) { s.left_indent_pt = None; }
-    if s.right_indent_pt == Some(0.0) { s.right_indent_pt = None; }
-    if s.first_line_indent_pt == Some(0.0) { s.first_line_indent_pt = None; }
-    if s.space_before_pt == Some(0.0) { s.space_before_pt = None; }
-    if s.space_after_pt == Some(0.0) { s.space_after_pt = None; }
-    if s.horizontal_alignment == Some(HorizontalAlignment::Auto) { s.horizontal_alignment = None; }
-    if s.keep_lines_together == Some(false) { s.keep_lines_together = None; }
-    if s.keep_with_next == Some(false) { s.keep_with_next = None; }
-    if s.hyphenate == Some(true) { s.hyphenate = None; }
-    if s.page_break_before == Some(false) { s.page_break_before = None; }
-    if s.outline_level == Some(0) { s.outline_level = None; }
+    if s.left_indent_pt == Some(0.0) {
+        s.left_indent_pt = None;
+    }
+    if s.right_indent_pt == Some(0.0) {
+        s.right_indent_pt = None;
+    }
+    if s.first_line_indent_pt == Some(0.0) {
+        s.first_line_indent_pt = None;
+    }
+    if s.space_before_pt == Some(0.0) {
+        s.space_before_pt = None;
+    }
+    if s.space_after_pt == Some(0.0) {
+        s.space_after_pt = None;
+    }
+    if s.horizontal_alignment == Some(HorizontalAlignment::Auto) {
+        s.horizontal_alignment = None;
+    }
+    if s.keep_lines_together == Some(false) {
+        s.keep_lines_together = None;
+    }
+    if s.keep_with_next == Some(false) {
+        s.keep_with_next = None;
+    }
+    if s.hyphenate == Some(true) {
+        s.hyphenate = None;
+    }
+    if s.page_break_before == Some(false) {
+        s.page_break_before = None;
+    }
+    if s.outline_level == Some(0) {
+        s.outline_level = None;
+    }
     // List: none/level 0 is default
     if let Some(l) = &s.list {
-        if l.marker_kind == ListMarkerKind::None && l.level == 0
-            && l.marker_text.is_none() && l.number_kind.is_none()
-            && l.marker_image.is_none() && l.start.is_none()
+        if l.marker_kind == ListMarkerKind::None
+            && l.level == 0
+            && l.marker_text.is_none()
+            && l.number_kind.is_none()
+            && l.marker_image.is_none()
+            && l.start.is_none()
             && l.marker_indent_pt == Some(0.0)
         {
             s.list = None;
         }
         if let Some(l) = &mut s.list {
-            if l.marker_indent_pt == Some(0.0) { l.marker_indent_pt = None; }
+            if l.marker_indent_pt == Some(0.0) {
+                l.marker_indent_pt = None;
+            }
         }
     }
-    if s.default_tab_stop_pt == Some(36.0) { s.default_tab_stop_pt = None; }
+    if s.default_tab_stop_pt == Some(36.0) {
+        s.default_tab_stop_pt = None;
+    }
     if s.writing_direction.is_none() {} // already Option
     s
 }
 
 /// Strip documented defaults from a resolved TableCellStyle.
 pub fn strip_cell_defaults(mut s: TableCellStyle) -> TableCellStyle {
-    if s.text_wrap == Some(false) { s.text_wrap = None; }
+    if s.text_wrap == Some(false) {
+        s.text_wrap = None;
+    }
     s
 }
 
 /// Strip documented defaults from a resolved CharStyle.
 pub fn strip_char_defaults(mut s: CharStyle) -> CharStyle {
-    if s.font_size_pt == Some(12.0) { s.font_size_pt = None; }
-    if s.bold == Some(false) { s.bold = None; }
-    if s.italic == Some(false) { s.italic = None; }
-    if s.underline == Some(UnderlineStyle::None) { s.underline = None; }
-    if s.strikethrough == Some(StrikethroughStyle::None) { s.strikethrough = None; }
-    if s.capitalization == Some(Capitalization::None) { s.capitalization = None; }
-    if s.baseline == Some(BaselineScript::Normal) { s.baseline = None; }
-    if s.baseline_shift_pt == Some(0.0) { s.baseline_shift_pt = None; }
-    if s.tracking_pt == Some(0.0) { s.tracking_pt = None; }
+    if s.font_size_pt == Some(12.0) {
+        s.font_size_pt = None;
+    }
+    if s.bold == Some(false) {
+        s.bold = None;
+    }
+    if s.italic == Some(false) {
+        s.italic = None;
+    }
+    if s.underline == Some(UnderlineStyle::None) {
+        s.underline = None;
+    }
+    if s.strikethrough == Some(StrikethroughStyle::None) {
+        s.strikethrough = None;
+    }
+    if s.capitalization == Some(Capitalization::None) {
+        s.capitalization = None;
+    }
+    if s.baseline == Some(BaselineScript::Normal) {
+        s.baseline = None;
+    }
+    if s.baseline_shift_pt == Some(0.0) {
+        s.baseline_shift_pt = None;
+    }
+    if s.tracking_pt == Some(0.0) {
+        s.tracking_pt = None;
+    }
     s
 }
 
 /// Canonical form: serde_json::Value with alphabetically sorted keys,
 /// compact serialization.
 fn canonical_json<T: serde::Serialize>(item: &T) -> String {
-    let value: serde_json::Value =
-        serde_json::to_value(item).unwrap_or(serde_json::Value::Null);
+    let value: serde_json::Value = serde_json::to_value(item).unwrap_or(serde_json::Value::Null);
     serde_json::to_string(&value).unwrap_or_default()
 }
 
@@ -156,7 +204,10 @@ impl Ctx {
             fonts: BTreeSet::new(),
             para_pool: StylePool::default(),
             char_pool: StylePool::default(),
-            meta: DocumentMeta { app: app_kind, ..Default::default() },
+            meta: DocumentMeta {
+                app: app_kind,
+                ..Default::default()
+            },
             datas: HashMap::new(),
             referenced_datas: BTreeSet::new(),
             text_extract_depth: 0,
@@ -197,7 +248,9 @@ impl Ctx {
         //    collide across app tables, so only accept names when the id is
         //    unambiguous (name_for with App::Unknown already enforces that).
         for rec in self.loaded.records.values() {
-            let Some(name) = self.registry.name_for(App::Unknown, rec.type_id) else { continue };
+            let Some(name) = self.registry.name_for(App::Unknown, rec.type_id) else {
+                continue;
+            };
             let kind = match name.as_str() {
                 n if n.starts_with("TN.") => Some(AppKind::Numbers),
                 n if n.starts_with("TP.") => Some(AppKind::Pages),
@@ -224,7 +277,14 @@ impl Ctx {
     // -- warnings -----------------------------------------------------------
 
     pub fn warn(&mut self, code: WarningCode, message: impl Into<String>) {
-        self.warnings.push(Warning { code, message: message.into(), path: None, detail: None, count: None, paths: None });
+        self.warnings.push(Warning {
+            code,
+            message: message.into(),
+            path: None,
+            detail: None,
+            count: None,
+            paths: None,
+        });
     }
 
     pub fn warn_detail(
@@ -355,7 +415,9 @@ impl Ctx {
     // -- TSP.PackageMetadata (object 2) --------------------------------------
 
     fn load_package_metadata(&mut self) {
-        let Some(pkg) = self.loaded.msg(2) else { return };
+        let Some(pkg) = self.loaded.msg(2) else {
+            return;
+        };
         // DocumentRevision.identifier (field 2 → DocumentRevision.identifier=2)
         if self.meta.document_id.is_none() {
             if let Some(rev) = pkg.msg(2) {
@@ -424,9 +486,17 @@ impl Ctx {
         let mut assets = Vec::new();
         let referenced: Vec<u64> = self.referenced_datas.iter().copied().collect();
         for id in referenced {
-            let Some(entry) = self.datas.get(&id).cloned() else { continue };
-            let file_name = entry.file_name.clone().or_else(|| entry.preferred_file_name.clone());
-            let kind = file_name.as_deref().map(media_kind).unwrap_or(MediaKind::Other);
+            let Some(entry) = self.datas.get(&id).cloned() else {
+                continue;
+            };
+            let file_name = entry
+                .file_name
+                .clone()
+                .or_else(|| entry.preferred_file_name.clone());
+            let kind = file_name
+                .as_deref()
+                .map(media_kind)
+                .unwrap_or(MediaKind::Other);
             let byte_length = entry.materialized_length;
             let remote = entry.remote_url.clone();
             let preferred = entry.preferred_file_name.clone();
@@ -473,7 +543,11 @@ impl Ctx {
 fn plist_value_as_string(v: &plist::Value) -> Option<String> {
     match v {
         plist::Value::String(s) => Some(s.clone()),
-        plist::Value::Array(a) => a.iter().filter_map(|i| i.as_string()).next().map(str::to_string),
+        plist::Value::Array(a) => a
+            .iter()
+            .filter_map(|i| i.as_string())
+            .next()
+            .map(str::to_string),
         plist::Value::Integer(i) => Some(i.as_signed().unwrap_or(0).to_string()),
         _ => None,
     }
@@ -486,8 +560,9 @@ pub fn media_kind(name: &str) -> MediaKind {
         "png" | "jpg" | "jpeg" | "gif" | "tiff" | "tif" | "bmp" | "heic" | "heif" | "webp"
         | "svg" => MediaKind::Image,
         "mp4" | "mov" | "m4v" | "avi" | "mkv" | "mpg" | "mpeg" | "wmv" => MediaKind::Movie,
-        "mp3" | "aac" | "m4a" | "wav" | "aiff" | "aif" | "caf" | "oga" | "ogg" | "flac"
-        | "m4b" => MediaKind::Audio,
+        "mp3" | "aac" | "m4a" | "wav" | "aiff" | "aif" | "caf" | "oga" | "ogg" | "flac" | "m4b" => {
+            MediaKind::Audio
+        }
         "pdf" => MediaKind::Pdf,
         _ => MediaKind::Other,
     }
@@ -498,7 +573,10 @@ pub fn media_kind(name: &str) -> MediaKind {
 fn attributes_pixel_size(attrs: &Msg) -> Option<Size> {
     let img = attrs.msg(100)?;
     let m = img.msg(1)?; // pixel_size: TSP.Size { width = 1, height = 2 }? see proto
-    Some(Size { width: m.f32v(1)? as f64, height: m.f32v(2)? as f64 })
+    Some(Size {
+        width: m.f32v(1)? as f64,
+        height: m.f32v(2)? as f64,
+    })
 }
 
 /// Fonts harvested from resolved CharStyles, deduped + sorted (model contract
@@ -517,7 +595,9 @@ pub struct Counter {
 
 impl Counter {
     pub fn new() -> Counter {
-        Counter { counts: BTreeMap::new() }
+        Counter {
+            counts: BTreeMap::new(),
+        }
     }
     pub fn bump(&mut self, key: impl Into<String>) {
         *self.counts.entry(key.into()).or_insert(0) += 1;
@@ -554,7 +634,10 @@ impl Ctx {
             fonts: std::collections::BTreeSet::new(),
             para_pool: StylePool::default(),
             char_pool: StylePool::default(),
-            meta: DocumentMeta { app: app_kind, ..Default::default() },
+            meta: DocumentMeta {
+                app: app_kind,
+                ..Default::default()
+            },
             datas: HashMap::new(),
             referenced_datas: std::collections::BTreeSet::new(),
             text_extract_depth: 0,
@@ -581,9 +664,10 @@ impl Ctx {
             // it is not a TSP.Reference), with the TSK payload in turn
             // inline at TSA field 1. Fall back to a referenced archive when
             // a writer does use one.
-            let tsa = root
-                .msg(f)
-                .or_else(|| root.reference(f).and_then(|id| self.loaded.msg(id).cloned()));
+            let tsa = root.msg(f).or_else(|| {
+                root.reference(f)
+                    .and_then(|id| self.loaded.msg(id).cloned())
+            });
             let Some(tsa) = tsa else { continue };
             // TSK.DocumentArchive.locale_identifier = 4 (inline at TSA.1 or
             // referenced).

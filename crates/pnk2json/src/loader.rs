@@ -258,8 +258,11 @@ fn apply_patches(
                 }
             }
             for n in nums {
-                let group: Vec<Field> =
-                    replacements.iter().filter(|f| f.number == n).cloned().collect();
+                let group: Vec<Field> = replacements
+                    .iter()
+                    .filter(|f| f.number == n)
+                    .cloned()
+                    .collect();
                 match base.fields.iter().position(|f| f.number == n) {
                     Some(i) => {
                         base.fields.retain(|f| f.number != n);
@@ -319,7 +322,9 @@ const MAX_ZIP_ENTRIES: usize = 100_000;
 /// (DEFLATE on already-snappy data stays well under 20x) with a floor so
 /// tiny documents aren't over-constrained. Bounds classic zip bombs.
 fn iwa_budget(compressed_len: usize) -> u64 {
-    (compressed_len as u64).saturating_mul(20).max(256 * 1024 * 1024)
+    (compressed_len as u64)
+        .saturating_mul(20)
+        .max(256 * 1024 * 1024)
 }
 
 /// Container-level decode from raw document bytes: reject encrypted/legacy,
@@ -328,22 +333,27 @@ fn iwa_budget(compressed_len: usize) -> u64 {
 /// Single pass over each zip's entries with an expansion budget — the old
 /// shape reopened and reparsed the central directory once per member and
 /// inflated without bound (FINDINGS.md H-2).
-pub fn streams_from_bytes(
-    bytes: &[u8],
-) -> Result<Vec<StreamView>, iwadump::Error> {
+pub fn streams_from_bytes(bytes: &[u8]) -> Result<Vec<StreamView>, iwadump::Error> {
     use iwadump::error::{Error, Kind, Layer};
 
     let layer = Layer::Container;
     let label = "document";
     let cursor = std::io::Cursor::new(bytes);
     let mut zip = zip::ZipArchive::new(cursor).map_err(|e| {
-        Error::new(Kind::Unsupported, layer, format!("{label}: not a readable ZIP container: {e}"))
+        Error::new(
+            Kind::Unsupported,
+            layer,
+            format!("{label}: not a readable ZIP container: {e}"),
+        )
     })?;
     if zip.len() > MAX_ZIP_ENTRIES {
         return Err(Error::new(
             Kind::Unsupported,
             layer,
-            format!("{label}: {} zip entries exceeds the {MAX_ZIP_ENTRIES}-entry limit", zip.len()),
+            format!(
+                "{label}: {} zip entries exceeds the {MAX_ZIP_ENTRIES}-entry limit",
+                zip.len()
+            ),
         ));
     }
 
@@ -361,8 +371,13 @@ pub fn streams_from_bytes(
         }
     }
     // Legacy markers (docs/format/legacy.md).
-    const LEGACY_MARKERS: [&str; 5] =
-        ["index.xml", "index.xml.gz", "index.apxl", "index.numbers", "index.db"];
+    const LEGACY_MARKERS: [&str; 5] = [
+        "index.xml",
+        "index.xml.gz",
+        "index.apxl",
+        "index.numbers",
+        "index.db",
+    ];
     for n in &names {
         let base = n.rsplit('/').next().unwrap_or(n).to_lowercase();
         if LEGACY_MARKERS.contains(&base.as_str()) {
@@ -385,31 +400,32 @@ pub fn streams_from_bytes(
 
     // One pass by index: inflate each `.iwa` (bounded), skipping directories
     // and LZFSE operation logs (gotcha #11: `bvx` magic, not snappy IWA).
-    let collect =
-        |zip: &mut zip::ZipArchive<std::io::Cursor<&[u8]>>, remaining: &mut u64| -> Result<Vec<(String, Vec<u8>)>, Error> {
-            let mut out = Vec::new();
-            for i in 0..zip.len() {
-                let Ok(mut f) = zip.by_index(i) else { continue };
-                if f.is_dir() || !f.name().to_ascii_lowercase().ends_with(".iwa") {
-                    continue;
-                }
-                let name = f.name().to_string();
-                let mut buf = Vec::new();
-                let mut limited = std::io::Read::take(&mut f, remaining.saturating_add(1));
-                if std::io::Read::read_to_end(&mut limited, &mut buf).is_err() {
-                    continue;
-                }
-                if buf.len() as u64 > *remaining {
-                    return Err(over_budget());
-                }
-                *remaining -= buf.len() as u64;
-                if buf.starts_with(b"bvx") {
-                    continue;
-                }
-                out.push((name, buf));
+    let collect = |zip: &mut zip::ZipArchive<std::io::Cursor<&[u8]>>,
+                   remaining: &mut u64|
+     -> Result<Vec<(String, Vec<u8>)>, Error> {
+        let mut out = Vec::new();
+        for i in 0..zip.len() {
+            let Ok(mut f) = zip.by_index(i) else { continue };
+            if f.is_dir() || !f.name().to_ascii_lowercase().ends_with(".iwa") {
+                continue;
             }
-            Ok(out)
-        };
+            let name = f.name().to_string();
+            let mut buf = Vec::new();
+            let mut limited = std::io::Read::take(&mut f, remaining.saturating_add(1));
+            if std::io::Read::read_to_end(&mut limited, &mut buf).is_err() {
+                continue;
+            }
+            if buf.len() as u64 > *remaining {
+                return Err(over_budget());
+            }
+            *remaining -= buf.len() as u64;
+            if buf.starts_with(b"bvx") {
+                continue;
+            }
+            out.push((name, buf));
+        }
+        Ok(out)
+    };
 
     let mut iwas = collect(&mut zip, &mut remaining)?;
     if iwas.is_empty() {
@@ -428,7 +444,9 @@ pub fn streams_from_bytes(
                 return Err(over_budget());
             }
             remaining -= nested_bytes.len() as u64;
-            if let Ok(mut inner) = zip::ZipArchive::new(std::io::Cursor::new(nested_bytes.as_slice())) {
+            if let Ok(mut inner) =
+                zip::ZipArchive::new(std::io::Cursor::new(nested_bytes.as_slice()))
+            {
                 if inner.len() > MAX_ZIP_ENTRIES {
                     return Err(Error::new(
                         Kind::Unsupported,
@@ -472,7 +490,11 @@ pub fn streams_from_bytes(
     for (name, raw) in &iwas {
         let iwa = iwadump::IwaStream::parse(name, raw)?;
         let archives = iwadump::envelope::parse_stream(&iwa.decoded)?;
-        streams.push(StreamView { name: name.clone(), iwa, archives });
+        streams.push(StreamView {
+            name: name.clone(),
+            iwa,
+            archives,
+        });
     }
     Ok(streams)
 }

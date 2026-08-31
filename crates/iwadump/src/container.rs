@@ -53,7 +53,14 @@ impl std::fmt::Debug for Container {
         f.debug_struct("Container")
             .field("form", &self.form)
             .field("members", &self.members.len())
-            .field("iwas", &self.iwas.iter().map(|(n, b)| (n, b.len())).collect::<Vec<_>>())
+            .field(
+                "iwas",
+                &self
+                    .iwas
+                    .iter()
+                    .map(|(n, b)| (n, b.len()))
+                    .collect::<Vec<_>>(),
+            )
             .field("nested", &self.nested_members.is_some())
             .field("source", &self.source.is_some())
             .finish()
@@ -71,7 +78,7 @@ pub enum Source {
     Dir(PathBuf),
 }
 
- /// An opened iWork '13+ container: IWA streams ready for decode, plus the raw
+/// An opened iWork '13+ container: IWA streams ready for decode, plus the raw
 #[derive(Clone)]
 pub struct Container {
     pub form: ContainerForm,
@@ -139,7 +146,11 @@ fn read_zip_member<R: Read + std::io::Seek>(
     index: usize,
 ) -> Result<Vec<u8>, Error> {
     let mut f = archive.by_index(index).map_err(|e| {
-        Error::new(Kind::Corrupt, Layer::Container, format!("cannot open container member: {e}"))
+        Error::new(
+            Kind::Corrupt,
+            Layer::Container,
+            format!("cannot open container member: {e}"),
+        )
     })?;
     // The declared size is untrusted input twice over: don't pre-allocate
     // from it, and don't let the actual stream inflate past the ceiling
@@ -148,13 +159,20 @@ fn read_zip_member<R: Read + std::io::Seek>(
         return Err(Error::new(
             Kind::Corrupt,
             Layer::Container,
-            format!("container member declares {} bytes (limit {MAX_MEMBER_BYTES})", f.size()),
+            format!(
+                "container member declares {} bytes (limit {MAX_MEMBER_BYTES})",
+                f.size()
+            ),
         ));
     }
     let mut buf = Vec::with_capacity((f.size().min(16 * 1024 * 1024)) as usize);
     let mut limited = (&mut f).take(MAX_MEMBER_BYTES + 1);
     limited.read_to_end(&mut buf).map_err(|e| {
-        Error::new(Kind::Corrupt, Layer::Container, format!("cannot read container member: {e}"))
+        Error::new(
+            Kind::Corrupt,
+            Layer::Container,
+            format!("cannot read container member: {e}"),
+        )
     })?;
     if buf.len() as u64 > MAX_MEMBER_BYTES {
         return Err(Error::new(
@@ -167,7 +185,11 @@ fn read_zip_member<R: Read + std::io::Seek>(
 }
 
 fn not_a_zip(label: &str, e: impl std::fmt::Display) -> Error {
-    Error::new(Kind::Corrupt, Layer::Container, format!("{label}: not a readable ZIP container: {e}"))
+    Error::new(
+        Kind::Corrupt,
+        Layer::Container,
+        format!("{label}: not a readable ZIP container: {e}"),
+    )
 }
 
 /// Walk one ZIP held in memory: reject encrypted/legacy, then collect its
@@ -184,8 +206,8 @@ fn scan_zip(bytes: Vec<u8>, label: &str) -> Result<ScanOutcome, Error> {
 const MAX_NESTED_INDEX_DEPTH: u32 = 1;
 
 fn scan_zip_at_depth(bytes: Vec<u8>, label: &str, depth: u32) -> Result<ScanOutcome, Error> {
-    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
-        .map_err(|e| not_a_zip(label, e))?;
+    let mut archive =
+        zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| not_a_zip(label, e))?;
     // One Member per zip index, IN zip-index order — an unreadable entry
     // must not shift later members onto the wrong index (the `.iwa` loop
     // below reads by position) nor make an encryption/legacy marker vanish
@@ -229,7 +251,11 @@ fn scan_zip_at_depth(bytes: Vec<u8>, label: &str, depth: u32) -> Result<ScanOutc
 
     // Legacy pre-'13 signals: legacy zips unzip fine but carry an XML/apxl/
     // sqlite index instead of the IWA object database (docs/format/gotchas.md #9).
-    if let Some(name) = members.iter().map(|m| m.name.as_str()).find(|n| is_legacy_marker(n)) {
+    if let Some(name) = members
+        .iter()
+        .map(|m| m.name.as_str())
+        .find(|n| is_legacy_marker(n))
+    {
         return Err(Error::new(
             Kind::Legacy,
             Layer::Container,
@@ -264,7 +290,8 @@ fn scan_zip_at_depth(bytes: Vec<u8>, label: &str, depth: u32) -> Result<ScanOutc
                 .name_for_index(i)
                 .map(|n| {
                     !n.ends_with('/')
-                        && n.rsplit('/').next().map(|b| b.to_lowercase()).as_deref() == Some("index.zip")
+                        && n.rsplit('/').next().map(|b| b.to_lowercase()).as_deref()
+                            == Some("index.zip")
                 })
                 .unwrap_or(false)
         });
@@ -276,9 +303,13 @@ fn scan_zip_at_depth(bytes: Vec<u8>, label: &str, depth: u32) -> Result<ScanOutc
                     format!("{label}: Index.zip nests deeper than the format allows"),
                 ));
             }
-            let nested_name = archive.name_for_index(idx).unwrap_or("Index.zip").to_string();
+            let nested_name = archive
+                .name_for_index(idx)
+                .unwrap_or("Index.zip")
+                .to_string();
             let nested_bytes = read_zip_member(&mut archive, idx)?;
-            let inner = scan_zip_at_depth(nested_bytes, &format!("{label} → {nested_name}"), depth + 1)?;
+            let inner =
+                scan_zip_at_depth(nested_bytes, &format!("{label} → {nested_name}"), depth + 1)?;
             return Ok(ScanOutcome {
                 members,
                 iwas: inner.iwas,
@@ -288,7 +319,12 @@ fn scan_zip_at_depth(bytes: Vec<u8>, label: &str, depth: u32) -> Result<ScanOutc
         }
     }
 
-    Ok(ScanOutcome { members, iwas, non_iwa, nested_members: None })
+    Ok(ScanOutcome {
+        members,
+        iwas,
+        non_iwa,
+        nested_members: None,
+    })
 }
 
 impl Container {
@@ -301,7 +337,11 @@ impl Container {
             return Self::open_package_dir(path);
         }
         let bytes = fs::read(path).map_err(|e| {
-            Error::new(Kind::Io, Layer::Container, format!("cannot read {}: {e}", path.display()))
+            Error::new(
+                Kind::Io,
+                Layer::Container,
+                format!("cannot read {}: {e}", path.display()),
+            )
         })?;
         let label = path.display().to_string();
 
@@ -327,8 +367,11 @@ impl Container {
         match scan_zip(bytes, &label) {
             Ok(outcome) if !outcome.iwas.is_empty() => {
                 let has_direct = outcome.members.iter().any(|m| is_iwa(&m.name));
-                let form =
-                    if has_direct { ContainerForm::FlatZip } else { ContainerForm::FlatZipNested };
+                let form = if has_direct {
+                    ContainerForm::FlatZip
+                } else {
+                    ContainerForm::FlatZipNested
+                };
                 Ok(Container {
                     form,
                     members: outcome.members,
@@ -345,7 +388,11 @@ impl Container {
             )),
             Err(e) if e.kind == Kind::Legacy && legacy_ok => {
                 let bytes = fs::read(path).map_err(|x| {
-                    Error::new(Kind::Io, Layer::Container, format!("cannot read {}: {x}", path.display()))
+                    Error::new(
+                        Kind::Io,
+                        Layer::Container,
+                        format!("cannot read {}: {x}", path.display()),
+                    )
                 })?;
                 Self::legacy_raw(bytes, label)
             }
@@ -381,7 +428,13 @@ impl Container {
         let index_zip = dir.join("Index.zip");
         if !index_zip.is_file() {
             // Directory without Index.zip: legacy bundle signals (legacy.md §4).
-            for name in ["index.xml.gz", "index.xml", "index.db", "index.apxl", "index.numbers"] {
+            for name in [
+                "index.xml.gz",
+                "index.xml",
+                "index.db",
+                "index.apxl",
+                "index.numbers",
+            ] {
                 if dir.join(name).exists() {
                     return Err(Error::new(
                         Kind::Legacy,
@@ -403,7 +456,11 @@ impl Container {
             ));
         }
         let bytes = fs::read(&index_zip).map_err(|e| {
-            Error::new(Kind::Io, Layer::Container, format!("cannot read {}: {e}", index_zip.display()))
+            Error::new(
+                Kind::Io,
+                Layer::Container,
+                format!("cannot read {}: {e}", index_zip.display()),
+            )
         })?;
         let outcome = scan_zip(bytes, &index_zip.display().to_string())?;
         if outcome.iwas.is_empty() {
@@ -491,14 +548,18 @@ impl Container {
             Some(Source::Flat(_)) => {
                 let suffix = format!("/{name}");
                 let in_list = |ms: &[Member]| {
-                    ms.iter().any(|m| m.name == name || m.name.ends_with(&suffix))
+                    ms.iter()
+                        .any(|m| m.name == name || m.name.ends_with(&suffix))
                 };
-                in_list(&self.members)
-                    || self.nested_members.as_deref().is_some_and(in_list)
+                in_list(&self.members) || self.nested_members.as_deref().is_some_and(in_list)
             }
             Some(Source::Dir(root)) => {
-                let Some(rel) = sanitized_member_path(name) else { return false };
-                let Ok(canon_root) = root.canonicalize() else { return false };
+                let Some(rel) = sanitized_member_path(name) else {
+                    return false;
+                };
+                let Ok(canon_root) = root.canonicalize() else {
+                    return false;
+                };
                 root.join(rel)
                     .canonicalize()
                     .is_ok_and(|c| c.starts_with(&canon_root) && c.is_file())
@@ -515,7 +576,9 @@ impl Container {
         let mut exact = None;
         let mut suffix = None;
         for i in 0..archive.len() {
-            let Ok(f) = archive.by_index_raw(i) else { continue };
+            let Ok(f) = archive.by_index_raw(i) else {
+                continue;
+            };
             let fname = f.name().to_string();
             if fname == name {
                 exact = Some(i);
@@ -526,7 +589,11 @@ impl Container {
             }
         }
         let index = exact.or(suffix).ok_or_else(|| {
-            Error::new(Kind::Io, Layer::Container, format!("member not found: {name}"))
+            Error::new(
+                Kind::Io,
+                Layer::Container,
+                format!("member not found: {name}"),
+            )
         })?;
         read_zip_member(&mut archive, index)
     }
@@ -559,17 +626,25 @@ mod member_tests {
         let mut inner = Vec::new();
         {
             let mut w = zip::ZipWriter::new(std::io::Cursor::new(&mut inner));
-            w.start_file("Index/Document.iwa", zip::write::SimpleFileOptions::default()).unwrap();
+            w.start_file(
+                "Index/Document.iwa",
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
             w.write_all(b"not-really-snappy").unwrap();
             w.finish().unwrap();
         }
         let mut outer = Vec::new();
         {
             let mut w = zip::ZipWriter::new(std::io::Cursor::new(&mut outer));
-            w.start_file("Index.zip", zip::write::SimpleFileOptions::default()).unwrap();
-            w.write_all(&inner).unwrap();
-            w.start_file("Metadata/Properties.plist", zip::write::SimpleFileOptions::default())
+            w.start_file("Index.zip", zip::write::SimpleFileOptions::default())
                 .unwrap();
+            w.write_all(&inner).unwrap();
+            w.start_file(
+                "Metadata/Properties.plist",
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
             w.write_all(b"<plist/>").unwrap();
             w.finish().unwrap();
         }
@@ -584,7 +659,10 @@ mod member_tests {
         std::fs::write(&path, nested_fixture_bytes()).unwrap();
         let c = Container::open(&path, false).unwrap();
         assert_eq!(c.form, ContainerForm::FlatZipNested);
-        assert_eq!(c.read_member("Metadata/Properties.plist").unwrap(), b"<plist/>");
+        assert_eq!(
+            c.read_member("Metadata/Properties.plist").unwrap(),
+            b"<plist/>"
+        );
         assert!(c.read_member("Data/missing.jpg").is_err());
         std::fs::remove_dir_all(&dir).unwrap();
     }

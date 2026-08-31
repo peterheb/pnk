@@ -108,9 +108,8 @@ impl Registry {
             _ if names.iter().all(|n| *n == names[0]) => Some(names[0].clone()),
             _ => None, // KN.DocumentArchive vs TN.DocumentArchive etc.: unknown
         };
-        let app_prefixed = |n: &str| {
-            n.starts_with("KN.") || n.starts_with("TN.") || n.starts_with("TP.")
-        };
+        let app_prefixed =
+            |n: &str| n.starts_with("KN.") || n.starts_with("TN.") || n.starts_with("TP.");
         match (app, unambiguous) {
             (App::Unknown, resolved) => resolved,
             (_, Some(n)) if !app_prefixed(&n) => Some(n),
@@ -191,7 +190,9 @@ pub fn parse_string_map(json: &str) -> Result<HashMap<u32, String>, Error> {
         i += 1;
         skip_ws(&mut i);
         let value = parse_json_string(bytes, &mut i).map_err(err)?;
-        let id: u32 = key.parse().map_err(|_| err(format!("non-numeric id key {key:?}")))?;
+        let id: u32 = key
+            .parse()
+            .map_err(|_| err(format!("non-numeric id key {key:?}")))?;
         map.insert(id, value);
     }
 }

@@ -104,10 +104,17 @@ impl IwaStream {
                 ));
             }
             decoded.extend_from_slice(&data);
-            blocks.push(Block { compressed_len, data });
+            blocks.push(Block {
+                compressed_len,
+                data,
+            });
             pos = end;
             index += 1;
         }
-        Ok(IwaStream { name: name.to_string(), blocks, decoded })
+        Ok(IwaStream {
+            name: name.to_string(),
+            blocks,
+            decoded,
+        })
     }
 }

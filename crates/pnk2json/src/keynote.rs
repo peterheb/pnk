@@ -25,8 +25,14 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> KeynoteDocument {
     // Slide size (required field 4).
     let slide_size = show
         .size(4)
-        .map(|(w, h)| Size { width: w, height: h })
-        .unwrap_or(Size { width: 1280.0, height: 720.0 });
+        .map(|(w, h)| Size {
+            width: w,
+            height: h,
+        })
+        .unwrap_or(Size {
+            width: 1280.0,
+            height: 720.0,
+        });
 
     // Masters: KN.ThemeArchive.templates (field 2).
     let theme_id = show.reference(2);
@@ -45,11 +51,13 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> KeynoteDocument {
     // KN.SlideArchive; deref only when the target is a node.
     let template_ids: Vec<u64> = template_ids
         .into_iter()
-        .map(|tid| {
-            match ctx.loaded.record(tid).map(|r| r.type_id) {
-                Some(4) => ctx.loaded.msg(tid).and_then(|n| n.reference(2)).unwrap_or(tid),
-                _ => tid,
-            }
+        .map(|tid| match ctx.loaded.record(tid).map(|r| r.type_id) {
+            Some(4) => ctx
+                .loaded
+                .msg(tid)
+                .and_then(|n| n.reference(2))
+                .unwrap_or(tid),
+            _ => tid,
         })
         .collect();
 
@@ -59,7 +67,12 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> KeynoteDocument {
         let (master, name) = convert_slide_raw(ctx, *tid, true);
         let name = name.unwrap_or_else(|| format!("Master {}", i + 1));
         master_names.insert(*tid, name.clone());
-        masters.push(MasterSlide { name, drawables: master.drawables, notes: master.notes, background: master.background });
+        masters.push(MasterSlide {
+            name,
+            drawables: master.drawables,
+            notes: master.notes,
+            background: master.background,
+        });
     }
 
     // Slide order: SlideTreeArchive.slides (field 2, authoritative);
@@ -102,8 +115,11 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> KeynoteDocument {
         })
         .collect();
 
-    let master_index: HashMap<u64, usize> =
-        template_ids.iter().enumerate().map(|(i, t)| (*t, i)).collect();
+    let master_index: HashMap<u64, usize> = template_ids
+        .iter()
+        .enumerate()
+        .map(|(i, t)| (*t, i))
+        .collect();
 
     let mut slides = Vec::new();
     for sid in &slide_ids {
@@ -180,7 +196,9 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> KeynoteDocument {
     let recording = show
         .reference(7)
         .and_then(|rid| ctx.loaded.msg(rid))
-        .map(|r| RecordingInfo { duration_sec: r.f64v(3) });
+        .map(|r| RecordingInfo {
+            duration_sec: r.f64v(3),
+        });
 
     let mut doc = KeynoteDocument {
         kind: "keynote".to_string(),
@@ -211,7 +229,10 @@ fn empty_keynote(ctx: &mut Ctx) -> KeynoteDocument {
         fonts: Vec::new(),
         media: Vec::new(),
         styles: StylePools::default(),
-        slide_size: Size { width: 1280.0, height: 720.0 },
+        slide_size: Size {
+            width: 1280.0,
+            height: 720.0,
+        },
         slides: Vec::new(),
         masters: Vec::new(),
         theme_name: None,
@@ -223,7 +244,11 @@ fn empty_keynote(ctx: &mut Ctx) -> KeynoteDocument {
 }
 
 fn media_asset_from_ref(ctx: &Ctx, r: &MediaRef) -> MediaAsset {
-    let entry = r.data_id.parse::<u64>().ok().and_then(|id| ctx.datas.get(&id));
+    let entry = r
+        .data_id
+        .parse::<u64>()
+        .ok()
+        .and_then(|id| ctx.datas.get(&id));
     MediaAsset {
         data_id: r.data_id.clone(),
         file_name: r.file_name.clone(),
@@ -300,10 +325,7 @@ fn convert_slide_raw(ctx: &mut Ctx, slide_id: u64, is_master: bool) -> (Slide, O
     // geometry payload mis-read as a name) is treated as absent.
     let name = m
         .string(10)
-        .filter(|s| {
-            !s.is_empty()
-                && !s.chars().any(|c| c.is_control() && c != '\t' && c != '\n')
-        });
+        .filter(|s| !s.is_empty() && !s.chars().any(|c| c.is_control() && c != '\t' && c != '\n'));
 
     let drawable_ids = if !is_master {
         let z = m.references(42);
@@ -397,7 +419,9 @@ fn convert_slide_raw(ctx: &mut Ctx, slide_id: u64, is_master: bool) -> (Slide, O
 
     // Background: KN.SlideStyleArchive.slide_properties(11).fill(1), walking
     // up the TSS.StyleArchive parent chain when the style itself sets none.
-    let background = m.reference(1).and_then(|sid| slide_background_fill(ctx, sid, 0));
+    let background = m
+        .reference(1)
+        .and_then(|sid| slide_background_fill(ctx, sid, 0));
     // Transition: TransitionArchive.attributes(2).animationAttributes(8).
     let transition = m
         .msg(4)
@@ -418,7 +442,7 @@ fn convert_slide_raw(ctx: &mut Ctx, slide_id: u64, is_master: bool) -> (Slide, O
 
     (
         Slide {
-        master_drawables: None,
+            master_drawables: None,
             name: name.clone(),
             skipped: None,
             master_name: None,
@@ -449,7 +473,9 @@ fn empty_slide() -> Slide {
 /// Attach KN.BuildArchive specs to the drawables they reference.
 /// KN.BuildArchive { drawable = 1, delivery = 2 (string), attributes = 4 }.
 fn attach_builds(ctx: &mut Ctx, slide_id: u64, converted: &mut [(u64, Drawable)]) {
-    let Some(m) = ctx.loaded.msg(slide_id).cloned() else { return };
+    let Some(m) = ctx.loaded.msg(slide_id).cloned() else {
+        return;
+    };
     let build_refs = m.references(2);
     if build_refs.is_empty() {
         return;
@@ -469,8 +495,12 @@ fn attach_builds(ctx: &mut Ctx, slide_id: u64, converted: &mut [(u64, Drawable)]
     }
 
     for (order, bid) in build_refs.iter().enumerate() {
-        let Some(b) = ctx.loaded.msg(*bid) else { continue };
-        let Some(drawable_ref) = b.reference(1) else { continue };
+        let Some(b) = ctx.loaded.msg(*bid) else {
+            continue;
+        };
+        let Some(drawable_ref) = b.reference(1) else {
+            continue;
+        };
         let delivery = match b.string(2).as_deref() {
             Some("build-in") | Some("in") => BuildDelivery::In,
             Some("build-out") | Some("out") => BuildDelivery::Out,
@@ -486,29 +516,25 @@ fn attach_builds(ctx: &mut Ctx, slide_id: u64, converted: &mut [(u64, Drawable)]
             duration_sec: anim.as_ref().and_then(|a| a.f64v(3)),
             delay_sec: anim.as_ref().and_then(|a| a.f64v(5)),
             automatic: anim.as_ref().and_then(|a| a.boolean(6)),
-            acceleration: attrs
-                .as_ref()
-                .and_then(|a| a.varint(13))
-                .map(|v| match v {
-                    1 => BuildAcceleration::EaseIn,
-                    2 => BuildAcceleration::EaseOut,
-                    3 => BuildAcceleration::EaseBoth,
-                    4 => BuildAcceleration::Custom,
-                    _ => BuildAcceleration::None,
-                }),
-            text_delivery: attrs
-                .as_ref()
-                .and_then(|a| a.varint(20))
-                .map(|v| match v {
-                    1 => BuildTextDelivery::ByObject,
-                    2 => BuildTextDelivery::ByWord,
-                    3 => BuildTextDelivery::ByCharacter,
-                    _ => BuildTextDelivery::ByLine,
-                }),
+            acceleration: attrs.as_ref().and_then(|a| a.varint(13)).map(|v| match v {
+                1 => BuildAcceleration::EaseIn,
+                2 => BuildAcceleration::EaseOut,
+                3 => BuildAcceleration::EaseBoth,
+                4 => BuildAcceleration::Custom,
+                _ => BuildAcceleration::None,
+            }),
+            text_delivery: attrs.as_ref().and_then(|a| a.varint(20)).map(|v| match v {
+                1 => BuildTextDelivery::ByObject,
+                2 => BuildTextDelivery::ByWord,
+                3 => BuildTextDelivery::ByCharacter,
+                _ => BuildTextDelivery::ByLine,
+            }),
             chunks: chunks_by_build.get(bid).cloned(),
             motion_blur: attrs.as_ref().and_then(|a| {
                 if a.boolean(29).unwrap_or(false) || a.has(39) {
-                    Some(MotionBlur { amount: a.f64v(39).unwrap_or(0.0) })
+                    Some(MotionBlur {
+                        amount: a.f64v(39).unwrap_or(0.0),
+                    })
                 } else {
                     None
                 }
@@ -554,7 +580,11 @@ fn set_build(d: &mut Drawable, spec: BuildSpec) {
 fn resolve_template_id(ctx: &Ctx, slide_id: u64) -> Option<u64> {
     let tid = ctx.loaded.msg(slide_id)?.reference(17)?;
     Some(match ctx.loaded.record(tid).map(|r| r.type_id) {
-        Some(4) => ctx.loaded.msg(tid).and_then(|n| n.reference(2)).unwrap_or(tid),
+        Some(4) => ctx
+            .loaded
+            .msg(tid)
+            .and_then(|n| n.reference(2))
+            .unwrap_or(tid),
         _ => tid,
     })
 }
@@ -568,7 +598,9 @@ fn inherit_placeholders(
     slide: &mut Slide,
     master_names: &HashMap<u64, String>,
 ) {
-    let Some(mid) = resolve_template_id(ctx, slide_id) else { return };
+    let Some(mid) = resolve_template_id(ctx, slide_id) else {
+        return;
+    };
     if let Some(mn) = master_names.get(&mid) {
         slide.master_name = Some(mn.clone());
     }
@@ -589,12 +621,22 @@ fn inherit_placeholders(
     for d in slide.drawables.iter_mut() {
         let (role, has_text) = match d {
             Drawable::Textbox { common, text, .. } => (
-                common.placeholder.as_ref().filter(|p| p.inherited.is_none()).map(|p| p.role.clone()),
+                common
+                    .placeholder
+                    .as_ref()
+                    .filter(|p| p.inherited.is_none())
+                    .map(|p| p.role.clone()),
                 !text.paragraphs.is_empty(),
             ),
             Drawable::Shape { common, text, .. } => (
-                common.placeholder.as_ref().filter(|p| p.inherited.is_none()).map(|p| p.role.clone()),
-                text.as_ref().map(|t| !t.paragraphs.is_empty()).unwrap_or(false),
+                common
+                    .placeholder
+                    .as_ref()
+                    .filter(|p| p.inherited.is_none())
+                    .map(|p| p.role.clone()),
+                text.as_ref()
+                    .map(|t| !t.paragraphs.is_empty())
+                    .unwrap_or(false),
             ),
             _ => (None, false),
         };
@@ -602,7 +644,9 @@ fn inherit_placeholders(
         let Some((mpid, _)) = master_placeholders.iter().find(|(_, r)| *r == role) else {
             continue;
         };
-        let Some(master_common) = master_placeholder_common(ctx, *mpid) else { continue };
+        let Some(master_common) = master_placeholder_common(ctx, *mpid) else {
+            continue;
+        };
         // Property-by-property (FINDINGS.md M-8): the old code replaced the
         // WHOLE common block for empty placeholders (clobbering explicit
         // child geometry/style) and skipped text-bearing ones entirely
@@ -656,7 +700,11 @@ fn placeholder_role(ctx: &Ctx, pid: u64) -> Option<String> {
     let m = ctx.loaded.msg(pid)?;
     match rec.type_id {
         7 | 12 => {
-            let is_kn = rec.name.as_deref().map(|n| n.starts_with("KN.")).unwrap_or(false);
+            let is_kn = rec
+                .name
+                .as_deref()
+                .map(|n| n.starts_with("KN."))
+                .unwrap_or(false);
             if is_kn {
                 // KN.PlaceholderArchive.Kind (KNArchives.proto:203-209).
                 Some(match m.varint(2).unwrap_or(0) {
@@ -699,7 +747,9 @@ fn placeholder_visibility(ctx: &Ctx, style_id: u64) -> PlaceholderVisibility {
     let mut v = PlaceholderVisibility::default();
     let mut sid = style_id;
     for _ in 0..16 {
-        let Some(m) = ctx.loaded.msg(sid) else { return v };
+        let Some(m) = ctx.loaded.msg(sid) else {
+            return v;
+        };
         if let Some(props) = m.msg(11) {
             if v.title.is_none() {
                 v.title = props.boolean(4);
@@ -763,7 +813,10 @@ fn drawable_common(d: &Drawable) -> Option<&DrawableCommon> {
 }
 
 fn drawable_role(d: &Drawable) -> Option<&str> {
-    drawable_common(d)?.placeholder.as_ref().map(|p| p.role.as_str())
+    drawable_common(d)?
+        .placeholder
+        .as_ref()
+        .map(|p| p.role.as_str())
 }
 
 /// (x, y, w, h) when fully placed.
@@ -777,7 +830,12 @@ fn drawable_frame(d: &Drawable) -> Option<(f64, f64, f64, f64)> {
 /// Rounded position+size signature for exact-overlap detection.
 fn frame_key(d: &Drawable) -> Option<(i64, i64, i64, i64)> {
     let (x, y, w, h) = drawable_frame(d)?;
-    Some((x.round() as i64, y.round() as i64, w.round() as i64, h.round() as i64))
+    Some((
+        x.round() as i64,
+        y.round() as i64,
+        w.round() as i64,
+        h.round() as i64,
+    ))
 }
 
 /// True when the drawable carries at least one non-whitespace text run.

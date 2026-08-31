@@ -41,7 +41,10 @@ const MAX_CACHE_BYTES: usize = 256 * 1024 * 1024;
 
 fn cache_bytes() -> usize {
     TRANSCODE_CACHE.with(|c| {
-        c.borrow().values().map(|v| v.as_ref().map_or(0, |p| p.len())).sum()
+        c.borrow()
+            .values()
+            .map(|v| v.as_ref().map_or(0, |p| p.len()))
+            .sum()
     })
 }
 
@@ -90,8 +93,8 @@ fn tiff_to_png(bytes: &[u8]) -> Option<Vec<u8>> {
 #[wasm_bindgen]
 pub fn convert(bytes: &[u8]) -> Result<String, JsError> {
     clear_document_state();
-    let mut ctx = pnk2json::ctx::Ctx::from_bytes(bytes)
-        .map_err(|e| JsError::new(&e.to_string()))?;
+    let mut ctx =
+        pnk2json::ctx::Ctx::from_bytes(bytes).map_err(|e| JsError::new(&e.to_string()))?;
     let doc = pnk2json::convert_ctx(&mut ctx).map_err(|e| JsError::new(&e.to_string()))?;
     LAST_CTX.with(|slot| *slot.borrow_mut() = Some(ctx));
     Ok(pnk2json::to_json_compact(&doc))
@@ -101,8 +104,8 @@ pub fn convert(bytes: &[u8]) -> Result<String, JsError> {
 #[wasm_bindgen]
 pub fn convert_pretty(bytes: &[u8]) -> Result<String, JsError> {
     clear_document_state();
-    let mut ctx = pnk2json::ctx::Ctx::from_bytes(bytes)
-        .map_err(|e| JsError::new(&e.to_string()))?;
+    let mut ctx =
+        pnk2json::ctx::Ctx::from_bytes(bytes).map_err(|e| JsError::new(&e.to_string()))?;
     let doc = pnk2json::convert_ctx(&mut ctx).map_err(|e| JsError::new(&e.to_string()))?;
     LAST_CTX.with(|slot| *slot.borrow_mut() = Some(ctx));
     Ok(pnk2json::to_json(&doc))
@@ -112,8 +115,8 @@ pub fn convert_pretty(bytes: &[u8]) -> Result<String, JsError> {
 #[wasm_bindgen]
 pub fn convert_markdown(bytes: &[u8]) -> Result<String, JsError> {
     clear_document_state();
-    let mut ctx = pnk2json::ctx::Ctx::from_bytes(bytes)
-        .map_err(|e| JsError::new(&e.to_string()))?;
+    let mut ctx =
+        pnk2json::ctx::Ctx::from_bytes(bytes).map_err(|e| JsError::new(&e.to_string()))?;
     let doc = pnk2json::convert_ctx(&mut ctx).map_err(|e| JsError::new(&e.to_string()))?;
     LAST_CTX.with(|slot| *slot.borrow_mut() = Some(ctx));
     Ok(pnk2json::dumptext::to_markdown(&doc))

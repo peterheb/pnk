@@ -41,7 +41,10 @@ fn chart_type(v: u64) -> (ChartType, bool) {
 }
 
 pub fn convert_chart(ctx: &mut Ctx, ca: &Msg) -> ChartModel {
-    let (ctype, three_d) = ca.varint(1).map(chart_type).unwrap_or((ChartType::Other, false));
+    let (ctype, three_d) = ca
+        .varint(1)
+        .map(chart_type)
+        .unwrap_or((ChartType::Other, false));
 
     let legend_frame = ca.msg(3).and_then(|r| {
         Some(Rect {
@@ -188,7 +191,9 @@ fn series_style_color(ctx: &mut Ctx, style_id: u64, slots: &[(u32, bool)]) -> Op
     }
     for &(field, is_stroke) in slots {
         for ext in &exts {
-            let Some(payload) = ext.msg(field) else { continue };
+            let Some(payload) = ext.msg(field) else {
+                continue;
+            };
             if is_stroke {
                 if let Some(c) = payload.msg(1) {
                     let mut warns = Vec::new();
@@ -281,8 +286,10 @@ fn extract_grid(g: &Msg, series_direction: u64) -> (Vec<String>, Vec<ChartSeries
             let ncols = rows.iter().map(|r| r.len()).max().unwrap_or(0);
             let mut series = Vec::new();
             for c in 0..ncols {
-                let values: Vec<GridVal> =
-                    rows.iter().map(|r| r.get(c).cloned().unwrap_or(GridVal::Hole)).collect();
+                let values: Vec<GridVal> = rows
+                    .iter()
+                    .map(|r| r.get(c).cloned().unwrap_or(GridVal::Hole))
+                    .collect();
                 series.push(ChartSeries {
                     name: col_names.get(c).cloned(),
                     values: to_series(values),

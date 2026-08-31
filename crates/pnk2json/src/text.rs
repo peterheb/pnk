@@ -7,9 +7,9 @@
 //! textual/smart fields to FieldRuns. No offsets survive.
 
 use crate::ctx::Ctx;
-use crate::styles::{resolve_list_format_minimal, resolve_para_style};
 use crate::model::*;
 use crate::pb::Msg;
+use crate::styles::{resolve_list_format_minimal, resolve_para_style};
 
 /// One attribute-table entry keyed by a UTF-16 offset.
 #[derive(Debug, Clone)]
@@ -48,7 +48,9 @@ fn u16_to_char_index(map: &[usize], off: usize) -> usize {
 /// Pull (character_index, object reference id) entries from an
 /// ObjectAttributeTable message.
 fn entries_of(table: Option<Msg>) -> Vec<Entry> {
-    let Some(table) = table else { return Vec::new() };
+    let Some(table) = table else {
+        return Vec::new();
+    };
     let mut out: Vec<Entry> = table
         .msgs(1)
         .into_iter()
@@ -165,7 +167,11 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
             // paragraph start (G1: "Two"/"Three" continue the numbering
             // started at "One" — restart=true only at the entry paragraph).
             list_by_para[pi] = cur.map(|lid| {
-                (lid, para_level(&para_data, p_start_u16), para_restart(&para_starts, p_start_u16))
+                (
+                    lid,
+                    para_level(&para_data, p_start_u16),
+                    para_restart(&para_starts, p_start_u16),
+                )
             });
         }
     }
@@ -230,7 +236,12 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
                 boundaries.push(e.utf16_off);
             }
         }
-        for (ci, ch) in text.chars().enumerate().skip(*start).take(end.saturating_sub(*start)) {
+        for (ci, ch) in text
+            .chars()
+            .enumerate()
+            .skip(*start)
+            .take(end.saturating_sub(*start))
+        {
             if ch == '\u{FFFC}' {
                 boundaries.push(map[ci]);
             }
@@ -249,9 +260,10 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
             // PARAGRAPH style's char_properties chain — heading/title fonts
             // and placeholder text sizes live there (G5 goldens; RIPE deck).
             let char_sid = entry_at(&char_entries, b0).and_then(|e| e.object_id);
-            let char_style =
-                crate::styles::resolve_effective_char_style(ctx, char_sid, style_ref);
-            let c_style = ctx.char_pool.intern(crate::ctx::strip_char_defaults(char_style));
+            let char_style = crate::styles::resolve_effective_char_style(ctx, char_sid, style_ref);
+            let c_style = ctx
+                .char_pool
+                .intern(crate::ctx::strip_char_defaults(char_style));
 
             let seg_start_char = u16_to_char_index(&map, b0);
             let seg_end_char = u16_to_char_index(&map, b1);
@@ -270,8 +282,11 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
             // the mark field; the referenced storage becomes the footnote
             // body (table_footnote, see above).
             if let Some(fe) = footnote_entries.iter().find(|e| e.utf16_off == b0) {
-                if let AttachmentResult::Field { style, value, field } =
-                    resolve_attachment(ctx, fe.object_id, pi as u32, &mut footnotes)
+                if let AttachmentResult::Field {
+                    style,
+                    value,
+                    field,
+                } = resolve_attachment(ctx, fe.object_id, pi as u32, &mut footnotes)
                 {
                     items.push(ParagraphItem::Field {
                         kind: FieldTag::Field,
@@ -300,7 +315,10 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
                 match resolved {
                     AttachmentResult::Drawable(drawable, h_off, v_off) => {
                         let offset = if h_off.is_some() || v_off.is_some() {
-                            Some(InlineOffset { h_pt: h_off, v_pt: v_off })
+                            Some(InlineOffset {
+                                h_pt: h_off,
+                                v_pt: v_off,
+                            })
                         } else {
                             None
                         };
@@ -310,7 +328,11 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
                             offset,
                         });
                     }
-                    AttachmentResult::Field { style, value, field } => {
+                    AttachmentResult::Field {
+                        style,
+                        value,
+                        field,
+                    } => {
                         items.push(ParagraphItem::Field {
                             kind: FieldTag::Field,
                             c_style: ctx.char_pool.intern(crate::ctx::strip_char_defaults(style)),
@@ -366,12 +388,15 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
                                     // url_ref is a plain STRING field 2 [proto:
                                     // TSWPArchives.proto:782]; older writers may
                                     // store a reference to a URL object instead.
-                                    hyperlink = sm.string(2).filter(|u| valid_url(u)).or_else(|| {
-                                        sm.reference(2)
-                                            .and_then(|u| ctx.loaded.msg(u))
-                                            .and_then(|um| um.string(1).or_else(|| um.string(3)))
-                                            .filter(|u| valid_url(u))
-                                    });
+                                    hyperlink =
+                                        sm.string(2).filter(|u| valid_url(u)).or_else(|| {
+                                            sm.reference(2)
+                                                .and_then(|u| ctx.loaded.msg(u))
+                                                .and_then(|um| {
+                                                    um.string(1).or_else(|| um.string(3))
+                                                })
+                                                .filter(|u| valid_url(u))
+                                        });
                                 }
                                 // Placeholder/bookmark/TOC smart fields: plain
                                 // text, no decoration.
@@ -428,11 +453,16 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
         {
             pstyle.drop_cap = crate::styles::resolve_drop_cap(ctx, dcid);
         }
-        let p_style = ctx.para_pool.intern(crate::ctx::strip_para_defaults(pstyle));
+        let p_style = ctx
+            .para_pool
+            .intern(crate::ctx::strip_para_defaults(pstyle));
         paragraphs.push(Paragraph { p_style, items });
     }
 
-    Some(ExtractedText { text: StyledText { paragraphs }, footnotes })
+    Some(ExtractedText {
+        text: StyledText { paragraphs },
+        footnotes,
+    })
 }
 
 /// A safe hyperlink target: printable, and on the scheme allowlist. The
@@ -577,7 +607,9 @@ fn resolve_attachment(
 
 /// ParaDataAttributeTable (fields 6/14/24): entries {idx, first, second}.
 fn para_table(table: Option<Msg>) -> Vec<(usize, u64, u64)> {
-    let Some(table) = table else { return Vec::new() };
+    let Some(table) = table else {
+        return Vec::new();
+    };
     table
         .msgs(1)
         .into_iter()

@@ -15,7 +15,11 @@ fn golden_path(rel: &str) -> Option<PathBuf> {
 fn diff(a: &serde_json::Value, b: &serde_json::Value, path: &str, out: &mut Vec<String>) {
     match (a, b) {
         (serde_json::Value::Object(x), serde_json::Value::Object(y)) => {
-            for k in x.keys().chain(y.keys()).collect::<std::collections::BTreeSet<_>>() {
+            for k in x
+                .keys()
+                .chain(y.keys())
+                .collect::<std::collections::BTreeSet<_>>()
+            {
                 let p = format!("{path}.{k}");
                 match (x.get(k), y.get(k)) {
                     (Some(u), Some(v)) => diff(u, v, &p, out),
@@ -72,9 +76,10 @@ fn golden_g1_word_processing_matches_expected() {
         return;
     };
 
-    let ours: serde_json::Value =
-        serde_json::from_str(&pnk2json::to_json(&pnk2json::convert_path(&fixture).unwrap()))
-            .unwrap();
+    let ours: serde_json::Value = serde_json::from_str(&pnk2json::to_json(
+        &pnk2json::convert_path(&fixture).unwrap(),
+    ))
+    .unwrap();
     let expected: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(expected_path).unwrap()).unwrap();
 
@@ -94,16 +99,16 @@ fn golden_g2_page_layout_matches_expected() {
         eprintln!("golden fixture absent; skipping");
         return;
     };
-    let Some(expected_path) =
-        golden_path("fixtures/golden/expected/G2-golden-pages-layout.json")
+    let Some(expected_path) = golden_path("fixtures/golden/expected/G2-golden-pages-layout.json")
     else {
         eprintln!("expected JSON absent; skipping");
         return;
     };
 
-    let ours: serde_json::Value =
-        serde_json::from_str(&pnk2json::to_json(&pnk2json::convert_path(&fixture).unwrap()))
-            .unwrap();
+    let ours: serde_json::Value = serde_json::from_str(&pnk2json::to_json(
+        &pnk2json::convert_path(&fixture).unwrap(),
+    ))
+    .unwrap();
     let expected: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(expected_path).unwrap()).unwrap();
 

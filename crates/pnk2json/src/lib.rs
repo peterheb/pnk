@@ -87,9 +87,9 @@ fn aggregate_warnings(warnings: Vec<model::Warning>) -> Vec<model::Warning> {
                 let first = &mut order[i];
                 first.count = Some(first.count.unwrap_or(1) + 1);
                 if let Some(p) = &w.path {
-                    let paths = first.paths.get_or_insert_with(|| {
-                        first.path.iter().cloned().collect()
-                    });
+                    let paths = first
+                        .paths
+                        .get_or_insert_with(|| first.path.iter().cloned().collect());
                     if paths.len() < 5 && !paths.contains(p) {
                         paths.push(p.clone());
                     }

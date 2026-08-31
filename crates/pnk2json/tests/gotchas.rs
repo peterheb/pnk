@@ -65,7 +65,10 @@ fn gotcha11_operation_storage_is_skipped_not_decoded() {
     };
     let container = iwadump::Container::open(&path, false).unwrap();
     assert!(
-        container.non_iwa.iter().any(|(n, _)| n.contains("OperationStorage")),
+        container
+            .non_iwa
+            .iter()
+            .any(|(n, _)| n.contains("OperationStorage")),
         "fixture should carry OperationStorage"
     );
     let doc = pnk2json::convert_path(&path).unwrap();
@@ -86,13 +89,19 @@ fn gotcha4_unknown_type_ids_become_warnings() {
         return;
     };
     let doc = pnk2json::convert_path(&path).unwrap();
-    let PnkDocument::Pages(d) = &doc else { panic!("expected pages") };
+    let PnkDocument::Pages(d) = &doc else {
+        panic!("expected pages")
+    };
     let unknown = d
         .warnings
         .iter()
         .find(|w| w.code == WarningCode::UnknownObjectType)
         .expect("unknown-object-type warning expected");
-    assert!(unknown.detail.as_deref().map(|s| s.starts_with("0x")).unwrap_or(false));
+    assert!(unknown
+        .detail
+        .as_deref()
+        .map(|s| s.starts_with("0x"))
+        .unwrap_or(false));
 }
 
 #[test]
@@ -104,7 +113,9 @@ fn keynote_fixture_converts_with_envelope() {
         return;
     };
     let doc = pnk2json::convert_path(&path).unwrap();
-    let PnkDocument::Keynote(d) = &doc else { panic!("expected keynote") };
+    let PnkDocument::Keynote(d) = &doc else {
+        panic!("expected keynote")
+    };
     assert_eq!(d.kind, "keynote");
     assert_eq!(d.meta.app, AppKind::Keynote);
     assert_eq!(d.slides.len(), 2);
@@ -120,7 +131,9 @@ fn keynote_fixture_converts_with_envelope() {
         })
         .collect();
     assert!(
-        texts.iter().any(|t| t.contains("Edit the Keynote Gantt chart template")),
+        texts
+            .iter()
+            .any(|t| t.contains("Edit the Keynote Gantt chart template")),
         "expected storage text in converted drawables: {texts:?}"
     );
     // Meta from container plists.
@@ -166,9 +179,15 @@ fn serde_field_names_match_ts_contract() {
             preferred_file_name: None,
             kind: MediaKind::Image,
             byte_length: Some(10),
-            pixel_size: Some(Size { width: 2.0, height: 2.0 }),
+            pixel_size: Some(Size {
+                width: 2.0,
+                height: 2.0,
+            }),
         }],
-        slide_size: Size { width: 1280.0, height: 720.0 },
+        slide_size: Size {
+            width: 1280.0,
+            height: 720.0,
+        },
         slides: vec![Slide {
             name: Some("S".into()),
             skipped: Some(false),
@@ -182,7 +201,10 @@ fn serde_field_names_match_ts_contract() {
                         delivery: BuildDelivery::In,
                         ..Default::default()
                     }),
-                    placeholder: Some(PlaceholderInfo { role: "title".into(), inherited: None }),
+                    placeholder: Some(PlaceholderInfo {
+                        role: "title".into(),
+                        inherited: None,
+                    }),
                     ..Default::default()
                 },
                 geometry: ShapeGeometry {
@@ -218,8 +240,14 @@ fn serde_field_names_match_ts_contract() {
     assert_eq!(json["media"][0]["pixelSize"]["width"], 2.0);
     assert_eq!(json["slideSize"]["width"], 1280.0);
     assert_eq!(json["slides"][0]["drawables"][0]["type"], "shape");
-    assert_eq!(json["slides"][0]["drawables"][0]["geometry"]["preset"], "star");
-    assert_eq!(json["slides"][0]["drawables"][0]["common"]["angleDeg"], 90.0);
+    assert_eq!(
+        json["slides"][0]["drawables"][0]["geometry"]["preset"],
+        "star"
+    );
+    assert_eq!(
+        json["slides"][0]["drawables"][0]["common"]["angleDeg"],
+        90.0
+    );
     assert_eq!(
         json["slides"][0]["drawables"][0]["common"]["keynoteBuild"]["delivery"],
         "in"
@@ -235,7 +263,10 @@ fn serde_field_names_match_ts_contract() {
 
 #[test]
 fn cell_value_union_shape() {
-    let cell = CellValue::Currency { value: 3.5, currency_code: Some("USD".into()) };
+    let cell = CellValue::Currency {
+        value: 3.5,
+        currency_code: Some("USD".into()),
+    };
     let json = serde_json::to_value(&cell).unwrap();
     assert_eq!(json["type"], "currency");
     assert_eq!(json["value"], 3.5);
@@ -252,12 +283,18 @@ fn json_escapes_zs_cf_code_points() {
     use pnk2json::model::*;
     let doc = KeynoteDocument {
         kind: "keynote".to_string(),
-        meta: DocumentMeta { app: AppKind::Keynote, ..Default::default() },
+        meta: DocumentMeta {
+            app: AppKind::Keynote,
+            ..Default::default()
+        },
         warnings: vec![],
         fonts: vec![],
         media: vec![],
         styles: StylePools::default(),
-        slide_size: Size { width: 100.0, height: 100.0 },
+        slide_size: Size {
+            width: 100.0,
+            height: 100.0,
+        },
         slides: vec![Slide {
             name: None,
             skipped: None,
@@ -268,9 +305,9 @@ fn json_escapes_zs_cf_code_points() {
                 text: StyledText {
                     paragraphs: vec![Paragraph {
                         p_style: None,
-                        items: vec![
-                            ParagraphItem::Plain("a\u{00a0}b\u{200b}c\u{200d}d\u{202f}e\u{3000}f".into()),
-                        ],
+                        items: vec![ParagraphItem::Plain(
+                            "a\u{00a0}b\u{200b}c\u{200d}d\u{202f}e\u{3000}f".into(),
+                        )],
                     }],
                 },
                 vertical_alignment: None,

@@ -24,11 +24,15 @@ enum MembersInner {
 
 impl Members {
     pub fn from_container(container: iwadump::Container) -> Members {
-        Members { inner: MembersInner::Container(Box::new(container)) }
+        Members {
+            inner: MembersInner::Container(Box::new(container)),
+        }
     }
 
     pub fn from_map(map: HashMap<String, Vec<u8>>) -> Members {
-        Members { inner: MembersInner::Map(map) }
+        Members {
+            inner: MembersInner::Map(map),
+        }
     }
 
     /// Lazy zip-backed view over the raw document bytes (wasm path). Falls
@@ -36,8 +40,12 @@ impl Members {
     /// caller has already parsed streams out of them, so this is unusual).
     pub fn from_zip_bytes(bytes: Vec<u8>) -> Members {
         match zip::ZipArchive::new(std::io::Cursor::new(bytes)) {
-            Ok(z) => Members { inner: MembersInner::Zip(std::cell::RefCell::new(z)) },
-            Err(_) => Members { inner: MembersInner::Map(HashMap::new()) },
+            Ok(z) => Members {
+                inner: MembersInner::Zip(std::cell::RefCell::new(z)),
+            },
+            Err(_) => Members {
+                inner: MembersInner::Map(HashMap::new()),
+            },
         }
     }
 

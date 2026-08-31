@@ -49,5 +49,7 @@ pub fn decode_block(payload: &[u8], block_index: usize) -> Result<Vec<u8>, Error
 
 /// Compress one raw Snappy block (test helper and round-trip proof).
 pub fn encode_block(data: &[u8]) -> Vec<u8> {
-    snap::raw::Encoder::new().compress_vec(data).expect("snappy encode cannot fail on valid input")
+    snap::raw::Encoder::new()
+        .compress_vec(data)
+        .expect("snappy encode cannot fail on valid input")
 }

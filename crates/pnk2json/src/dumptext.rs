@@ -98,7 +98,12 @@ fn para_markdown(p: &Paragraph, char_styles: &[CharStyle]) -> String {
 }
 
 fn styled_plain(st: &StyledText) -> String {
-    st.paragraphs.iter().map(para_plain).filter(|l| !l.is_empty()).collect::<Vec<_>>().join("\n")
+    st.paragraphs
+        .iter()
+        .map(para_plain)
+        .filter(|l| !l.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn escape_md(s: &str) -> String {
@@ -122,7 +127,6 @@ fn fmt_num(n: f64) -> String {
         s
     }
 }
-
 
 fn drawable_texts(d: &Drawable, out: &mut Vec<(String, String)>) {
     // (kind, text) pairs, in paint order; recurse into groups.
@@ -148,7 +152,13 @@ fn drawable_texts(d: &Drawable, out: &mut Vec<(String, String)>) {
         }
         Drawable::Image { .. } => out.push(("image".into(), String::new())),
         Drawable::Table { table, .. } => {
-            out.push(("table".into(), format!("[table: {}]", table.name.clone().unwrap_or_else(|| "unnamed".into()))));
+            out.push((
+                "table".into(),
+                format!(
+                    "[table: {}]",
+                    table.name.clone().unwrap_or_else(|| "unnamed".into())
+                ),
+            ));
         }
         Drawable::Chart { chart, .. } => {
             out.push(("chart".into(), format!("[chart: {:?}]", chart.r#type)));
@@ -177,7 +187,10 @@ fn warnings_block(doc_warnings: &[Warning], out: &mut String, markdown: bool) {
 // Keynote
 // ---------------------------------------------------------------------------
 
-fn slide_title_and_bullets(slide: &Slide, para_styles: &[ParaStyle]) -> (Option<String>, Vec<String>) {
+fn slide_title_and_bullets(
+    slide: &Slide,
+    para_styles: &[ParaStyle],
+) -> (Option<String>, Vec<String>) {
     let mut title = None;
     let mut bullets = Vec::new();
     for d in &slide.drawables {
@@ -301,10 +314,7 @@ fn pages_body_md(body: &StyledText, styles: &StylePools, out: &mut String) {
 }
 
 fn pages_text(d: &PagesDocument, out: &mut String) {
-    out.push_str(&format!(
-        "Pages document ({:?})\n",
-        d.flavor
-    ));
+    out.push_str(&format!("Pages document ({:?})\n", d.flavor));
     match d.flavor {
         PagesFlavor::WordProcessing => {
             if let Some(body) = &d.body {
@@ -321,7 +331,11 @@ fn pages_text(d: &PagesDocument, out: &mut String) {
                     if level > 0 {
                         // Same clamp as the Markdown path: a document-supplied
                         // outline level is untrusted and sizes an allocation.
-                        out.push_str(&format!("{} {}\n", "#".repeat((level as usize).clamp(1, 6)), text));
+                        out.push_str(&format!(
+                            "{} {}\n",
+                            "#".repeat((level as usize).clamp(1, 6)),
+                            text
+                        ));
                     } else {
                         out.push_str(&format!("{text}\n"));
                     }
@@ -330,7 +344,10 @@ fn pages_text(d: &PagesDocument, out: &mut String) {
         }
         PagesFlavor::PageLayout => {
             for (i, page) in d.floating.iter().enumerate() {
-                out.push_str(&format!("\n--- Page {} ---\n", page.page_index.unwrap_or(i as u32) + 1));
+                out.push_str(&format!(
+                    "\n--- Page {} ---\n",
+                    page.page_index.unwrap_or(i as u32) + 1
+                ));
                 let mut texts = Vec::new();
                 for dr in &page.drawables {
                     drawable_texts(dr, &mut texts);
@@ -419,15 +436,20 @@ fn cell_text_plain(cell: &TableCell) -> String {
 }
 
 fn table_markdown(t: &TableModel, out: &mut String) {
-    let name = t
-        .name
-        .clone()
-        .unwrap_or_else(|| "Table".to_string());
-    out.push_str(&format!("**{name}** ({} rows × {} columns)\n\n", t.row_count, t.column_count));
+    let name = t.name.clone().unwrap_or_else(|| "Table".to_string());
+    out.push_str(&format!(
+        "**{name}** ({} rows × {} columns)\n\n",
+        t.row_count, t.column_count
+    ));
 
     let hr = t.header_row_count as usize;
     let cell_text = |r: usize, c: usize| -> String {
-        match t.grid.get(r).and_then(|row| row.get(c)).and_then(|slot| slot.as_ref()) {
+        match t
+            .grid
+            .get(r)
+            .and_then(|row| row.get(c))
+            .and_then(|slot| slot.as_ref())
+        {
             Some(GridCell::Plain(GridPlain::Text(s))) => escape_md(s),
             Some(GridCell::Plain(GridPlain::Number(n))) => fmt_num(n.as_f64().unwrap_or(0.0)),
             Some(GridCell::Plain(GridPlain::Bool(b))) => {
@@ -519,7 +541,10 @@ fn numbers_text(d: &NumbersDocument, out: &mut String) {
                         }
                     }
                 }
-                Drawable::Textbox { text, .. } | Drawable::Shape { text: Some(text), .. } => {
+                Drawable::Textbox { text, .. }
+                | Drawable::Shape {
+                    text: Some(text), ..
+                } => {
                     let t = styled_plain(text);
                     if !t.is_empty() {
                         out.push_str(&format!("{t}\n"));
@@ -540,10 +565,7 @@ fn numbers_md(d: &NumbersDocument, out: &mut String) {
             match dr {
                 Drawable::Table { table, .. } => table_markdown(table, out),
                 Drawable::Chart { chart, .. } => {
-                    out.push_str(&format!(
-                        "*Chart ({:?}):* ",
-                        chart.r#type
-                    ));
+                    out.push_str(&format!("*Chart ({:?}):* ", chart.r#type));
                     if chart.series.is_empty() {
                         out.push_str("no inline data\n\n");
                     } else {
@@ -587,7 +609,9 @@ fn numbers_md(d: &NumbersDocument, out: &mut String) {
                         out.push_str(&format!("{t}\n\n"));
                     }
                 }
-                Drawable::Shape { text: Some(text), .. } => {
+                Drawable::Shape {
+                    text: Some(text), ..
+                } => {
                     let t = styled_plain(text);
                     if !t.is_empty() {
                         out.push_str(&format!("{t}\n\n"));

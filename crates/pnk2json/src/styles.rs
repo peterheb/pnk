@@ -362,7 +362,10 @@ pub fn resolve_list_format(ctx: &mut Ctx, list_id: u64, level: u32) -> Option<Li
         }
         let Some(m) = ctx.loaded.msg(id) else { break };
         let m = m.clone();
-        cur = m.msg(1).and_then(|b| b.reference(3)).or_else(|| m.reference(3));
+        cur = m
+            .msg(1)
+            .and_then(|b| b.reference(3))
+            .or_else(|| m.reference(3));
         msgs.push(m);
     }
     if msgs.is_empty() {
@@ -394,7 +397,11 @@ pub fn resolve_list_format(ctx: &mut Ctx, list_id: u64, level: u32) -> Option<Li
     let (marker_kind, number_kind, marker_text, marker_image) = match label {
         0 => (ListMarkerKind::None, None, None, None),
         1 => {
-            let images = msgs.iter().map(|m| m.msgs(17)).find(|v| !v.is_empty()).unwrap_or_default();
+            let images = msgs
+                .iter()
+                .map(|m| m.msgs(17))
+                .find(|v| !v.is_empty())
+                .unwrap_or_default();
             let image_ref = images
                 .get(level as usize)
                 .or_else(|| images.last())
@@ -418,10 +425,7 @@ pub fn resolve_list_format(ctx: &mut Ctx, list_id: u64, level: u32) -> Option<Li
                 })
                 .find(|v| !v.is_empty())
                 .unwrap_or_default();
-            let text = text
-                .get(level as usize)
-                .or_else(|| text.last())
-                .cloned();
+            let text = text.get(level as usize).or_else(|| text.last()).cloned();
             (ListMarkerKind::String, None, text, None)
         }
         3 => {
@@ -472,14 +476,20 @@ pub fn resolve_list_format(ctx: &mut Ctx, list_id: u64, level: u32) -> Option<Li
     };
     let marker_color = first_prop(21, 20).and_then(|m| crate::tsd::color_of(ctx, m, 21));
     let marker_font_name = first_prop(23, 22).and_then(|m| m.string(23));
-    let geoms = msgs.iter().map(|m| m.msgs(14)).find(|v| !v.is_empty()).unwrap_or_default();
+    let geoms = msgs
+        .iter()
+        .map(|m| m.msgs(14))
+        .find(|v| !v.is_empty())
+        .unwrap_or_default();
     let geom = geoms.get(level as usize).or_else(|| geoms.last());
     let marker_scale = geom
         .and_then(|g| g.f32v(1))
         .map(|v| v as f64)
         .filter(|v| *v != 1.0 && *v > 0.0);
-    let marker_baseline_offset_pt =
-        geom.and_then(|g| g.f32v(2)).map(|v| v as f64).filter(|v| *v != 0.0);
+    let marker_baseline_offset_pt = geom
+        .and_then(|g| g.f32v(2))
+        .map(|v| v as f64)
+        .filter(|v| *v != 0.0);
     Some(ListFormat {
         number_surround,
         level,
@@ -535,7 +545,10 @@ pub fn resolve_section_columns(
     let msgs = chain(ctx, style_id, 11);
     let cols = take(&msgs, 7, Some(6))?.msg(7)?;
     let (count, gap) = if let Some(eq) = cols.msg(1) {
-        (eq.varint(1).unwrap_or(1) as u32, eq.f32v(2).map(|v| v as f64))
+        (
+            eq.varint(1).unwrap_or(1) as u32,
+            eq.f32v(2).map(|v| v as f64),
+        )
     } else if let Some(ne) = cols.msg(2) {
         // first (1) + following (2, repeated GapWidthArchive) — degrade.
         let count = 1 + ne.msgs(2).len() as u32;
@@ -550,7 +563,14 @@ pub fn resolve_section_columns(
     if count < 2 {
         return None;
     }
-    let gutter_pt = gap.map(|g| if g <= 1.0 { g * content_width_pt.unwrap_or(0.0) } else { g })
+    let gutter_pt = gap
+        .map(|g| {
+            if g <= 1.0 {
+                g * content_width_pt.unwrap_or(0.0)
+            } else {
+                g
+            }
+        })
         .filter(|g| *g > 0.0);
     Some(SectionColumns { count, gutter_pt })
 }
@@ -672,21 +692,20 @@ pub fn resolve_cell_style(ctx: &mut Ctx, id: u64) -> Option<TableCellStyle> {
 /// without theme resolution the marker TEXT is not recoverable, so string
 /// bullets degrade to `marker_text` from `strings` when present.
 pub fn resolve_list_format_minimal(ctx: &mut Ctx, list_id: u64, level: u32) -> ListFormat {
-    let full = resolve_list_format(ctx, list_id, level)
-        .unwrap_or(ListFormat {
+    let full = resolve_list_format(ctx, list_id, level).unwrap_or(ListFormat {
         number_surround: None,
         marker_color: None,
         marker_font_name: None,
         marker_scale: None,
         marker_baseline_offset_pt: None,
-            level,
-            marker_kind: ListMarkerKind::None,
-            marker_text: None,
-            number_kind: None,
-            marker_image: None,
-            start: None,
-            marker_indent_pt: None,
-        });
+        level,
+        marker_kind: ListMarkerKind::None,
+        marker_text: None,
+        number_kind: None,
+        marker_image: None,
+        start: None,
+        marker_indent_pt: None,
+    });
     ListFormat { level, ..full }
 }
 
@@ -694,8 +713,12 @@ pub fn resolve_list_format_minimal(ctx: &mut Ctx, list_id: u64, level: u32) -> L
 /// (field 11). These are the "style-driven text props" that apply to ALL
 /// runs in paragraphs using this style (Peter's header/heading font issue).
 pub fn resolve_para_char_style(ctx: &mut Ctx, style_id: u64) -> CharStyle {
-    let Some(m) = ctx.loaded.msg(style_id) else { return CharStyle::default() };
-    let Some(cp) = m.msg(11) else { return CharStyle::default() };
+    let Some(m) = ctx.loaded.msg(style_id) else {
+        return CharStyle::default();
+    };
+    let Some(cp) = m.msg(11) else {
+        return CharStyle::default();
+    };
     let msgs = vec![cp];
     char_style_from(ctx, &msgs)
 }

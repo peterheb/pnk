@@ -22,12 +22,20 @@ impl Msg {
 
     /// Last occurrence of field `n` (proto2 optional: last wins).
     pub fn get(&self, n: u32) -> Option<&Value> {
-        self.fields.iter().rev().find(|f| f.number == n).map(|f| &f.value)
+        self.fields
+            .iter()
+            .rev()
+            .find(|f| f.number == n)
+            .map(|f| &f.value)
     }
 
     /// Every occurrence of field `n` in order.
     pub fn all(&self, n: u32) -> Vec<&Value> {
-        self.fields.iter().filter(|f| f.number == n).map(|f| &f.value).collect()
+        self.fields
+            .iter()
+            .filter(|f| f.number == n)
+            .map(|f| &f.value)
+            .collect()
     }
 
     pub fn has(&self, n: u32) -> bool {
@@ -72,14 +80,17 @@ impl Msg {
     }
 
     pub fn string(&self, n: u32) -> Option<String> {
-        self.bytes(n).map(|b| String::from_utf8_lossy(b).into_owned())
+        self.bytes(n)
+            .map(|b| String::from_utf8_lossy(b).into_owned())
     }
 
     /// A nested message (LEN bytes re-walked as fields, or an inline group).
     pub fn msg(&self, n: u32) -> Option<Msg> {
         match self.get(n)? {
             Value::Bytes(b) => Msg::parse(b),
-            Value::Group(fields) => Some(Msg { fields: fields.clone() }),
+            Value::Group(fields) => Some(Msg {
+                fields: fields.clone(),
+            }),
             _ => None,
         }
     }
@@ -90,7 +101,9 @@ impl Msg {
             .into_iter()
             .filter_map(|v| match v {
                 Value::Bytes(b) => Msg::parse(b),
-                Value::Group(fields) => Some(Msg { fields: fields.clone() }),
+                Value::Group(fields) => Some(Msg {
+                    fields: fields.clone(),
+                }),
                 _ => None,
             })
             .collect()
@@ -126,7 +139,10 @@ impl Msg {
     /// All occurrences of field `n` as reference ids (deep-unwrapping nested
     /// wrappers, see `reference`).
     pub fn references(&self, n: u32) -> Vec<u64> {
-        self.all(n).into_iter().filter_map(|v| Msg::deep_reference(v)).collect()
+        self.all(n)
+            .into_iter()
+            .filter_map(|v| Msg::deep_reference(v))
+            .collect()
     }
 
     /// Packed repeated varints (or single varint).

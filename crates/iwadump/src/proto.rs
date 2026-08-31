@@ -55,10 +55,18 @@ pub fn read_varint(buf: &[u8], pos: &mut usize, layer: Layer) -> Result<u64, Err
     let mut shift = 0u32;
     loop {
         if *pos >= buf.len() {
-            return Err(Error::new(Kind::Corrupt, layer, String::from("truncated varint")));
+            return Err(Error::new(
+                Kind::Corrupt,
+                layer,
+                String::from("truncated varint"),
+            ));
         }
         if shift >= 64 {
-            return Err(Error::new(Kind::Corrupt, layer, String::from("varint exceeds 64 bits")));
+            return Err(Error::new(
+                Kind::Corrupt,
+                layer,
+                String::from("varint exceeds 64 bits"),
+            ));
         }
         let b = buf[*pos];
         *pos += 1;
@@ -66,7 +74,11 @@ pub fn read_varint(buf: &[u8], pos: &mut usize, layer: Layer) -> Result<u64, Err
         // to truncate silently, letting 2^64+n masquerade as n
         // (FINDINGS.md M-3).
         if shift == 63 && (b & 0x7e) != 0 {
-            return Err(Error::new(Kind::Corrupt, layer, String::from("varint exceeds 64 bits")));
+            return Err(Error::new(
+                Kind::Corrupt,
+                layer,
+                String::from("varint exceeds 64 bits"),
+            ));
         }
         value |= ((b & 0x7f) as u64) << shift;
         if b & 0x80 == 0 {
@@ -108,7 +120,10 @@ fn scan(buf: &[u8], group_field: Option<u32>, layer: Layer, depth: u32) -> Resul
         // Protobuf caps field numbers at 2^29 - 1; a wider tag used to
         // truncate through the u32 cast (FINDINGS.md M-3).
         if tag >> 3 > 536_870_911 {
-            return Err(err(layer, format!("field number {} exceeds the protobuf maximum", tag >> 3)));
+            return Err(err(
+                layer,
+                format!("field number {} exceeds the protobuf maximum", tag >> 3),
+            ));
         }
         let number = (tag >> 3) as u32;
         let wire = (tag & 0x7) as u8;
@@ -131,7 +146,10 @@ fn scan(buf: &[u8], group_field: Option<u32>, layer: Layer, depth: u32) -> Resul
                 if buf.len() - pos < len {
                     return Err(err(
                         layer,
-                        format!("length-delimited field {number} declares {len} bytes but {} remain", buf.len() - pos),
+                        format!(
+                            "length-delimited field {number} declares {len} bytes but {} remain",
+                            buf.len() - pos
+                        ),
                     ));
                 }
                 let bytes = buf[pos..pos + len].to_vec();
@@ -156,7 +174,11 @@ fn scan(buf: &[u8], group_field: Option<u32>, layer: Layer, depth: u32) -> Resul
             }
             WIRE_EGROUP => {
                 return match group_field {
-                    Some(g) if g == number => Ok(Scan { fields, consumed: pos, closed: true }),
+                    Some(g) if g == number => Ok(Scan {
+                        fields,
+                        consumed: pos,
+                        closed: true,
+                    }),
                     Some(g) => Err(err(
                         layer,
                         format!("end-group tag for field {number} inside group {g}"),
@@ -177,10 +199,17 @@ fn scan(buf: &[u8], group_field: Option<u32>, layer: Layer, depth: u32) -> Resul
                 Value::Fixed32(b)
             }
             other => {
-                return Err(err(layer, format!("invalid wire type {other} on field {number}")));
+                return Err(err(
+                    layer,
+                    format!("invalid wire type {other} on field {number}"),
+                ));
             }
         };
-        fields.push(Field { number, wire, value });
+        fields.push(Field {
+            number,
+            wire,
+            value,
+        });
         debug_assert!(pos > start);
     }
     match group_field {
@@ -188,7 +217,11 @@ fn scan(buf: &[u8], group_field: Option<u32>, layer: Layer, depth: u32) -> Resul
             layer,
             format!("group {group_field:?} reaches end of buffer without end-group tag"),
         )),
-        None => Ok(Scan { fields, consumed: buf.len(), closed: false }),
+        None => Ok(Scan {
+            fields,
+            consumed: buf.len(),
+            closed: false,
+        }),
     }
 }
 

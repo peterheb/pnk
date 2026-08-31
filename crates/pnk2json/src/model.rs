@@ -47,10 +47,18 @@ pub struct EdgeInsets {
 pub type HexColor = String;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(tag = "type", rename_all = "kebab-case", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase"
+)]
 pub enum Fill {
-    Solid { color: HexColor },
-    Gradient { gradient: Gradient },
+    Solid {
+        color: HexColor,
+    },
+    Gradient {
+        gradient: Gradient,
+    },
     Image {
         image: MediaRef,
         technique: ImageFillTechnique,
@@ -193,10 +201,18 @@ pub enum CurveElement {
     // points are compact flat pairs [x1,y1,x2,y2,…] (SVG-style), matching the
     // ratified TS contract in model/src/primitives.ts (2ed592d): move/line 2
     // numbers, quad 4, cubic 6, close none.
-    Move { points: Vec<f64> },
-    Line { points: Vec<f64> },
-    Quad { points: Vec<f64> },
-    Cubic { points: Vec<f64> },
+    Move {
+        points: Vec<f64>,
+    },
+    Line {
+        points: Vec<f64>,
+    },
+    Quad {
+        points: Vec<f64>,
+    },
+    Cubic {
+        points: Vec<f64>,
+    },
     Close {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         points: Vec<f64>,
@@ -678,12 +694,18 @@ pub struct InlineOffset {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(tag = "kind", rename_all = "kebab-case", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "kind",
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase"
+)]
 pub enum FieldKind {
     PageNumber,
     PageCount,
     FootnoteMark,
-    Date { update_plan: DateUpdatePlan },
+    Date {
+        update_plan: DateUpdatePlan,
+    },
     Other {
         #[serde(skip_serializing_if = "Option::is_none")]
         detail: Option<String>,
@@ -809,7 +831,11 @@ pub enum TextFit {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(tag = "type", rename_all = "kebab-case", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase"
+)]
 pub enum Drawable {
     Shape {
         common: DrawableCommon,
@@ -1124,21 +1150,39 @@ pub enum GridPlain {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(tag = "type", rename_all = "kebab-case", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase"
+)]
 pub enum CellValue {
     Empty,
-    Number { value: f64 },
-    Text { value: String },
-    Bool { value: bool },
-    Date { value: String },
-    Duration { value: f64 },
+    Number {
+        value: f64,
+    },
+    Text {
+        value: String,
+    },
+    Bool {
+        value: bool,
+    },
+    Date {
+        value: String,
+    },
+    Duration {
+        value: f64,
+    },
     Currency {
         value: f64,
         #[serde(skip_serializing_if = "Option::is_none")]
         currency_code: Option<String>,
     },
-    Richtext { text: StyledText },
-    Error { value: String },
+    Richtext {
+        text: StyledText,
+    },
+    Error {
+        value: String,
+    },
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]

@@ -89,7 +89,9 @@ fn run(args: &Args) -> Result<String, Error> {
         let matches: Vec<_> = doc
             .streams
             .iter()
-            .filter(|s| s.name == *sel || s.name.ends_with(&format!("/{sel}")) || s.name.ends_with(sel))
+            .filter(|s| {
+                s.name == *sel || s.name.ends_with(&format!("/{sel}")) || s.name.ends_with(sel)
+            })
             .collect();
         if matches.is_empty() {
             return Err(Error::new(
@@ -97,7 +99,11 @@ fn run(args: &Args) -> Result<String, Error> {
                 Layer::Container,
                 format!(
                     "no IWA stream matches `{sel}` (have: {})",
-                    doc.streams.iter().map(|s| s.name.as_str()).collect::<Vec<_>>().join(", ")
+                    doc.streams
+                        .iter()
+                        .map(|s| s.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 ),
             ));
         }
@@ -109,7 +115,11 @@ fn run(args: &Args) -> Result<String, Error> {
             app: doc.app,
             registry: doc.registry.clone(),
         };
-        return Ok(if args.json { sub.render_json(args.limit) } else { sub.render_tree(args.limit) });
+        return Ok(if args.json {
+            sub.render_json(args.limit)
+        } else {
+            sub.render_tree(args.limit)
+        });
     }
 
     if args.json {
@@ -153,7 +163,10 @@ fn render_message(doc: &Document, id: u64) -> Result<String, Error> {
                 walk_field(&mut out, f, 1);
             }
         }
-        Err(e) => out.push_str(&format!("  (payload does not walk cleanly: {})\n", e.message)),
+        Err(e) => out.push_str(&format!(
+            "  (payload does not walk cleanly: {})\n",
+            e.message
+        )),
     }
     Ok(out)
 }
@@ -164,16 +177,21 @@ fn walk_field(out: &mut String, f: &Field, depth: usize) {
     // sane display depth instead of overflowing the stack (FINDINGS.md H-4).
     const MAX_DISPLAY_DEPTH: usize = 64;
     if depth > MAX_DISPLAY_DEPTH {
-        out.push_str(&format!("{}(deeper nesting elided)\n", "  ".repeat(MAX_DISPLAY_DEPTH + 1)));
+        out.push_str(&format!(
+            "{}(deeper nesting elided)\n",
+            "  ".repeat(MAX_DISPLAY_DEPTH + 1)
+        ));
         return;
     }
     let indent = "  ".repeat(depth);
     let wire = proto::wire_name(f.wire);
     match &f.value {
         Value::Varint(v) => out.push_str(&format!("{indent}{:>3}: {} = {v}\n", f.number, wire)),
-        Value::Fixed32(b) => {
-            out.push_str(&format!("{indent}{:>3}: fixed32 = 0x{:08x}\n", f.number, u32::from_le_bytes(*b)))
-        }
+        Value::Fixed32(b) => out.push_str(&format!(
+            "{indent}{:>3}: fixed32 = 0x{:08x}\n",
+            f.number,
+            u32::from_le_bytes(*b)
+        )),
         Value::Fixed64(b) => out.push_str(&format!(
             "{indent}{:>3}: fixed64 = 0x{:016x}\n",
             f.number,
@@ -231,7 +249,10 @@ fn truncate(s: &str, max: usize) -> &str {
 
 fn short_hex(b: &[u8]) -> String {
     if b.len() <= 8 {
-        b.iter().map(|x| format!("{x:02x}")).collect::<Vec<_>>().join(" ")
+        b.iter()
+            .map(|x| format!("{x:02x}"))
+            .collect::<Vec<_>>()
+            .join(" ")
     } else {
         format!("{} B [{:02x} {:02x} …]", b.len(), b[0], b[1])
     }

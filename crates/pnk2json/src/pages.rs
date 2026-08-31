@@ -140,16 +140,19 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
     let mut footnotes: Vec<Footnote> = Vec::new();
     if let Some(bsid) = root.reference(4) {
         if let Some(ex) = crate::text::extract(ctx, bsid) {
-            let non_empty = ex
-                .text
-                .paragraphs
-                .iter()
-                .any(|p| p.items.iter().any(|it| !matches!(it, ParagraphItem::Text { text, .. } if text.is_empty())));
+            let non_empty = ex.text.paragraphs.iter().any(|p| {
+                p.items
+                    .iter()
+                    .any(|it| !matches!(it, ParagraphItem::Text { text, .. } if text.is_empty()))
+            });
             match flavor {
                 PagesFlavor::WordProcessing => {
                     body = Some(ex.text);
                     for (para_idx, ftext) in ex.footnotes {
-                        footnotes.push(Footnote { anchor_paragraph_index: para_idx, text: ftext });
+                        footnotes.push(Footnote {
+                            anchor_paragraph_index: para_idx,
+                            text: ftext,
+                        });
                     }
                 }
                 PagesFlavor::PageLayout => {
@@ -171,8 +174,11 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
     // buffer; layout (column) styles live in the same offset space
     // (table_layout_style, StorageArchive field 12 [proto: TSWPArchives.proto]
     // → TSWP.ColumnStyleArchive).
-    let mut section_ids: Vec<(u64, u64)> =
-        root.reference(5).into_iter().map(|sid| (0u64, sid)).collect();
+    let mut section_ids: Vec<(u64, u64)> = root
+        .reference(5)
+        .into_iter()
+        .map(|sid| (0u64, sid))
+        .collect();
     let mut layout_entries: Vec<(u64, u64)> = Vec::new();
     let mut body_text = String::new();
     if let Some(bsid) = root.reference(4) {
@@ -183,9 +189,7 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
                     let mut entries: Vec<(u64, u64)> = table
                         .msgs(1)
                         .into_iter()
-                        .filter_map(|e| {
-                            Some((e.varint(1).unwrap_or(0), e.reference(2)?))
-                        })
+                        .filter_map(|e| Some((e.varint(1).unwrap_or(0), e.reference(2)?)))
                         .collect();
                     entries.sort_by_key(|(off, _)| *off);
                     for (off, sid) in entries {
@@ -209,23 +213,14 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
     // left/right margins; Pages' defaults are 1in).
     let content_width_pt = page_size.as_ref().map(|s| {
         let m = page_margins.as_ref();
-        s.width
-            - m.and_then(|m| m.left).unwrap_or(72.0)
-            - m.and_then(|m| m.right).unwrap_or(72.0)
+        s.width - m.and_then(|m| m.left).unwrap_or(72.0) - m.and_then(|m| m.right).unwrap_or(72.0)
     });
     let mut sections = Vec::new();
     for (i, (off, sec_id)) in section_ids.iter().enumerate() {
-        let mut sec = convert_section(
-            ctx,
-            *sec_id,
-            &template_names,
-            i,
-            &mut page_templates,
-        );
+        let mut sec = convert_section(ctx, *sec_id, &template_names, i, &mut page_templates);
         if matches!(flavor, PagesFlavor::WordProcessing) {
             // Omit-default: the first section starts at paragraph 0.
-            sec.body_paragraph_start =
-                Some(para_index_at(&body_text, *off)).filter(|p| *p > 0);
+            sec.body_paragraph_start = Some(para_index_at(&body_text, *off)).filter(|p| *p > 0);
             // Column layout in effect at the section start: the last
             // table_layout_style entry at or before the section's offset.
             let layout = layout_entries
@@ -339,7 +334,11 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
         page_scale,
         body,
         hidden_body,
-        footnotes: if footnotes.is_empty() { None } else { Some(footnotes) },
+        footnotes: if footnotes.is_empty() {
+            None
+        } else {
+            Some(footnotes)
+        },
         floating,
         page_templates,
         sections,
@@ -376,12 +375,16 @@ fn same_geometry(a: &Drawable, b: &Drawable) -> bool {
             _ => None,
         }
     }
-    let (Some(ca), Some(cb)) = (common(a), common(b)) else { return false };
+    let (Some(ca), Some(cb)) = (common(a), common(b)) else {
+        return false;
+    };
     let close = |x: f64, y: f64| (x - y).abs() <= 1.0;
     match (&ca.position, &cb.position, &ca.size, &cb.size) {
         (Some(pa), Some(pb), Some(sa), Some(sb)) => {
-            close(pa.x, pb.x) && close(pa.y, pb.y)
-                && close(sa.width, sb.width) && close(sa.height, sb.height)
+            close(pa.x, pb.x)
+                && close(pa.y, pb.y)
+                && close(sa.width, sb.width)
+                && close(sa.height, sb.height)
         }
         _ => false,
     }
@@ -432,11 +435,17 @@ fn convert_page_template(ctx: &mut Ctx, tid: u64, index: usize) -> (PageTemplate
     let mut placeholders = Vec::new();
     for pair in m.msgs(3) {
         let Some(tag) = pair.string(1) else { continue };
-        let Some(did) = pair.reference(2) else { continue };
+        let Some(did) = pair.reference(2) else {
+            continue;
+        };
         let drawable = crate::drawables::convert_drawable(ctx, did);
         // Record the tag as the placeholder role on the drawable itself.
         let drawable = tag_drawable(drawable, &tag);
-        placeholders.push(PagePlaceholder { tag, drawable, z_index: pair.varint(3).map(|v| v as u32) });
+        placeholders.push(PagePlaceholder {
+            tag,
+            drawable,
+            z_index: pair.varint(3).map(|v| v as u32),
+        });
     }
 
     // Headers/footers: the 15.3.1 extraction carries no explicit field on
@@ -462,16 +471,24 @@ fn convert_page_template(ctx: &mut Ctx, tid: u64, index: usize) -> (PageTemplate
             if let iwadump::proto::Value::Bytes(b) = &f.value {
                 if let Some(inner) = Msg::parse(b) {
                     if let Some(id) = inner.varint(1) {
-                        if matches!(ctx.loaded.record(id).map(|r| r.type_id), Some(2001) | Some(2005)) {
-                            if f.number == 1 { hdr_ids.push(id); }
-                            else if f.number == 2 { ftr_ids.push(id); }
+                        if matches!(
+                            ctx.loaded.record(id).map(|r| r.type_id),
+                            Some(2001) | Some(2005)
+                        ) {
+                            if f.number == 1 {
+                                hdr_ids.push(id);
+                            } else if f.number == 2 {
+                                ftr_ids.push(id);
+                            }
                         }
                     }
                 }
             }
         }
         let to_styled = |ids: Vec<u64>, ctx: &mut Ctx| -> Vec<StyledText> {
-            ids.into_iter().filter_map(|sid| crate::text::extract(ctx, sid).map(|e| e.text)).collect()
+            ids.into_iter()
+                .filter_map(|sid| crate::text::extract(ctx, sid).map(|e| e.text))
+                .collect()
         };
         (to_styled(hdr_ids, ctx), to_styled(ftr_ids, ctx))
     };
@@ -511,17 +528,47 @@ fn empty_template() -> PageTemplate {
 /// Mark a template placeholder drawable with its tag as role.
 fn tag_drawable(d: Drawable, tag: &str) -> Drawable {
     match d {
-        Drawable::Shape { common, geometry, text, vertical_alignment, text_insets, text_fit } => {
+        Drawable::Shape {
+            common,
+            geometry,
+            text,
+            vertical_alignment,
+            text_insets,
+            text_fit,
+        } => {
             let mut common = common;
-            common.placeholder =
-                Some(PlaceholderInfo { role: tag.to_string(), inherited: None });
-            Drawable::Shape { common, geometry, text, vertical_alignment, text_insets, text_fit }
+            common.placeholder = Some(PlaceholderInfo {
+                role: tag.to_string(),
+                inherited: None,
+            });
+            Drawable::Shape {
+                common,
+                geometry,
+                text,
+                vertical_alignment,
+                text_insets,
+                text_fit,
+            }
         }
-        Drawable::Textbox { common, text, vertical_alignment, text_insets, text_fit } => {
+        Drawable::Textbox {
+            common,
+            text,
+            vertical_alignment,
+            text_insets,
+            text_fit,
+        } => {
             let mut common = common;
-            common.placeholder =
-                Some(PlaceholderInfo { role: tag.to_string(), inherited: None });
-            Drawable::Textbox { common, text, vertical_alignment, text_insets, text_fit }
+            common.placeholder = Some(PlaceholderInfo {
+                role: tag.to_string(),
+                inherited: None,
+            });
+            Drawable::Textbox {
+                common,
+                text,
+                vertical_alignment,
+                text_insets,
+                text_fit,
+            }
         }
         other => other,
     }
@@ -541,7 +588,9 @@ fn template_headers_footers(ctx: &mut Ctx, m: &Msg) -> (Vec<StyledText>, Vec<Sty
         };
         let Some(inner) = Msg::parse(b) else { continue };
         let Some(id) = inner.varint(1) else { continue };
-        let Some(rec) = ctx.loaded.record(id) else { continue };
+        let Some(rec) = ctx.loaded.record(id) else {
+            continue;
+        };
         if !matches!(rec.type_id, ids::STORAGE | ids::STORAGE_ALT) {
             continue;
         }
@@ -577,9 +626,8 @@ fn convert_section(
         );
         return PagesSection::default();
     };
-    let name_of = |r: Option<u64>| -> Option<String> {
-        r.and_then(|id| template_names.get(&id).cloned())
-    };
+    let name_of =
+        |r: Option<u64>| -> Option<String> { r.and_then(|id| template_names.get(&id).cloned()) };
     // section_template_first_page_hides_header_footer (28 [proto:
     // TPArchives.proto SectionArchive]) — G5: Apple's export shows no
     // header/footer on page 1. Surface it as hide_headers_footers on the

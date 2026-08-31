@@ -42,7 +42,9 @@ fn main() -> ExitCode {
         Ok(out) => {
             let result = match &args.output {
                 Some(p) => std::fs::write(p, out).map_err(|e| e.to_string()),
-                None => std::io::stdout().write_all(out.as_bytes()).map_err(|e| e.to_string()),
+                None => std::io::stdout()
+                    .write_all(out.as_bytes())
+                    .map_err(|e| e.to_string()),
             };
             match result {
                 Ok(()) => ExitCode::SUCCESS,

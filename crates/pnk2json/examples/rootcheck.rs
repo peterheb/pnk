@@ -2,7 +2,9 @@
 use iwadump::Document;
 fn main() {
     for arg in std::env::args().skip(1) {
-        let Ok(doc) = Document::open(std::path::Path::new(&arg), false) else { continue };
+        let Ok(doc) = Document::open(std::path::Path::new(&arg), false) else {
+            continue;
+        };
         let loaded = pnk2json::loader::load(&doc.streams, &doc.registry, doc.app);
         match loaded.record(1) {
             None => println!("NO-RECORD-1 {arg}"),

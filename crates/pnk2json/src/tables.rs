@@ -7,8 +7,8 @@
 use std::collections::HashMap;
 
 use crate::ctx::{Ctx, StylePool};
-use crate::model::{CellFormatKind, CellTypeTag, GridCell, GridPlain, GridValue};
 use crate::model::*;
+use crate::model::{CellFormatKind, CellTypeTag, GridCell, GridPlain, GridValue};
 use crate::pb::Msg;
 use crate::styles;
 
@@ -30,7 +30,9 @@ struct DataList {
 fn load_data_list(ctx: &Ctx, list_id: Option<u64>) -> DataList {
     let mut out = DataList::default();
     let Some(id) = list_id else { return out };
-    let Some(m) = ctx.loaded.msg(id) else { return out };
+    let Some(m) = ctx.loaded.msg(id) else {
+        return out;
+    };
     for e in m.msgs(3) {
         let key = e.varint(1).unwrap_or(0) as i32;
         out.entries.entry(key).or_insert_with(|| ListEntry {
@@ -100,9 +102,11 @@ fn strip_map_with_ctx(
     inline_field: u32,
     ref_field: u32,
 ) -> Vec<(u32, usize)> {
-    let hs = storage
-        .msg(inline_field)
-        .or_else(|| storage.reference(ref_field).and_then(|r| ctx.loaded.msg(r).cloned()));
+    let hs = storage.msg(inline_field).or_else(|| {
+        storage
+            .reference(ref_field)
+            .and_then(|r| ctx.loaded.msg(r).cloned())
+    });
     let Some(hs) = hs else { return Vec::new() };
     let mut out = Vec::new();
     let mut ordinal = 0usize;
@@ -140,10 +144,14 @@ fn header_styles(
     inline_field: u32,
     ref_field: u32,
 ) -> HashMap<u32, TableCellStyle> {
-    let Some(storage) = storage else { return HashMap::new() };
-    let hs = storage
-        .msg(inline_field)
-        .or_else(|| storage.reference(ref_field).and_then(|r| ctx.loaded.msg(r).cloned()));
+    let Some(storage) = storage else {
+        return HashMap::new();
+    };
+    let hs = storage.msg(inline_field).or_else(|| {
+        storage
+            .reference(ref_field)
+            .and_then(|r| ctx.loaded.msg(r).cloned())
+    });
     let Some(hs) = hs else { return HashMap::new() };
     let mut refs: Vec<(u32, Option<u64>, Option<u64>)> = Vec::new();
     for bucket in header_buckets(ctx, &hs) {
@@ -200,10 +208,14 @@ fn header_info(
     inline_field: u32,
     ref_field: u32,
 ) -> Vec<(u32, RowColInfo)> {
-    let Some(storage) = storage else { return Vec::new() };
-    let hs = storage
-        .msg(inline_field)
-        .or_else(|| storage.reference(ref_field).and_then(|r| ctx.loaded.msg(r).cloned()));
+    let Some(storage) = storage else {
+        return Vec::new();
+    };
+    let hs = storage.msg(inline_field).or_else(|| {
+        storage
+            .reference(ref_field)
+            .and_then(|r| ctx.loaded.msg(r).cloned())
+    });
     let Some(hs) = hs else { return Vec::new() };
     let mut out = Vec::new();
     for bucket in header_buckets(ctx, &hs) {
@@ -216,7 +228,9 @@ fn header_info(
             .map(|v| matches!(v, iwadump::proto::Value::Fixed32(_)))
             .unwrap_or(false);
         if is_v4_header {
-            let Some(idx) = bucket.varint(1) else { continue };
+            let Some(idx) = bucket.varint(1) else {
+                continue;
+            };
             out.push((
                 idx as u32,
                 RowColInfo {
@@ -293,8 +307,7 @@ fn dependency_merges(ctx: &Ctx, haunted: u128, rows: u32, cols: u32) -> Vec<Tabl
         let Some(ce) = rec.msg.as_ref() else { continue };
         if let Some(map) = ce.msg(2).and_then(|dt| dt.msg(3)) {
             for e in map.msgs(1) {
-                if let (Some(id), Some(uuid)) =
-                    (e.varint(1), e.msg(2).as_ref().and_then(uuid_u128))
+                if let (Some(id), Some(uuid)) = (e.varint(1), e.msg(2).as_ref().and_then(uuid_u128))
                 {
                     owner_uuid.insert(id, uuid);
                 }
@@ -413,7 +426,9 @@ fn sidecar_borders(ctx: &mut Ctx, m: &Msg) -> HashMap<(u32, u32), CellBorders> {
     for (field, edge) in [(4u32, 0u8), (5, 1), (6, 2), (7, 3)] {
         let layer_ids: Vec<u64> = sc.references(field);
         for lid in layer_ids {
-            let Some(layer) = ctx.loaded.msg(lid).cloned() else { continue };
+            let Some(layer) = ctx.loaded.msg(lid).cloned() else {
+                continue;
+            };
             let idx = layer.varint(1).unwrap_or(0) as u32;
             for run in layer.msgs(2) {
                 let Some(sm) = run.msg(3) else { continue };
@@ -489,7 +504,13 @@ fn rows_to_model(info: Vec<(u32, RowColInfo)>, count: u32) -> Option<Vec<RowColI
     if info.is_empty() || count == 0 {
         return None;
     }
-    let mut out = vec![RowColInfo { size_pt: None, hidden: None }; count as usize];
+    let mut out = vec![
+        RowColInfo {
+            size_pt: None,
+            hidden: None
+        };
+        count as usize
+    ];
     for (idx, rc) in info {
         if (idx as usize) < out.len() {
             out[idx as usize] = rc;
@@ -498,10 +519,17 @@ fn rows_to_model(info: Vec<(u32, RowColInfo)>, count: u32) -> Option<Vec<RowColI
     // RATIFIED (docs/model-review.md §1 Leak B): truncate after the last
     // non-default entry; an all-default array is omitted entirely. Readers
     // treat missing positions as default (matters on 28k-row sheets).
-    let default = RowColInfo { size_pt: None, hidden: None };
+    let default = RowColInfo {
+        size_pt: None,
+        hidden: None,
+    };
     let is_default =
         |rc: &RowColInfo| *rc == default || (rc.size_pt == Some(0.0) && rc.hidden != Some(true));
-    let keep = out.iter().rposition(|rc| !is_default(rc)).map(|i| i + 1).unwrap_or(0);
+    let keep = out
+        .iter()
+        .rposition(|rc| !is_default(rc))
+        .map(|i| i + 1)
+        .unwrap_or(0);
     if keep == 0 {
         return None;
     }
@@ -531,9 +559,7 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
     if row_count > MAX_ROWS || column_count > MAX_COLUMNS {
         ctx.warn_detail(
             WarningCode::TableDegraded,
-            format!(
-                "table declares {row_count} x {column_count} cells, past app limits; clamping"
-            ),
+            format!("table declares {row_count} x {column_count} cells, past app limits; clamping"),
             model_id.to_string(),
         );
         row_count = row_count.min(MAX_ROWS);
@@ -598,8 +624,12 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
         // TST.TileStorage.Tile { tileid = 1, tile = 2 (TSP.Reference) }
         for tw in tiles.msgs(1) {
             let tileid = tw.varint(1).unwrap_or(0) as usize;
-            let Some(tref) = tw.reference(2) else { continue };
-            let Some(tile) = ctx.loaded.msg(tref).cloned() else { continue };
+            let Some(tref) = tw.reference(2) else {
+                continue;
+            };
+            let Some(tile) = ctx.loaded.msg(tref).cloned() else {
+                continue;
+            };
             convert_tile(
                 ctx,
                 &tile,
@@ -691,8 +721,10 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
     // MergeRegionMapArchive { cell_range = 1 } with CellRange { origin =
     // CellID, size = TableSize }; packedData: column in the high 16 bits,
     // row in the low 16 bits (docs/format/tables.md §Merges).
-    if let Some(mrm_id) =
-        store.as_ref().and_then(|s| s.reference(13)).filter(|_| merges.is_empty())
+    if let Some(mrm_id) = store
+        .as_ref()
+        .and_then(|s| s.reference(13))
+        .filter(|_| merges.is_empty())
     {
         if let Some(mrm) = ctx.loaded.msg(mrm_id) {
             for cr in mrm.msgs(1) {
@@ -718,7 +750,12 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
     // archives then list merge rects as internal range references whose
     // owner ids resolve via the calc engine's owner-id map.
     if merges.is_empty() {
-        if let Some(haunted) = m.msg(84).and_then(|h| h.msg(1)).as_ref().and_then(uuid_u128) {
+        if let Some(haunted) = m
+            .msg(84)
+            .and_then(|h| h.msg(1))
+            .as_ref()
+            .and_then(uuid_u128)
+        {
             merges = dependency_merges(ctx, haunted, row_count, column_count);
         }
     }
@@ -742,12 +779,8 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
             return None;
         }
         let first = |f: u32| props.iter().find(|p| p.has(f)).cloned();
-        let flag = |f: u32, default: bool| {
-            props
-                .iter()
-                .find_map(|p| p.boolean(f))
-                .unwrap_or(default)
-        };
+        let flag =
+            |f: u32, default: bool| props.iter().find_map(|p| p.boolean(f)).unwrap_or(default);
         // Default gridline strokes (TableStylePropertiesArchive modern
         // stroke slots f46-61 + visibility flags f33/f34/f35/f36/f37)
         // become section-style borders: a HORIZONTAL stroke is every
@@ -761,12 +794,18 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
         let mut hcol = section_style(ctx, &m, 20, 26);
         let mut foot = section_style(ctx, &m, 21, 27);
         let stroke_at = |ctx: &mut Ctx, f: u32| {
-            first(f).and_then(|p| p.msg(f)).and_then(|sm| table_stroke(ctx, &sm))
+            first(f)
+                .and_then(|p| p.msg(f))
+                .and_then(|sm| table_stroke(ctx, &sm))
         };
         let body_h = if h_vis { stroke_at(ctx, 60) } else { None };
         let body_v = if v_vis { stroke_at(ctx, 61) } else { None };
         attach_borders(&mut body, None, body_v.clone(), body_h.clone(), None);
-        let hr_sep = if flag(35, true) { stroke_at(ctx, 46) } else { None };
+        let hr_sep = if flag(35, true) {
+            stroke_at(ctx, 46)
+        } else {
+            None
+        };
         attach_borders(
             &mut hrow,
             None,
@@ -774,7 +813,11 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
             hr_sep.or_else(|| stroke_at(ctx, 48)),
             None,
         );
-        let hc_sep = if flag(36, true) { stroke_at(ctx, 51) } else { None };
+        let hc_sep = if flag(36, true) {
+            stroke_at(ctx, 51)
+        } else {
+            None
+        };
         attach_borders(
             &mut hcol,
             None,
@@ -782,8 +825,18 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
             stroke_at(ctx, 52),
             None,
         );
-        let foot_sep = if flag(37, true) { stroke_at(ctx, 54) } else { None };
-        attach_borders(&mut foot, foot_sep, stroke_at(ctx, 57), stroke_at(ctx, 56), None);
+        let foot_sep = if flag(37, true) {
+            stroke_at(ctx, 54)
+        } else {
+            None
+        };
+        attach_borders(
+            &mut foot,
+            foot_sep,
+            stroke_at(ctx, 57),
+            stroke_at(ctx, 56),
+            None,
+        );
         // Outer frame: the section gridline defaults above are half-open
         // (each cell owns right+bottom) so boundary 0 — the table's top and
         // left OUTER edge — has no owner and never painted. Apple draws the
@@ -834,9 +887,18 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
     if frame_h.is_some() || frame_v.is_some() || frame_hdr_h.is_some() || frame_hdr_v.is_some() {
         let hdr_rows = m.varint(9).unwrap_or(0) as u32;
         let hdr_cols = m.varint(10).unwrap_or(0) as u32;
-        let empty = || CellBorders { top: None, right: None, bottom: None, left: None };
+        let empty = || CellBorders {
+            top: None,
+            right: None,
+            bottom: None,
+            left: None,
+        };
         for c in 0..column_count {
-            let top = if hdr_rows > 0 { frame_hdr_h.as_ref().or(frame_h.as_ref()) } else { frame_h.as_ref() };
+            let top = if hdr_rows > 0 {
+                frame_hdr_h.as_ref().or(frame_h.as_ref())
+            } else {
+                frame_h.as_ref()
+            };
             if let Some(s) = top {
                 let e = edge_overrides.entry((0, c)).or_insert_with(empty);
                 if e.top.is_none() {
@@ -844,14 +906,20 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
                 }
             }
             if let (Some(s), true) = (frame_h.as_ref(), row_count > 0) {
-                let e = edge_overrides.entry((row_count - 1, c)).or_insert_with(empty);
+                let e = edge_overrides
+                    .entry((row_count - 1, c))
+                    .or_insert_with(empty);
                 if e.bottom.is_none() {
                     e.bottom = Some(s.clone());
                 }
             }
         }
         for r in 0..row_count {
-            let left = if hdr_cols > 0 { frame_hdr_v.as_ref().or(frame_v.as_ref()) } else { frame_v.as_ref() };
+            let left = if hdr_cols > 0 {
+                frame_hdr_v.as_ref().or(frame_v.as_ref())
+            } else {
+                frame_v.as_ref()
+            };
             if let Some(s) = left {
                 let e = edge_overrides.entry((r, 0)).or_insert_with(empty);
                 if e.left.is_none() {
@@ -859,7 +927,9 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
                 }
             }
             if let (Some(s), true) = (frame_v.as_ref(), column_count > 0) {
-                let e = edge_overrides.entry((r, column_count - 1)).or_insert_with(empty);
+                let e = edge_overrides
+                    .entry((r, column_count - 1))
+                    .or_insert_with(empty);
                 if e.right.is_none() {
                     e.right = Some(s.clone());
                 }
@@ -898,7 +968,13 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
             };
             cell.fmt = Some(idx);
         }
-        let slot = match (&cell.v, cell.r#type, cell.fmt, cell.cell_style_index, &cell.formula) {
+        let slot = match (
+            &cell.v,
+            cell.r#type,
+            cell.fmt,
+            cell.cell_style_index,
+            &cell.formula,
+        ) {
             // Plain unformatted scalar: bare value, no object wrapper.
             (GridValue::Scalar(s), None, None, None, None) => {
                 GridCell::Plain(GridPlain::Text(s.clone()))
@@ -991,7 +1067,6 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
     }
 }
 
-
 fn fixed32(v: &iwadump::proto::Value) -> Option<u32> {
     match v {
         iwadump::proto::Value::Fixed32(b) => Some(u32::from_le_bytes(*b)),
@@ -1045,10 +1120,7 @@ fn convert_tile(
         // cell_offsets = 7; pre-BNC tiles (storage_version 4, seen in
         // Numbers 11.x-era documents) keep the data in the *_pre_bnc fields
         // 3/4 with the same offset mechanics but a different cell layout.
-        let buffer = ri
-            .bytes(6)
-            .or_else(|| ri.bytes(3))
-            .map(|b| b.to_vec());
+        let buffer = ri.bytes(6).or_else(|| ri.bytes(3)).map(|b| b.to_vec());
         let Some(buffer) = buffer else {
             *saw_pre_bnc = true;
             continue;
@@ -1209,7 +1281,11 @@ fn decode_cell(
 
     // Payload fields follow the storage-flag order (docs/format/tables.md
     // §Tiles and cell storage; mirrors numbers-parser Cell._from_storage).
-    let d128 = if flags & 0x1 != 0 { take_n!(16).map(|b| unpack_decimal128(&b)) } else { None };
+    let d128 = if flags & 0x1 != 0 {
+        take_n!(16).map(|b| unpack_decimal128(&b))
+    } else {
+        None
+    };
     let double = if flags & 0x2 != 0 { take_f64!() } else { None };
     let seconds = if flags & 0x4 != 0 { take_f64!() } else { None };
     let string_id = if flags & 0x8 != 0 { take_i32!() } else { None };
@@ -1217,17 +1293,61 @@ fn decode_cell(
     let cell_style_id = if flags & 0x20 != 0 { take_i32!() } else { None };
     let text_style_id = if flags & 0x40 != 0 { take_i32!() } else { None };
     let _cond_style = if flags & 0x80 != 0 { take_i32!() } else { None };
-    let _cond_rule = if flags & 0x100 != 0 { take_i32!() } else { None };
-    let formula_id = if flags & 0x200 != 0 { take_i32!() } else { None };
-    let _control = if flags & 0x400 != 0 { take_i32!() } else { None };
-    let formula_error_id = if flags & 0x800 != 0 { take_i32!() } else { None };
-    let _suggestion = if flags & 0x1000 != 0 { take_i32!() } else { None };
-    let num_format_id = if flags & 0x2000 != 0 { take_i32!() } else { None };
-    let currency_format_id = if flags & 0x4000 != 0 { take_i32!() } else { None };
-    let date_format_id = if flags & 0x8000 != 0 { take_i32!() } else { None };
-    let duration_format_id = if flags & 0x10000 != 0 { take_i32!() } else { None };
-    let text_format_id = if flags & 0x20000 != 0 { take_i32!() } else { None };
-    let _bool_format = if flags & 0x40000 != 0 { take_i32!() } else { None };
+    let _cond_rule = if flags & 0x100 != 0 {
+        take_i32!()
+    } else {
+        None
+    };
+    let formula_id = if flags & 0x200 != 0 {
+        take_i32!()
+    } else {
+        None
+    };
+    let _control = if flags & 0x400 != 0 {
+        take_i32!()
+    } else {
+        None
+    };
+    let formula_error_id = if flags & 0x800 != 0 {
+        take_i32!()
+    } else {
+        None
+    };
+    let _suggestion = if flags & 0x1000 != 0 {
+        take_i32!()
+    } else {
+        None
+    };
+    let num_format_id = if flags & 0x2000 != 0 {
+        take_i32!()
+    } else {
+        None
+    };
+    let currency_format_id = if flags & 0x4000 != 0 {
+        take_i32!()
+    } else {
+        None
+    };
+    let date_format_id = if flags & 0x8000 != 0 {
+        take_i32!()
+    } else {
+        None
+    };
+    let duration_format_id = if flags & 0x10000 != 0 {
+        take_i32!()
+    } else {
+        None
+    };
+    let text_format_id = if flags & 0x20000 != 0 {
+        take_i32!()
+    } else {
+        None
+    };
+    let _bool_format = if flags & 0x40000 != 0 {
+        take_i32!()
+    } else {
+        None
+    };
     let _ = off; // the final take's advance is intentionally unread
 
     // Value by cell type (TST.CellType byte 1; 10 = currency per
@@ -1240,7 +1360,10 @@ fn decode_cell(
                     .and_then(|id| format_table.entries.get(&id))
                     .and_then(|e| e.format.as_ref())
                     .and_then(|f| f.string(3));
-                CellValue::Currency { value: v, currency_code: code }
+                CellValue::Currency {
+                    value: v,
+                    currency_code: code,
+                }
             } else {
                 CellValue::Number { value: v }
             }
@@ -1257,9 +1380,13 @@ fn decode_cell(
         }
         5 => {
             let sec = seconds?;
-            CellValue::Date { value: crate::colors::iso_from_apple_seconds(sec) }
+            CellValue::Date {
+                value: crate::colors::iso_from_apple_seconds(sec),
+            }
         }
-        6 => CellValue::Bool { value: double.unwrap_or(0.0) > 0.0 },
+        6 => CellValue::Bool {
+            value: double.unwrap_or(0.0) > 0.0,
+        },
         7 => CellValue::Duration { value: double? },
         8 => CellValue::Error {
             value: formula_error_id
@@ -1277,7 +1404,9 @@ fn decode_cell(
                 .and_then(|p| p.reference(1)); // RichTextPayloadArchive.storage
             match storage_id.and_then(|sid| crate::text::extract(ctx, sid)) {
                 Some(ex) => CellValue::Richtext { text: ex.text },
-                None => CellValue::Text { value: String::new() },
+                None => CellValue::Text {
+                    value: String::new(),
+                },
             }
         }
         // Generic/span cell: no stored value, but style/formula/format
@@ -1287,9 +1416,9 @@ fn decode_cell(
         0 | 1 => CellValue::Empty,
         4 => match (d128.or(double), seconds, string_id) {
             (Some(v), _, _) => CellValue::Number { value: v },
-            (_, Some(sec), _) => {
-                CellValue::Date { value: crate::colors::iso_from_apple_seconds(sec) }
-            }
+            (_, Some(sec), _) => CellValue::Date {
+                value: crate::colors::iso_from_apple_seconds(sec),
+            },
             (_, _, Some(sid)) => CellValue::Text {
                 value: string_table
                     .entries
@@ -1380,7 +1509,14 @@ fn decode_cell(
     Some((
         row,
         col,
-        TableCell { v, r#type: type_tag, cur, fmt: None, cell_style_index, formula },
+        TableCell {
+            v,
+            r#type: type_tag,
+            cur,
+            fmt: None,
+            cell_style_index,
+            formula,
+        },
         format,
     ))
 }
@@ -1395,11 +1531,20 @@ fn value_into_parts(value: CellValue) -> (GridValue, Option<CellTypeTag>, Option
         CellValue::Text { value } => (GridValue::Scalar(value), None, None),
         CellValue::Bool { value } => (GridValue::Bool(value), None, None),
         CellValue::Date { value } => (GridValue::Scalar(value), Some(CellTypeTag::Date), None),
-        CellValue::Duration { value } => (GridValue::Number(value), Some(CellTypeTag::Duration), None),
-        CellValue::Currency { value, currency_code } => {
-            (GridValue::Number(value), Some(CellTypeTag::Currency), currency_code)
+        CellValue::Duration { value } => {
+            (GridValue::Number(value), Some(CellTypeTag::Duration), None)
         }
-        CellValue::Richtext { text } => (GridValue::Richtext(text), Some(CellTypeTag::Richtext), None),
+        CellValue::Currency {
+            value,
+            currency_code,
+        } => (
+            GridValue::Number(value),
+            Some(CellTypeTag::Currency),
+            currency_code,
+        ),
+        CellValue::Richtext { text } => {
+            (GridValue::Richtext(text), Some(CellTypeTag::Richtext), None)
+        }
         CellValue::Error { value } => (GridValue::Scalar(value), Some(CellTypeTag::Error), None),
     }
 }
@@ -1479,7 +1624,9 @@ fn custom_pattern(ctx: &Ctx, f: &Msg) -> Option<String> {
         if rec.type_id != 222 {
             continue;
         }
-        let Some(list) = rec.msg.as_ref() else { continue };
+        let Some(list) = rec.msg.as_ref() else {
+            continue;
+        };
         let uuids = list.msgs(1);
         let formats = list.msgs(2);
         for (i, u) in uuids.iter().enumerate() {
@@ -1526,10 +1673,7 @@ fn pick_format(
         // 4294967293 = -3 as u32, fixture-verified on G5: decimal/currency/
         // percent/scientific all carry it) — legit "auto decimals": emit the
         // format with `decimals` absent, never degrade.
-        let decimals = f
-            .varint(2)
-            .filter(|v| *v <= 20)
-            .map(|v| v as u32);
+        let decimals = f.varint(2).filter(|v| *v <= 20).map(|v| v as u32);
         // Kind from the format's OWN format_type (TSK.FormatStructArchive f1,
         // numbers-parser FormatType) — the referencing slot only says WHICH
         // per-type table the id lives in, not the true kind (a "number
@@ -1549,49 +1693,55 @@ fn pick_format(
         // surfaces as "base-<n>"; scientific surfaces via the stored
         // scientific_pattern (f44) when customized — auto patterns are not
         // persisted, so formatString is legitimately absent there.
-        let format_string = f.string(18).or_else(|| match (ft, f.varint(8)) {
-            (Some(269), Some(base)) => Some(format!("base-{base}")),
-            _ => None,
-        }).or_else(|| match (ft, f.string(44)) {
-            (Some(259), Some(pattern)) if !pattern.is_empty() => Some(pattern),
-            _ => None,
-        }).or_else(|| match ft {
-            // stock date/time formats persist their ICU-ish pattern in
-            // date_time_format (f14), e.g. "d. MMMM yyyy" / "d"
-            Some(261) => f.string(14).filter(|s| !s.is_empty()),
-            _ => None,
-        }).or_else(|| match ft {
-            // display-semantic markers (kind stays closed per the blessed
-            // convention): auto scientific has no persisted pattern;
-            // fractions carry an accuracy code in f11
-            Some(259) => Some("scientific".to_string()),
-            // fraction accuracy (f11): a small value is an exact
-            // denominator (2/4/8/10/16/100); 0xFFFFFFFD..FF are the
-            // up-to-N-digit sentinels (parser: numbers-parser
-            // FractionAccuracy)
-            Some(262) => Some(match f.varint(11) {
-                Some(acc) if acc >= 2 && acc <= 100 => format!("fraction-{acc}"),
-                _ => "fraction".to_string(),
-            }),
-            // durations: style (f7: 0 compact "28:40" / 1 short "28m 40s" /
-            // 2 long), unit range largest/smallest (f15/f16: 1 week, 2 day,
-            // 4 hour, 8 minute, 16 second, 32 ms), automatic units (f40) —
-            // packed for the viewer's renderer [parser: numbers-parser
-            // cell.py _duration_format/_auto_units]
-            Some(268) => Some(format!(
-                "duration-{}-{}-{}-{}",
-                f.varint(7).unwrap_or(0),
-                f.varint(15).unwrap_or(4),
-                f.varint(16).unwrap_or(16),
-                u8::from(f.boolean(40).unwrap_or(false)),
-            )),
-            _ => None,
-        }).or_else(|| match ft {
-            // custom formats (270-274): pattern lives behind the inline
-            // CustomFormatArchive or the document custom-format list
-            Some(270..=274) => custom_pattern(ctx, &f),
-            _ => None,
-        });
+        let format_string = f
+            .string(18)
+            .or_else(|| match (ft, f.varint(8)) {
+                (Some(269), Some(base)) => Some(format!("base-{base}")),
+                _ => None,
+            })
+            .or_else(|| match (ft, f.string(44)) {
+                (Some(259), Some(pattern)) if !pattern.is_empty() => Some(pattern),
+                _ => None,
+            })
+            .or_else(|| match ft {
+                // stock date/time formats persist their ICU-ish pattern in
+                // date_time_format (f14), e.g. "d. MMMM yyyy" / "d"
+                Some(261) => f.string(14).filter(|s| !s.is_empty()),
+                _ => None,
+            })
+            .or_else(|| match ft {
+                // display-semantic markers (kind stays closed per the blessed
+                // convention): auto scientific has no persisted pattern;
+                // fractions carry an accuracy code in f11
+                Some(259) => Some("scientific".to_string()),
+                // fraction accuracy (f11): a small value is an exact
+                // denominator (2/4/8/10/16/100); 0xFFFFFFFD..FF are the
+                // up-to-N-digit sentinels (parser: numbers-parser
+                // FractionAccuracy)
+                Some(262) => Some(match f.varint(11) {
+                    Some(acc) if acc >= 2 && acc <= 100 => format!("fraction-{acc}"),
+                    _ => "fraction".to_string(),
+                }),
+                // durations: style (f7: 0 compact "28:40" / 1 short "28m 40s" /
+                // 2 long), unit range largest/smallest (f15/f16: 1 week, 2 day,
+                // 4 hour, 8 minute, 16 second, 32 ms), automatic units (f40) —
+                // packed for the viewer's renderer [parser: numbers-parser
+                // cell.py _duration_format/_auto_units]
+                Some(268) => Some(format!(
+                    "duration-{}-{}-{}-{}",
+                    f.varint(7).unwrap_or(0),
+                    f.varint(15).unwrap_or(4),
+                    f.varint(16).unwrap_or(16),
+                    u8::from(f.boolean(40).unwrap_or(false)),
+                )),
+                _ => None,
+            })
+            .or_else(|| match ft {
+                // custom formats (270-274): pattern lives behind the inline
+                // CustomFormatArchive or the document custom-format list
+                Some(270..=274) => custom_pattern(ctx, &f),
+                _ => None,
+            });
         return (
             Some(CellFormat {
                 kind,
@@ -1701,7 +1851,11 @@ fn decode_cell_v3(
         2 => CellValue::Number { value: double? },
         3 => {
             let sid = string_id?;
-            match string_table.entries.get(&sid).and_then(|e| e.string.clone()) {
+            match string_table
+                .entries
+                .get(&sid)
+                .and_then(|e| e.string.clone())
+            {
                 Some(s) => CellValue::Text { value: s },
                 None => {
                     ctx.warn_detail(
@@ -1725,7 +1879,9 @@ fn decode_cell_v3(
                 None => {
                     ctx.warn_detail(
                         WarningCode::TableDegraded,
-                        format!("v3 rich-text key {rich_id:?} not decodable; cell r{row}c{col} dropped"),
+                        format!(
+                            "v3 rich-text key {rich_id:?} not decodable; cell r{row}c{col} dropped"
+                        ),
                         format!("r{row}c{col}"),
                     );
                     return None;
@@ -1786,7 +1942,9 @@ fn decode_cell_v3(
                 decimals: f.varint(2).filter(|v| *v <= 20).map(|v| v as u32),
                 currency_code: f.string(3),
                 grouping: f.boolean(5),
-                format_string: f.string(18).or_else(|| f.string(14).filter(|s| !s.is_empty())),
+                format_string: f
+                    .string(18)
+                    .or_else(|| f.string(14).filter(|s| !s.is_empty())),
             })
         })
     });
@@ -1795,7 +1953,14 @@ fn decode_cell_v3(
     Some((
         row,
         col,
-        TableCell { v, r#type: type_tag, cur, fmt: None, cell_style_index, formula: None },
+        TableCell {
+            v,
+            r#type: type_tag,
+            cur,
+            fmt: None,
+            cell_style_index,
+            formula: None,
+        },
         format,
     ))
 }
@@ -1821,7 +1986,11 @@ fn decode_cell_v4(
     cell_pool: &mut StylePool<TableCellStyle>,
 ) -> Option<(u32, u32, TableCell, Option<CellFormat>)> {
     if std::env::var("PNK_DEBUG").is_ok() {
-        eprintln!("v4 r{row}c{col} len={} type={}", buf.len(), buf.get(1).copied().unwrap_or(255));
+        eprintln!(
+            "v4 r{row}c{col} len={} type={}",
+            buf.len(),
+            buf.get(1).copied().unwrap_or(255)
+        );
     }
     if buf.len() < 16 {
         return None;
@@ -1889,7 +2058,10 @@ fn decode_cell_v4(
     let fmt_key = fmt_lead
         .filter(|k| format_table.entries.contains_key(k))
         .or_else(|| {
-            trailing_keys.iter().copied().find(|k| format_table.entries.contains_key(k))
+            trailing_keys
+                .iter()
+                .copied()
+                .find(|k| format_table.entries.contains_key(k))
         })
         .or(fmt_lead)
         .or_else(|| trailing_keys.first().copied());
@@ -1905,7 +2077,11 @@ fn decode_cell_v4(
             // string key from the leading bitfield (bit 4); older fixed-slot
             // fallback (slot 6) kept as a safety net.
             let sid = string_key.or_else(|| u32s.get(6).map(|v| *v as i32))?;
-            match string_table.entries.get(&sid).and_then(|e| e.string.clone()) {
+            match string_table
+                .entries
+                .get(&sid)
+                .and_then(|e| e.string.clone())
+            {
                 Some(s) => CellValue::Text { value: s },
                 None if formula_key.is_some_and(|k| formula_table.entries.contains_key(&k)) => {
                     // Formula-driven text cell; the result is not cached in
@@ -1946,27 +2122,33 @@ fn decode_cell_v4(
             CellValue::Empty
         }
         7 => CellValue::Duration { value: f64_value? },
-        5 => CellValue::Date { value: crate::colors::iso_from_apple_seconds(f64_value?) },
+        5 => CellValue::Date {
+            value: crate::colors::iso_from_apple_seconds(f64_value?),
+        },
         2 => CellValue::Number { value: f64_value? },
-        6 => CellValue::Bool { value: f64_value? > 0.0 },
+        6 => CellValue::Bool {
+            value: f64_value? > 0.0,
+        },
         9 => {
             // v4 rich-text cells: the rich-text table key sits in the
             // TRAILING u32 slot — 24-byte blocks carry it at slot 5 (IVS
             // doc bc5e6bd1), 28-byte blocks at slot 6 (bd3a64fb, where
             // slot 5 is constant 1). Probe trailing first, then 5/6.
-            let rid = [u32s.last().copied(), u32s.get(5).copied(), u32s.get(6).copied()]
-                .into_iter()
-                .flatten()
-                .map(|v| v as i32)
-                .find(|id| rich_text_table.entries.contains_key(id));
-            let rtp_id = rid.and_then(|id| rich_text_table.entries.get(&id).and_then(|e| e.reference));
+            let rid = [
+                u32s.last().copied(),
+                u32s.get(5).copied(),
+                u32s.get(6).copied(),
+            ]
+            .into_iter()
+            .flatten()
+            .map(|v| v as i32)
+            .find(|id| rich_text_table.entries.contains_key(id));
+            let rtp_id =
+                rid.and_then(|id| rich_text_table.entries.get(&id).and_then(|e| e.reference));
             match rtp_id {
                 Some(rtp_id) => {
                     // RichTextPayloadArchive { storage = 1, range = 2, cellid = 3 }
-                    let storage_id = ctx
-                        .loaded
-                        .msg(rtp_id)
-                        .and_then(|p| p.reference(1));
+                    let storage_id = ctx.loaded.msg(rtp_id).and_then(|p| p.reference(1));
                     match storage_id.and_then(|sid| crate::text::extract(ctx, sid)) {
                         Some(ex) => CellValue::Richtext { text: ex.text },
                         None => {
@@ -2075,7 +2257,14 @@ fn decode_cell_v4(
     Some((
         row,
         col,
-        TableCell { v, r#type: type_tag, cur, fmt: None, cell_style_index, formula },
+        TableCell {
+            v,
+            r#type: type_tag,
+            cur,
+            fmt: None,
+            cell_style_index,
+            formula,
+        },
         format,
     ))
 }

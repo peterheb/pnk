@@ -22,11 +22,7 @@ pub fn convert_drawable_depth(
     visiting: &mut HashSet<u64>,
 ) -> Drawable {
     if depth > 24 || !visiting.insert(id) {
-        return unknown_drawable(
-            ctx,
-            id,
-            "drawable graph nesting too deep or cyclic",
-        );
+        return unknown_drawable(ctx, id, "drawable graph nesting too deep or cyclic");
     }
     let result = convert_drawable_inner(ctx, id, depth, visiting);
     visiting.remove(&id);
@@ -37,7 +33,9 @@ fn unknown_drawable(ctx: &mut Ctx, id: u64, reason: impl Into<String>) -> Drawab
     let rec = ctx.loaded.record(id);
     Drawable::Unknown {
         common: None,
-        type_id: rec.map(|r| format!("0x{:x}", r.type_id)).unwrap_or_else(|| "0x0".into()),
+        type_id: rec
+            .map(|r| format!("0x{:x}", r.type_id))
+            .unwrap_or_else(|| "0x0".into()),
         type_name: rec.and_then(|r| r.name.clone()),
         reason: reason.into(),
     }
@@ -91,7 +89,9 @@ fn convert_drawable_inner(
                 WarningCode::UnsupportedFeature,
                 format!(
                     "drawable of type {} could not be modeled",
-                    type_name.clone().unwrap_or_else(|| format!("type id {}", rec.type_id))
+                    type_name
+                        .clone()
+                        .unwrap_or_else(|| format!("type id {}", rec.type_id))
                 ),
                 format!("0x{:x}", rec.type_id),
             );
@@ -116,7 +116,10 @@ fn drawable_common(_ctx: &mut Ctx, m: &Msg) -> Result<DrawableCommon, ()> {
             any = true;
         }
         if let Some((w, h)) = g.size(2) {
-            c.size = Some(Size { width: w, height: h });
+            c.size = Some(Size {
+                width: w,
+                height: h,
+            });
             any = true;
         }
         if let Some(deg) = g.f32v(4) {
@@ -138,7 +141,10 @@ fn drawable_common(_ctx: &mut Ctx, m: &Msg) -> Result<DrawableCommon, ()> {
             5 => TextWrapKind::Largest,
             _ => TextWrapKind::Around,
         };
-        c.text_wrap = Some(TextWrap { kind, margin_pt: w.f32v(4).map(|v| v as f64) });
+        c.text_wrap = Some(TextWrap {
+            kind,
+            margin_pt: w.f32v(4).map(|v| v as f64),
+        });
         any = true;
     }
     if let Some(h) = m.string(4) {
@@ -174,7 +180,11 @@ fn drawable_common(_ctx: &mut Ctx, m: &Msg) -> Result<DrawableCommon, ()> {
 /// "shape-2-shapestyle"). Field PRESENCE at a nearer level wins even when
 /// the decoder yields None (present-but-empty = "explicitly cleared",
 /// stopping inheritance).
-fn drawable_style(ctx: &mut Ctx, style_ref: Option<u64>, is_media: bool) -> (Option<DrawableStyle>, Option<DrawableCommon>) {
+fn drawable_style(
+    ctx: &mut Ctx,
+    style_ref: Option<u64>,
+    is_media: bool,
+) -> (Option<DrawableStyle>, Option<DrawableCommon>) {
     let mut style = DrawableStyle::default();
     let mut extras = DrawableCommon::default();
     let any;
@@ -206,7 +216,9 @@ fn drawable_style(ctx: &mut Ctx, style_ref: Option<u64>, is_media: bool) -> (Opt
         // Next hop: TSS.StyleArchive super (1) → parent (3).
         cur = props_msg.msg(1).and_then(|hdr| hdr.reference(3));
         // shape_properties / media_properties = 11
-        let Some(props) = props_msg.msg(11) else { continue };
+        let Some(props) = props_msg.msg(11) else {
+            continue;
+        };
         if !is_media {
             if !seen[0] && props.has(1) {
                 seen[0] = true;
@@ -222,11 +234,15 @@ fn drawable_style(ctx: &mut Ctx, style_ref: Option<u64>, is_media: bool) -> (Opt
             }
             if !seen[5] && props.has(6) {
                 seen[5] = true;
-                head = props.msg(6).and_then(|le| crate::tsd::line_end_of(ctx, &le));
+                head = props
+                    .msg(6)
+                    .and_then(|le| crate::tsd::line_end_of(ctx, &le));
             }
             if !seen[6] && props.has(7) {
                 seen[6] = true;
-                tail = props.msg(7).and_then(|le| crate::tsd::line_end_of(ctx, &le));
+                tail = props
+                    .msg(7)
+                    .and_then(|le| crate::tsd::line_end_of(ctx, &le));
             }
         } else {
             if !seen[1] && props.has(1) {
@@ -241,12 +257,16 @@ fn drawable_style(ctx: &mut Ctx, style_ref: Option<u64>, is_media: bool) -> (Opt
         let shadow_field = if is_media { 3 } else { 4 };
         if !seen[3] && props.has(shadow_field) {
             seen[3] = true;
-            extras.shadow = props.msg(shadow_field).and_then(|sh| crate::tsd::shadow_of(ctx, &sh));
+            extras.shadow = props
+                .msg(shadow_field)
+                .and_then(|sh| crate::tsd::shadow_of(ctx, &sh));
         }
         let refl_field = if is_media { 4 } else { 5 };
         if !seen[4] && props.has(refl_field) {
             seen[4] = true;
-            extras.reflection = props.msg(refl_field).and_then(|r| crate::tsd::reflection_of(&r));
+            extras.reflection = props
+                .msg(refl_field)
+                .and_then(|r| crate::tsd::reflection_of(&r));
         }
     }
     if head.is_some() || tail.is_some() {
@@ -258,7 +278,10 @@ fn drawable_style(ctx: &mut Ctx, style_ref: Option<u64>, is_media: bool) -> (Opt
         || extras.opacity.is_some()
         || extras.shadow.is_some()
         || extras.reflection.is_some();
-    (if any { Some(style) } else { None }, if any { Some(extras) } else { None })
+    (
+        if any { Some(style) } else { None },
+        if any { Some(extras) } else { None },
+    )
 }
 
 /// Merge extra style-derived fields into the common block.
@@ -290,10 +313,17 @@ fn shape_info_drawable(
     type_name: Option<String>,
 ) -> Drawable {
     // Placeholder types: unwrap `{ super, kind }` → the ShapeInfoArchive.
-    let super_info =
-        if type_id == 7 || type_id == 12 { m.msg(1) } else { None };
+    let super_info = if type_id == 7 || type_id == 12 {
+        m.msg(1)
+    } else {
+        None
+    };
     let info = super_info.as_ref().unwrap_or(m);
-    let kind = if type_id == 7 || type_id == 12 { m.varint(2) } else { None };
+    let kind = if type_id == 7 || type_id == 12 {
+        m.varint(2)
+    } else {
+        None
+    };
     let Some(shape) = info.msg(1) else {
         return Drawable::Unknown {
             common: None,
@@ -304,7 +334,12 @@ fn shape_info_drawable(
     };
     let placeholder_role = match type_id {
         // KN.PlaceholderArchive.Kind (KNArchives.proto:203-209)
-        7 | 12 if type_name.as_deref().map(|n| n.starts_with("KN.")).unwrap_or(false) => {
+        7 | 12
+            if type_name
+                .as_deref()
+                .map(|n| n.starts_with("KN."))
+                .unwrap_or(false) =>
+        {
             Some(
                 match kind.unwrap_or(0) {
                     1 => "slide-number",
@@ -328,7 +363,9 @@ fn shape_info_drawable(
         .reference(4)
         .or_else(|| info.msg(3).and_then(|f| f.reference(1)))
         .or_else(|| info.reference(2));
-    let mut text = storage_id.and_then(|sid| crate::text::extract(ctx, sid)).map(|e| e.text);
+    let mut text = storage_id
+        .and_then(|sid| crate::text::extract(ctx, sid))
+        .map(|e| e.text);
     // Keynote placeholders and title/body shapes keep their look on the
     // referenced paragraph style (their storage char-style tables hold null
     // overrides), so runs without their own character style inherit the
@@ -359,7 +396,10 @@ fn shape_info_drawable(
         // Textbox (or placeholder, which renders like a textbox).
         let mut common = common_from_shape(ctx, &shape);
         if let Some(role) = placeholder_role {
-            common.placeholder = Some(PlaceholderInfo { role, inherited: None });
+            common.placeholder = Some(PlaceholderInfo {
+                role,
+                inherited: None,
+            });
         }
         Drawable::Textbox {
             common,
@@ -377,7 +417,10 @@ fn shape_info_drawable(
         }
         if let Some(role) = placeholder_role {
             if let Drawable::Shape { common, .. } = &mut d {
-                common.placeholder = Some(PlaceholderInfo { role, inherited: None });
+                common.placeholder = Some(PlaceholderInfo {
+                    role,
+                    inherited: None,
+                });
             }
         }
         d
@@ -395,7 +438,12 @@ fn shape_info_drawable(
     // rotated flags==0 sample exists to verify against. [inferred: flag-bit
     // semantics are undocumented; behavior verified against Apple's own
     // render of 0d5851c0 slides 1/27/28]
-    if shape.msg(1).and_then(|d| d.msg(1)).and_then(|g| g.varint(3)) == Some(0) {
+    if shape
+        .msg(1)
+        .and_then(|d| d.msg(1))
+        .and_then(|g| g.varint(3))
+        == Some(0)
+    {
         if let Drawable::Shape { common, .. } | Drawable::Textbox { common, .. } = &mut drawable {
             if common.angle_deg.unwrap_or(0.0) == 0.0 {
                 if let (Some(p), Some(s)) = (common.position.as_mut(), common.size.as_ref()) {
@@ -447,7 +495,9 @@ fn promote_para_font(ctx: &mut Ctx, storage_id: u64, text: &mut StyledText) {
         // One style per paragraph; extra paragraphs reuse the last entry.
         let sid = para_styles[pi.min(para_styles.len() - 1)];
         let cs = crate::styles::char_style_from(ctx, &crate::styles::chain(ctx, sid, 11));
-        let Some(idx) = ctx.char_pool.intern(cs) else { continue };
+        let Some(idx) = ctx.char_pool.intern(cs) else {
+            continue;
+        };
         for item in para.items.iter_mut() {
             if let ParagraphItem::Plain(s) = item {
                 *item = ParagraphItem::Text {
@@ -481,10 +531,17 @@ struct TextFrameProps {
 /// each property resolves independently at its nearest present level.
 /// Fixture: Home.key's title placeholder is bottom-aligned in Apple's export.
 fn shape_text_frame_props(ctx: &Ctx, shape: &Msg) -> TextFrameProps {
-    let mut props = TextFrameProps { vertical_alignment: None, shrink_to_fit: None };
-    let Some(mut sid) = shape.reference(2) else { return props };
+    let mut props = TextFrameProps {
+        vertical_alignment: None,
+        shrink_to_fit: None,
+    };
+    let Some(mut sid) = shape.reference(2) else {
+        return props;
+    };
     for _ in 0..16 {
-        let Some(m) = ctx.loaded.msg(sid) else { return props };
+        let Some(m) = ctx.loaded.msg(sid) else {
+            return props;
+        };
         let name = ctx
             .loaded
             .record(sid)
@@ -516,7 +573,11 @@ fn shape_text_frame_props(ctx: &Ctx, shape: &Msg) -> TextFrameProps {
         }
         // TSS.StyleArchive.parent (3): the TSWP wrapper nests supers twice
         // (TSWP → TSD → TSS), a plain TSD style once.
-        let tss = if is_tswp { m.msg(1).and_then(|t| t.msg(1)) } else { m.msg(1) };
+        let tss = if is_tswp {
+            m.msg(1).and_then(|t| t.msg(1))
+        } else {
+            m.msg(1)
+        };
         match tss.and_then(|t| t.reference(3)) {
             Some(p) => sid = p,
             None => return props,
@@ -590,10 +651,19 @@ fn image_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
             }
         }
     };
-    let original = m.reference(13).or_else(|| m.reference(8)).map(|id| ctx.media_ref(id));
-    let thumbnail = m.reference(12).or_else(|| m.reference(6)).map(|id| ctx.media_ref(id));
+    let original = m
+        .reference(13)
+        .or_else(|| m.reference(8))
+        .map(|id| ctx.media_ref(id));
+    let thumbnail = m
+        .reference(12)
+        .or_else(|| m.reference(6))
+        .map(|id| ctx.media_ref(id));
     let svg = m.reference(23).map(|id| ctx.media_ref(id));
-    let natural_size = m.size(9).map(|(w, h)| Size { width: w, height: h });
+    let natural_size = m.size(9).map(|(w, h)| Size {
+        width: w,
+        height: h,
+    });
     let mask = m.reference(5).and_then(|mid| {
         let mm = ctx.loaded.msg(mid)?.clone();
         let common = mm
@@ -620,7 +690,16 @@ fn image_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
         shadows: adj.f32v(5).map(|v| v as f64),
         brightness: None,
     });
-    Drawable::Image { common, image, original, thumbnail, svg, natural_size, mask, adjustments }
+    Drawable::Image {
+        common,
+        image,
+        original,
+        thumbnail,
+        svg,
+        natural_size,
+        mask,
+        adjustments,
+    }
 }
 
 fn movie_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
@@ -632,8 +711,14 @@ fn movie_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
     common.style = style;
     merge_extras(&mut common, extras);
 
-    let movie = m.reference(14).or_else(|| m.reference(2)).map(|id| ctx.media_ref(id));
-    let poster = m.reference(15).or_else(|| m.reference(10)).map(|id| ctx.media_ref(id));
+    let movie = m
+        .reference(14)
+        .or_else(|| m.reference(2))
+        .map(|id| ctx.media_ref(id));
+    let poster = m
+        .reference(15)
+        .or_else(|| m.reference(10))
+        .map(|id| ctx.media_ref(id));
     let remote_url = m.string(17);
     let audio_only = m.boolean(9);
     let trim = if m.has(3) || m.has(4) || m.has(5) {
@@ -651,15 +736,19 @@ fn movie_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
         _ => MovieLoop::None,
     });
     let volume = m.f32v(7).map(|v| v as f64);
-    Drawable::Movie { common, movie, remote_url, poster, audio_only, trim, r#loop, volume }
+    Drawable::Movie {
+        common,
+        movie,
+        remote_url,
+        poster,
+        audio_only,
+        trim,
+        r#loop,
+        volume,
+    }
 }
 
-fn group_drawable(
-    ctx: &mut Ctx,
-    m: &Msg,
-    depth: usize,
-    visiting: &mut HashSet<u64>,
-) -> Drawable {
+fn group_drawable(ctx: &mut Ctx, m: &Msg, depth: usize, visiting: &mut HashSet<u64>) -> Drawable {
     let mut common = m
         .msg(1)
         .and_then(|d| drawable_common(ctx, &d).ok())
@@ -687,7 +776,11 @@ fn group_drawable(
         .into_iter()
         .map(|cid| convert_drawable_depth(ctx, cid, depth + 1, visiting))
         .collect();
-    Drawable::Group { common, children, freehand }
+    Drawable::Group {
+        common,
+        children,
+        freehand,
+    }
 }
 
 /// Geometry (position + size) of a connection anchor drawable, whatever its
@@ -700,7 +793,13 @@ fn anchor_geometry(ctx: &Ctx, aid: u64) -> Option<(Point, Size)> {
     for _ in 0..4 {
         if let Some(g) = cur.msg(1) {
             if let (Some((x, y)), Some((w, h))) = (g.point(1), g.size(2)) {
-                return Some((Point { x, y }, Size { width: w, height: h }));
+                return Some((
+                    Point { x, y },
+                    Size {
+                        width: w,
+                        height: h,
+                    },
+                ));
             }
         }
         cur = cur.msg(1)?.clone();
@@ -733,14 +832,19 @@ fn connection_line_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
     }
     // Routing path: super(1).pathsource(3).connection_line_path_source(7)
     //   .super(1).path(3)
-    let cl_source = m.msg(1).and_then(|shape| shape.msg(3)).and_then(|ps| ps.msg(7));
+    let cl_source = m
+        .msg(1)
+        .and_then(|shape| shape.msg(3))
+        .and_then(|ps| ps.msg(7));
     let stored = cl_source
         .as_ref()
         .and_then(|cl| cl.msg(1))
         .and_then(|bz| bz.msg(3))
         .as_ref()
         .and_then(crate::tsd::tsp_path)
-        .unwrap_or(CurvePath { elements: Vec::new() });
+        .unwrap_or(CurvePath {
+            elements: Vec::new(),
+        });
     let outset_from = cl_source.as_ref().and_then(|cl| cl.f32v(3)).unwrap_or(0.0) as f64;
     let outset_to = cl_source.as_ref().and_then(|cl| cl.f32v(4)).unwrap_or(0.0) as f64;
 
@@ -771,7 +875,10 @@ fn connection_line_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
                 // Rebase to a fresh local frame: position = path bbox origin.
                 let (bb_min, bb_max) = curve_path_bounds(&path).unwrap_or(((0.0, 0.0), (0.0, 0.0)));
                 offset_curve_path(&mut path, -bb_min.0, -bb_min.1);
-                common.position = Some(Point { x: bb_min.0, y: bb_min.1 });
+                common.position = Some(Point {
+                    x: bb_min.0,
+                    y: bb_min.1,
+                });
                 common.size = Some(Size {
                     width: bb_max.0 - bb_min.0,
                     height: bb_max.1 - bb_min.1,
@@ -782,11 +889,19 @@ fn connection_line_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
     }
 
     let facts = |g: &Option<(Point, Size)>| {
-        g.as_ref().map(|(p, s)| AnchorFacts { position: Some(*p), size: Some(*s) })
+        g.as_ref().map(|(p, s)| AnchorFacts {
+            position: Some(*p),
+            size: Some(*s),
+        })
     };
     let from = facts(&from_geo);
     let to = facts(&to_geo);
-    Drawable::ConnectionLine { common, path, from, to }
+    Drawable::ConnectionLine {
+        common,
+        path,
+        from,
+        to,
+    }
 }
 
 fn points_of(e: &mut CurveElement) -> &mut Vec<f64> {
@@ -859,8 +974,12 @@ fn rebaked_connection_path(stored: &CurvePath, start: (f64, f64), end: (f64, f64
     }
     let straight = || CurvePath {
         elements: vec![
-            CurveElement::Move { points: vec![start.0, start.1] },
-            CurveElement::Line { points: vec![end.0, end.1] },
+            CurveElement::Move {
+                points: vec![start.0, start.1],
+            },
+            CurveElement::Line {
+                points: vec![end.0, end.1],
+            },
         ],
     };
     let (Some(s0), Some(s2)) = (flat.first().copied(), flat.last().copied()) else {
@@ -975,6 +1094,12 @@ fn mask_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
             callout: None,
         });
     // A bare mask at top level: represent as a shape carrying the mask path.
-    Drawable::Shape { common, geometry, text: None, vertical_alignment: None, text_insets: None, text_fit: None }
+    Drawable::Shape {
+        common,
+        geometry,
+        text: None,
+        vertical_alignment: None,
+        text_insets: None,
+        text_fit: None,
+    }
 }
-

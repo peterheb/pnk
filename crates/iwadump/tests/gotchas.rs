@@ -127,7 +127,11 @@ fn crc32(data: &[u8]) -> u32 {
     for (i, t) in table.iter_mut().enumerate() {
         let mut c = i as u32;
         for _ in 0..8 {
-            c = if c & 1 != 0 { 0xEDB8_8320 ^ (c >> 1) } else { c >> 1 };
+            c = if c & 1 != 0 {
+                0xEDB8_8320 ^ (c >> 1)
+            } else {
+                c >> 1
+            };
         }
         *t = c;
     }
@@ -174,7 +178,10 @@ fn gotcha1_header_is_zero_byte_plus_u24_le_not_u16_plus_u16() {
     let header = &raw[offsets[1]..offsets[1] + 4];
     assert_eq!(header[0], 0x00);
     let declared_len = header[1] as u32 | (header[2] as u32) << 8 | (header[3] as u32) << 16;
-    assert_eq!(declared_len as usize, frame_block(&snappy::encode_block(&big)).len() - 4);
+    assert_eq!(
+        declared_len as usize,
+        frame_block(&snappy::encode_block(&big)).len() - 4
+    );
 }
 
 #[test]
@@ -274,8 +281,8 @@ fn group_wire_types_are_nested_not_an_error() {
     decoded.extend_from_slice(&payload);
     let archives = envelope::parse_stream(&decoded).unwrap();
     let m = &archives[0].messages[0];
-    let fields =
-        proto::parse_fields(&m.payload, iwadump::Layer::Message).expect("group wire types walk cleanly");
+    let fields = proto::parse_fields(&m.payload, iwadump::Layer::Message)
+        .expect("group wire types walk cleanly");
     assert_eq!(fields.len(), 1);
     match &fields[0].value {
         Value::Group(g) => {
@@ -292,7 +299,11 @@ fn unclosed_group_makes_payload_undecodable_but_stream_synced() {
     // Payload 1 opens a group whose body is a valid field but never closes →
     // the walk fails; payload 2 (a separate length-delimited blob) still
     // decodes because skipping is length-based (gotcha #6), never parse-based.
-    let bad = field(1, proto::WIRE_SGROUP, &field(1, proto::WIRE_VARINT, &varint(5)));
+    let bad = field(
+        1,
+        proto::WIRE_SGROUP,
+        &field(1, proto::WIRE_VARINT, &varint(5)),
+    );
     let good = vec![0x08, 0x07];
     let seg = archive_info(1, 200, bad.len() as u32);
     let seg2 = archive_info(2, 201, good.len() as u32);
@@ -309,7 +320,10 @@ fn unclosed_group_makes_payload_undecodable_but_stream_synced() {
     );
     // The second archive still decodes regardless:
     let statuses2 = archives[1].message_status(&registry, App::Unknown);
-    assert!(matches!(&statuses2[0], iwadump::MessageStatus::Decoded { .. }));
+    assert!(matches!(
+        &statuses2[0],
+        iwadump::MessageStatus::Decoded { .. }
+    ));
     assert_eq!(archives[1].messages[0].payload, good);
 }
 
@@ -336,13 +350,25 @@ fn registry_ambiguity_requires_app_detection() {
     // id 1 = KN.DocumentArchive vs TN.DocumentArchive (Pages.json has no
     // id 1): without an app, no name; with the right app, the right one.
     assert_eq!(registry.name_for(App::Unknown, 1), None);
-    assert_eq!(registry.name_for(App::Keynote, 1).as_deref(), Some("KN.DocumentArchive"));
-    assert_eq!(registry.name_for(App::Numbers, 1).as_deref(), Some("TN.DocumentArchive"));
+    assert_eq!(
+        registry.name_for(App::Keynote, 1).as_deref(),
+        Some("KN.DocumentArchive")
+    );
+    assert_eq!(
+        registry.name_for(App::Numbers, 1).as_deref(),
+        Some("TN.DocumentArchive")
+    );
     // id 7 collides three ways (KN/TN/TP.PlaceholderArchive) — unknown.
     assert_eq!(registry.name_for(App::Unknown, 7), None);
-    assert_eq!(registry.name_for(App::Pages, 7).as_deref(), Some("TP.PlaceholderArchive"));
+    assert_eq!(
+        registry.name_for(App::Pages, 7).as_deref(),
+        Some("TP.PlaceholderArchive")
+    );
     // Pages' root type lives at 10000 (per-fixture evidence), and resolves.
-    assert_eq!(registry.name_for(App::Pages, 10000).as_deref(), Some("TP.DocumentArchive"));
+    assert_eq!(
+        registry.name_for(App::Pages, 10000).as_deref(),
+        Some("TP.DocumentArchive")
+    );
     assert_eq!(registry.table_size(App::Pages), 47);
 }
 
@@ -354,7 +380,10 @@ fn gotcha5_nested_index_zip_is_unzipped_twice() {
     std::fs::create_dir_all(&tmp).unwrap();
     let path = tmp.join("nested.pages");
     let inner = build_zip(&[("Index/Document.iwa", &tiny_document_iwa())]);
-    let outer = build_zip(&[("Index.zip", &inner), ("Metadata/Properties.plist", b"plist")]);
+    let outer = build_zip(&[
+        ("Index.zip", &inner),
+        ("Metadata/Properties.plist", b"plist"),
+    ]);
     std::fs::write(&path, &outer).unwrap();
 
     let container = Container::open(&path, false).unwrap();
@@ -435,10 +464,7 @@ fn utf8_flagged_names_pass_through() {
 
 #[test]
 fn legacy_index_xml_rejects_with_clear_message() {
-    let zip = build_zip(&[
-        ("index.xml", b"<slideshow/>"),
-        ("Slide1.jpg", b"jpeg"),
-    ]);
+    let zip = build_zip(&[("index.xml", b"<slideshow/>"), ("Slide1.jpg", b"jpeg")]);
     let tmp = std::env::temp_dir().join(format!("iwadump-legacy-{}", std::process::id()));
     std::fs::create_dir_all(&tmp).unwrap();
     let path = tmp.join("old.key");
@@ -458,10 +484,7 @@ fn legacy_index_xml_rejects_with_clear_message() {
 #[test]
 fn iwph_member_rejects_as_encrypted() {
     let iwa = tiny_document_iwa();
-    let zip = build_zip(&[
-        (".iwph", &[0u8; 16]),
-        ("Index/Document.iwa", &iwa),
-    ]);
+    let zip = build_zip(&[(".iwph", &[0u8; 16]), ("Index/Document.iwa", &iwa)]);
     let tmp = std::env::temp_dir().join(format!("iwadump-iwph-{}", std::process::id()));
     std::fs::create_dir_all(&tmp).unwrap();
     let path = tmp.join("locked.pages");
@@ -504,7 +527,8 @@ fn build_zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
     let buf = std::io::Cursor::new(Vec::new());
     let mut w = zip::ZipWriter::new(buf);
     for (name, data) in entries {
-        w.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
+        w.start_file(*name, zip::write::SimpleFileOptions::default())
+            .unwrap();
         w.write_all(data).unwrap();
     }
     let buf = w.finish().unwrap();
@@ -542,7 +566,10 @@ fn iwpv2_member_rejects_as_encrypted() {
     // Newer iWork encryption marker: fixture 2dccc804 carries `.iwpv2` with
     // every stream but DocumentStylesheet.iwa being high-entropy ciphertext
     // and no `.iwph`. Treat as the same encrypted class as `.iwph`.
-    let zip = build_zip(&[(".iwpv2", &[0u8; 8]), ("Index/Document.iwa", &tiny_document_iwa())]);
+    let zip = build_zip(&[
+        (".iwpv2", &[0u8; 8]),
+        ("Index/Document.iwa", &tiny_document_iwa()),
+    ]);
     let tmp = std::env::temp_dir().join(format!("iwadump-iwpv2-{}", std::process::id()));
     std::fs::create_dir_all(&tmp).unwrap();
     let path = tmp.join("locked2.key");
@@ -563,7 +590,11 @@ fn snappy_bomb_declared_length_is_refused_not_allocated() {
     let bomb = frame_block(&[0xff, 0xff, 0xff, 0xff, 0x0f]);
     let e = IwaStream::parse("bomb.iwa", &bomb).unwrap_err();
     assert_eq!(e.layer, iwadump::Layer::Snappy);
-    assert!(e.message.contains("refusing the allocation"), "{}", e.message);
+    assert!(
+        e.message.contains("refusing the allocation"),
+        "{}",
+        e.message
+    );
 }
 
 #[test]

@@ -62,7 +62,10 @@ impl ArchiveInfo {
             .map(|m| match registry.name_for(app, m.type_id) {
                 Some(name) => match proto::parse_fields(&m.payload, Layer::Message) {
                     Ok(_) => MessageStatus::Decoded { name },
-                    Err(e) => MessageStatus::Undecodable { name, reason: e.message },
+                    Err(e) => MessageStatus::Undecodable {
+                        name,
+                        reason: e.message,
+                    },
                 },
                 None => MessageStatus::UnknownType,
             })
@@ -176,16 +179,26 @@ fn parse_message_info(buf: &[u8]) -> Result<MessageInfo, Error> {
     // (FINDINGS.md M-3).
     let narrow = |v: u64, what: &str| {
         u32::try_from(v).map_err(|_| {
-            Error::new(Kind::Corrupt, Layer::Envelope, format!("MessageInfo.{what} {v} exceeds u32"))
+            Error::new(
+                Kind::Corrupt,
+                Layer::Envelope,
+                format!("MessageInfo.{what} {v} exceeds u32"),
+            )
         })
     };
     for f in &fields {
         match (f.number, &f.value) {
             (1, Value::Varint(v)) => type_id = Some(narrow(*v, "type")?),
             (3, Value::Varint(v)) => length = Some(narrow(*v, "length")?),
-            (2, Value::Bytes(b)) => version.extend(proto::packed_u64s(b, Layer::Envelope)?.into_iter().map(|v| v as u32)),
+            (2, Value::Bytes(b)) => version.extend(
+                proto::packed_u64s(b, Layer::Envelope)?
+                    .into_iter()
+                    .map(|v| v as u32),
+            ),
             (2, Value::Varint(v)) => version.push(*v as u32),
-            (5, Value::Bytes(b)) => object_references.extend(proto::packed_u64s(b, Layer::Envelope)?),
+            (5, Value::Bytes(b)) => {
+                object_references.extend(proto::packed_u64s(b, Layer::Envelope)?)
+            }
             (5, Value::Varint(v)) => object_references.push(*v),
             (6, Value::Bytes(b)) => data_references.extend(proto::packed_u64s(b, Layer::Envelope)?),
             (6, Value::Varint(v)) => data_references.push(*v),

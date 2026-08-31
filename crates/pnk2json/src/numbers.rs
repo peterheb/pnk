@@ -10,7 +10,10 @@ use crate::pb::{ids, Msg};
 pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> NumbersDocument {
     let locale = ctx.resolve_locale(root);
 
-    let page_size = root.size(12).map(|(w, h)| Size { width: w, height: h });
+    let page_size = root.size(12).map(|(w, h)| Size {
+        width: w,
+        height: h,
+    });
 
     let mut sheets = Vec::new();
     let mut forms: Vec<NumbersForm> = Vec::new();
@@ -45,9 +48,7 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> NumbersDocument {
             _ => {
                 ctx.warn_detail(
                     WarningCode::UnsupportedFeature,
-                    format!(
-                        "unmodeled sheet-like object (type id {type_id}) on document root"
-                    ),
+                    format!("unmodeled sheet-like object (type id {type_id}) on document root"),
                     format!("0x{type_id:x}"),
                 );
             }
@@ -188,11 +189,16 @@ fn convert_sheet(ctx: &mut Ctx, sid: u64) -> Sheet {
             if !seen.insert(id) {
                 break;
             }
-            let Some(sm) = ctx.loaded.msg(id).cloned() else { break };
+            let Some(sm) = ctx.loaded.msg(id).cloned() else {
+                break;
+            };
             if let Some(p) = sm.msg(3) {
                 props.push(p);
             }
-            cur = sm.msg(1).and_then(|b| b.reference(3)).or_else(|| sm.reference(3));
+            cur = sm
+                .msg(1)
+                .and_then(|b| b.reference(3))
+                .or_else(|| sm.reference(3));
         }
         let solid = |ctx: &mut Ctx, f: Option<Msg>, what: &str| {
             let f = f?;
@@ -228,7 +234,12 @@ fn convert_sheet(ctx: &mut Ctx, sid: u64) -> Sheet {
 
 /// Repeated storage references (field) → StyledText list; falls back to the
 /// deprecated single storage (fallback_field) when the list form is absent.
-fn storages_to_styled(ctx: &mut Ctx, m: &Msg, field: u32, fallback_field: u32) -> Option<Vec<StyledText>> {
+fn storages_to_styled(
+    ctx: &mut Ctx,
+    m: &Msg,
+    field: u32,
+    fallback_field: u32,
+) -> Option<Vec<StyledText>> {
     let ids = m.references(field);
     if !ids.is_empty() {
         let out: Vec<StyledText> = ids

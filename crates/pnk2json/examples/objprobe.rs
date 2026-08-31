@@ -1,6 +1,6 @@
 //! Dump one record's field walk.
-use iwadump::Document;
 use iwadump::proto::Value;
+use iwadump::Document;
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -14,7 +14,12 @@ fn main() {
         if let Some(m) = loaded.msg(id) {
             for f in &m.fields {
                 match &f.value {
-                    Value::Bytes(b) => println!("  f{} len={} str={:?}", f.number, b.len(), String::from_utf8_lossy(&b[..b.len().min(80)])),
+                    Value::Bytes(b) => println!(
+                        "  f{} len={} str={:?}",
+                        f.number,
+                        b.len(),
+                        String::from_utf8_lossy(&b[..b.len().min(80)])
+                    ),
                     v => println!("  f{} {:?}", f.number, v),
                 }
             }

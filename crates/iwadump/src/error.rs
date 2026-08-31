@@ -52,7 +52,11 @@ pub struct Error {
 
 impl Error {
     pub fn new(kind: Kind, layer: Layer, message: impl Into<String>) -> Error {
-        Error { layer, kind, message: message.into() }
+        Error {
+            layer,
+            kind,
+            message: message.into(),
+        }
     }
 }
 

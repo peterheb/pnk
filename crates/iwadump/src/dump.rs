@@ -66,7 +66,10 @@ impl StreamView {
                     type_id: m.type_id,
                     name: registry.name_for(app, m.type_id),
                     length: m.length,
-                    status: statuses.get(i).cloned().unwrap_or(MessageStatus::UnknownType),
+                    status: statuses
+                        .get(i)
+                        .cloned()
+                        .unwrap_or(MessageStatus::UnknownType),
                     payload: m.payload.clone(),
                 });
             }
@@ -95,7 +98,11 @@ impl Document {
         for (name, bytes) in &container.iwas {
             let iwa = IwaStream::parse(name, bytes)?;
             let archives = crate::envelope::parse_stream(&iwa.decoded)?;
-            streams.push(StreamView { name: name.clone(), iwa, archives });
+            streams.push(StreamView {
+                name: name.clone(),
+                iwa,
+                archives,
+            });
         }
         let app = detect_app(&streams);
         Ok(Document {
@@ -144,13 +151,19 @@ impl Document {
         };
         out.push_str(&format!(
             "{} — {}, {} members, {} iwa streams, app: {}\n",
-            self.path, form,
+            self.path,
+            form,
             self.container.members.len(),
             self.streams.len(),
             app
         ));
         for s in &self.streams {
-            let raw_len: usize = s.iwa.blocks.iter().map(|b| b.compressed_len as usize + 4).sum();
+            let raw_len: usize = s
+                .iwa
+                .blocks
+                .iter()
+                .map(|b| b.compressed_len as usize + 4)
+                .sum();
             out.push_str(&format!(
                 "  {} — {} blocks, {} B compressed → {} B decoded, {} archives\n",
                 s.name,
@@ -171,7 +184,10 @@ impl Document {
                 ));
             }
             if shown < msgs.len() {
-                out.push_str(&format!("    … {} more (use --limit)\n", msgs.len() - shown));
+                out.push_str(&format!(
+                    "    … {} more (use --limit)\n",
+                    msgs.len() - shown
+                ));
             }
         }
         for (name, size) in &self.container.non_iwa {
@@ -194,7 +210,10 @@ impl Document {
         j.field_str("form", form);
         j.field_num("member_count", self.container.members.len() as u64);
         j.field_str("app", self.app.label());
-        j.field_num("registry_common_entries", self.registry.common_size() as u64);
+        j.field_num(
+            "registry_common_entries",
+            self.registry.common_size() as u64,
+        );
         j.key("members");
         j.arr_start();
         for m in &self.container.members {
@@ -211,7 +230,14 @@ impl Document {
             j.obj_start();
             j.field_str("name", &s.name);
             j.field_num("block_count", s.iwa.blocks.len() as u64);
-            j.field_num("compressed_bytes", s.iwa.blocks.iter().map(|b| b.compressed_len as u64 + 4).sum());
+            j.field_num(
+                "compressed_bytes",
+                s.iwa
+                    .blocks
+                    .iter()
+                    .map(|b| b.compressed_len as u64 + 4)
+                    .sum(),
+            );
             j.field_num("decoded_bytes", s.iwa.decoded.len() as u64);
             j.field_num("archive_count", s.archives.len() as u64);
             let msgs = s.messages(&self.registry, self.app);
@@ -275,11 +301,19 @@ impl Document {
 ///    `Tables/` → Numbers (Numbers stores tables under `Index/Tables/`);
 /// 3. otherwise Unknown — ambiguous ids then stay unnamed rather than guessed.
 pub fn detect_app(streams: &[StreamView]) -> App {
-    if let Some(doc) = streams
-        .iter()
-        .find(|s| s.name.rsplit('/').next().map(|b| b.eq_ignore_ascii_case("Document.iwa")).unwrap_or(false))
-    {
-        if let Some(root_type) = doc.archives.first().and_then(|a| a.messages.first()).map(|m| m.type_id) {
+    if let Some(doc) = streams.iter().find(|s| {
+        s.name
+            .rsplit('/')
+            .next()
+            .map(|b| b.eq_ignore_ascii_case("Document.iwa"))
+            .unwrap_or(false)
+    }) {
+        if let Some(root_type) = doc
+            .archives
+            .first()
+            .and_then(|a| a.messages.first())
+            .map(|m| m.type_id)
+        {
             if root_type == 10000 {
                 return App::Pages;
             }
@@ -292,7 +326,9 @@ pub fn detect_app(streams: &[StreamView]) -> App {
     // the bare prefix, not a dashed form.
     if has(&|n| {
         let base = n.rsplit('/').next().unwrap_or(n).to_lowercase();
-        base.starts_with("slide") || base.starts_with("masterslide") || base.starts_with("templateslide")
+        base.starts_with("slide")
+            || base.starts_with("masterslide")
+            || base.starts_with("templateslide")
     }) {
         return App::Keynote;
     }
@@ -321,7 +357,10 @@ pub struct Json {
 
 impl Json {
     pub fn new() -> Json {
-        Json { buf: String::new(), needs_comma: Vec::new() }
+        Json {
+            buf: String::new(),
+            needs_comma: Vec::new(),
+        }
     }
 
     fn sep(&mut self) {
@@ -420,7 +459,11 @@ pub fn hex_dump(bytes: &[u8], max_rows: usize) -> String {
         }
         out.push_str(" |");
         for b in chunk {
-            out.push(if (0x20..0x7f).contains(b) { *b as char } else { '.' });
+            out.push(if (0x20..0x7f).contains(b) {
+                *b as char
+            } else {
+                '.'
+            });
         }
         out.push_str("|\n");
     }
@@ -433,4 +476,3 @@ pub fn hex_dump(bytes: &[u8], max_rows: usize) -> String {
     }
     out
 }
-
