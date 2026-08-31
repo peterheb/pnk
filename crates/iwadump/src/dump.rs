@@ -287,14 +287,27 @@ pub fn detect_app(streams: &[StreamView]) -> App {
     }
     let names: Vec<&str> = streams.iter().map(|s| s.name.as_str()).collect();
     let has = |pred: &dyn Fn(&str) -> bool| names.iter().any(|n| pred(n));
+    // Slide member names vary by writer: `Slide-1.iwa`, `Slide7.iwa`,
+    // `MasterSlide.iwa`, `TemplateSlide-…` all occur in the corpus — match
+    // the bare prefix, not a dashed form.
     if has(&|n| {
         let base = n.rsplit('/').next().unwrap_or(n).to_lowercase();
-        base.starts_with("slide-") || base.starts_with("templateslide-") || base.starts_with("theme")
+        base.starts_with("slide") || base.starts_with("masterslide") || base.starts_with("templateslide")
     }) {
         return App::Keynote;
     }
+    // `Tables/` must outrank the theme signal: Numbers documents also carry
+    // a `ThemeStylesheet.iwa` (TN.ThemeArchive), and xlsx-derived Numbers
+    // files in the corpus have Tables/ + theme members but no slides — the
+    // old theme-first order rendered those spreadsheets as one bogus slide.
     if has(&|n| n.contains("/Tables/") || n.starts_with("Tables/")) {
         return App::Numbers;
+    }
+    if has(&|n| {
+        let base = n.rsplit('/').next().unwrap_or(n).to_lowercase();
+        base.starts_with("theme")
+    }) {
+        return App::Keynote;
     }
     App::Unknown
 }
