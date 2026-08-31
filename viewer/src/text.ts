@@ -92,6 +92,16 @@ export function applyParaStyle(el: HTMLElement, ps: ParaStyle): void {
   if (ps.defaultTabStopPt) (s as CSSStyleDeclaration & { tabSize: string }).tabSize = `${ps.defaultTabStopPt}px`;
 }
 
+// Scheme allowlist for document-supplied hyperlinks, mirroring the converter
+// policy (crates/pnk2json/src/text.rs valid_url): the document is untrusted,
+// so javascript:/file:/custom schemes must never reach an anchor href even
+// if a hand-edited JSON payload carries one.
+function safeHref(u: string): boolean {
+  if (u.startsWith("#")) return true;
+  const lower = u.toLowerCase();
+  return lower.startsWith("https://") || lower.startsWith("http://") || lower.startsWith("mailto:");
+}
+
 function fieldPlaceholderText(item: Extract<ParagraphItem, { type: "field" }>): string {
   switch (item.field.kind) {
     case "page-number": return "‹page number›";
@@ -388,9 +398,10 @@ function renderParagraphContent(
       }
     } else {
       const run = item as TextRun;
-      const span = document.createElement(run.hyperlink ? "a" : "span");
+      const linkable = run.hyperlink !== undefined && safeHref(run.hyperlink);
+      const span = document.createElement(linkable ? "a" : "span");
       applyCharStyle(span, charStyleOf(doc, run.cStyle));
-      if (run.hyperlink) {
+      if (linkable && run.hyperlink) {
         (span as HTMLAnchorElement).href = run.hyperlink;
         (span as HTMLAnchorElement).target = "_blank";
         (span as HTMLAnchorElement).rel = "noopener";

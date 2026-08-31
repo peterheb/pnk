@@ -2,6 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <!-- Defense in depth for untrusted documents: same-origin only, plus
+       blob: for locally-generated media/JSON and wasm-unsafe-eval for the
+       pnk2json wasm module. No remote loads of any kind. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' blob:; connect-src 'self' blob:; base-uri 'none'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>pnk.vu — iWork, locally</title>
   <link rel="stylesheet" href="styles.css">

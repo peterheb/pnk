@@ -408,12 +408,20 @@ pub fn extract_from_msg(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText> {
     Some(ExtractedText { text: StyledText { paragraphs }, footnotes })
 }
 
-/// A plausible hyperlink target: printable, and either scheme-qualified or
-/// an anchor/mail target — rejects protobuf bytes misread as strings.
+/// A safe hyperlink target: printable, and on the scheme allowlist. The
+/// value lands in an anchor `href` in the viewer, so this is a security
+/// boundary, not just junk filtering — `javascript:`, `file:`, and custom
+/// schemes from an untrusted document must never become clickable. The
+/// viewer repeats this policy on its side (viewer/src/text.ts).
 fn valid_url(u: &str) -> bool {
-    !u.is_empty()
-        && !u.chars().any(|c| (c as u32) < 0x20 || c == '\u{FFFD}')
-        && (u.contains("://") || u.starts_with("mailto:") || u.starts_with('#'))
+    if u.is_empty() || u.chars().any(|c| (c as u32) < 0x20 || c == '\u{FFFD}') {
+        return false;
+    }
+    if u.starts_with('#') {
+        return true; // same-document fragment
+    }
+    let lower = u.to_ascii_lowercase();
+    lower.starts_with("https://") || lower.starts_with("http://") || lower.starts_with("mailto:")
 }
 
 enum AttachmentResult {
