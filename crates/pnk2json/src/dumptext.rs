@@ -326,7 +326,9 @@ fn pages_text(d: &PagesDocument, out: &mut String) {
                         .and_then(|s| s.outline_level)
                         .unwrap_or(0);
                     if level > 0 {
-                        out.push_str(&format!("{} {}\n", "#".repeat(level as usize), text));
+                        // Same clamp as the Markdown path: a document-supplied
+                        // outline level is untrusted and sizes an allocation.
+                        out.push_str(&format!("{} {}\n", "#".repeat((level as usize).clamp(1, 6)), text));
                     } else {
                         out.push_str(&format!("{text}\n"));
                     }

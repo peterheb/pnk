@@ -522,8 +522,38 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
         return empty_table();
     };
 
-    let row_count = m.varint(6).unwrap_or(0) as u32;
-    let column_count = m.varint(7).unwrap_or(0) as u32;
+    // Dimensions come straight from document varints and size dense
+    // allocations below — validate before trusting. Numbers itself caps
+    // tables at 1,000,000 rows x 1,000 columns; the cell budget bounds the
+    // dense grid a crafted 65,536 x 65,536 claim would otherwise allocate.
+    const MAX_ROWS: u32 = 1_000_000;
+    const MAX_COLUMNS: u32 = 10_000;
+    const MAX_CELLS: u64 = 8_000_000;
+    let mut row_count = m.varint(6).unwrap_or(0) as u32;
+    let mut column_count = m.varint(7).unwrap_or(0) as u32;
+    if row_count > MAX_ROWS || column_count > MAX_COLUMNS {
+        ctx.warn_detail(
+            WarningCode::TableDegraded,
+            format!(
+                "table declares {row_count} x {column_count} cells, past app limits; clamping"
+            ),
+            model_id.to_string(),
+        );
+        row_count = row_count.min(MAX_ROWS);
+        column_count = column_count.min(MAX_COLUMNS);
+    }
+    if row_count as u64 * column_count as u64 > MAX_CELLS {
+        let clamped_rows = (MAX_CELLS / column_count.max(1) as u64) as u32;
+        ctx.warn_detail(
+            WarningCode::TableDegraded,
+            format!(
+                "table declares {row_count} x {column_count} cells, past the {MAX_CELLS}-cell budget; keeping the first {clamped_rows} rows"
+            ),
+            model_id.to_string(),
+        );
+        row_count = clamped_rows;
+    }
+    let (row_count, column_count) = (row_count, column_count);
 
     let store = m.msg(4); // base_data_store (inline TST.DataStore)
 
@@ -840,6 +870,10 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
         }
     }
     let mut formats: Vec<CellFormat> = Vec::new();
+    // Dedupe index keyed by serialized format: a linear scan of the pool per
+    // formatted cell goes quadratic when a document carries many distinct
+    // formats. Pool order stays first-appearance, so output is unchanged.
+    let mut format_index: HashMap<String, u32> = HashMap::new();
     for (row, col, mut cell, format) in cells {
         if cell.cell_style_index.is_none() {
             if let Some(s) = row_styles.get(&row).or_else(|| col_styles.get(&col)) {
@@ -855,14 +889,17 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
             cell.cell_style_index = cell_pool.intern(s);
         }
         if let Some(f) = format {
-            let idx = match formats.iter().position(|e| *e == f) {
-                Some(i) => i,
+            let key = serde_json::to_string(&f).unwrap_or_default();
+            let idx = match format_index.get(&key) {
+                Some(i) => *i,
                 None => {
+                    let i = formats.len() as u32;
                     formats.push(f);
-                    formats.len() - 1
+                    format_index.insert(key, i);
+                    i
                 }
             };
-            cell.fmt = Some(idx as u32);
+            cell.fmt = Some(idx);
         }
         let slot = match (&cell.v, cell.r#type, cell.fmt, cell.cell_style_index, &cell.formula) {
             // Plain unformatted scalar: bare value, no object wrapper.
@@ -881,8 +918,12 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
     }
     // Sidecar strokes on positions with no stored cell (02_Invoice's empty
     // spacer row still carries its heavy rule): synthesize a value-less
-    // styled cell so the edge renders.
-    for ((row, col), b) in edge_overrides.drain() {
+    // styled cell so the edge renders. Drained in (row, column) order —
+    // HashMap iteration order would make the interned style-pool indices,
+    // and therefore the JSON bytes, vary run to run.
+    let mut leftover_overrides: Vec<((u32, u32), CellBorders)> = edge_overrides.drain().collect();
+    leftover_overrides.sort_unstable_by_key(|(pos, _)| *pos);
+    for ((row, col), b) in leftover_overrides {
         if (row as usize) < grid.len()
             && (col as usize) < grid[row as usize].len()
             && grid[row as usize][col as usize].is_none()

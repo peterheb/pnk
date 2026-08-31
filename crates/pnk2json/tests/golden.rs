@@ -116,3 +116,38 @@ fn golden_g2_page_layout_matches_expected() {
         out.join("\n")
     );
 }
+
+/// Byte-level determinism: converting the same document twice must produce
+/// identical JSON (FINDINGS.md H-7 — randomized HashMap drain order once
+/// leaked into style-pool indices). Runs the goldens plus a handful of
+/// corpus Numbers fixtures when the (gitignored) crawl symlink is present.
+#[test]
+fn conversion_is_byte_deterministic() {
+    let mut candidates: Vec<PathBuf> = [
+        "fixtures/golden/G1-golden-pages-wp.pages",
+        "fixtures/golden/G2-golden-pages-layout.pages",
+        "fixtures/golden/G5-golden-pages-acid.pages",
+    ]
+    .iter()
+    .filter_map(|r| golden_path(r))
+    .collect();
+    if let Some(crawl) = golden_path("fixtures/crawl") {
+        if let Ok(rd) = std::fs::read_dir(crawl) {
+            let mut numbers: Vec<PathBuf> = rd
+                .filter_map(|e| e.ok().map(|e| e.path()))
+                .filter(|p| p.extension().is_some_and(|x| x == "numbers"))
+                .collect();
+            numbers.sort();
+            candidates.extend(numbers.into_iter().take(5));
+        }
+    }
+    if candidates.is_empty() {
+        eprintln!("no fixtures present; skipping");
+        return;
+    }
+    for path in candidates {
+        let a = pnk2json::to_json(&pnk2json::convert_path(&path).unwrap());
+        let b = pnk2json::to_json(&pnk2json::convert_path(&path).unwrap());
+        assert_eq!(a, b, "nondeterministic conversion: {}", path.display());
+    }
+}
