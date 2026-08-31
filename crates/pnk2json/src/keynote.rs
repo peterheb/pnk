@@ -239,18 +239,34 @@ fn media_asset_from_ref(ctx: &Ctx, r: &MediaRef) -> MediaAsset {
 }
 
 /// Navigator tree walk: KN.SlideNodeArchive { children = 1, slide = 2 }.
-fn walk_slide_nodes(ctx: &Ctx, node_id: Option<u64>) -> Vec<u64> {
-    let mut out = Vec::new();
-    if let Some(nid) = node_id {
+/// Iterative pre-order with a visited set — a self-referencing or two-node
+/// cycle in a crafted file must terminate, not spin/overflow (FINDINGS.md
+/// H-4). The node budget also bounds a legitimate-looking but absurd graph.
+fn visit_slide_nodes(ctx: &Ctx, root: Option<u64>, mut on_node: impl FnMut(u64, &crate::pb::Msg)) {
+    const MAX_NODES: usize = 100_000;
+    let mut stack: Vec<u64> = root.into_iter().collect();
+    let mut seen: std::collections::HashSet<u64> = std::collections::HashSet::new();
+    while let Some(nid) = stack.pop() {
+        if !seen.insert(nid) || seen.len() > MAX_NODES {
+            continue;
+        }
         if let Some(n) = ctx.loaded.msg(nid) {
-            if let Some(s) = n.reference(2) {
-                out.push(s);
-            }
-            for c in n.references(1) {
-                out.extend(walk_slide_nodes(ctx, Some(c)));
+            on_node(nid, n);
+            let children = n.references(1);
+            for c in children.into_iter().rev() {
+                stack.push(c);
             }
         }
     }
+}
+
+fn walk_slide_nodes(ctx: &Ctx, node_id: Option<u64>) -> Vec<u64> {
+    let mut out = Vec::new();
+    visit_slide_nodes(ctx, node_id, |_, n| {
+        if let Some(s) = n.reference(2) {
+            out.push(s);
+        }
+    });
     out
 }
 
@@ -259,16 +275,11 @@ fn collect_node_flags(
     node_id: Option<u64>,
     flags: &mut HashMap<u64, (Option<bool>, Option<bool>)>,
 ) {
-    if let Some(nid) = node_id {
-        if let Some(n) = ctx.loaded.msg(nid) {
-            if let Some(s) = n.reference(2) {
-                flags.insert(s, (n.boolean(4), n.boolean(18)));
-            }
-            for c in n.references(1) {
-                collect_node_flags(ctx, Some(c), flags);
-            }
+    visit_slide_nodes(ctx, node_id, |_, n| {
+        if let Some(s) = n.reference(2) {
+            flags.insert(s, (n.boolean(4), n.boolean(18)));
         }
-    }
+    });
 }
 
 /// Convert one KN.SlideArchive [5]/[6]. Regular slides paint in

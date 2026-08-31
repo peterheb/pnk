@@ -159,6 +159,14 @@ fn render_message(doc: &Document, id: u64) -> Result<String, Error> {
 }
 
 fn walk_field(out: &mut String, f: &Field, depth: usize) {
+    // Diagnostic rendering of untrusted payloads: bytes that happen to walk
+    // as nested messages can nest arbitrarily deep — stop descending past a
+    // sane display depth instead of overflowing the stack (FINDINGS.md H-4).
+    const MAX_DISPLAY_DEPTH: usize = 64;
+    if depth > MAX_DISPLAY_DEPTH {
+        out.push_str(&format!("{}(deeper nesting elided)\n", "  ".repeat(MAX_DISPLAY_DEPTH + 1)));
+        return;
+    }
     let indent = "  ".repeat(depth);
     let wire = proto::wire_name(f.wire);
     match &f.value {

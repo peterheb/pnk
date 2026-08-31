@@ -105,18 +105,22 @@ impl Msg {
     }
 
     /// Unwraps nested single-field LEN wrappers until a varint appears.
+    /// Iterative with a wrapper ceiling — real wrappers are 1-2 levels; a
+    /// crafted deep nest must not recurse the stack away (FINDINGS.md H-4).
     pub fn deep_reference(v: &Value) -> Option<u64> {
-        match v {
-            Value::Bytes(b) => {
-                let m = Msg::parse(b)?;
-                match m.varint(1) {
-                    Some(id) => Some(id),
-                    None => m.msg(1).as_ref().and_then(|inner| Msg::reference(&inner.clone(), 1)),
-                }
+        const MAX_WRAPPERS: u32 = 16;
+        let mut current = match v {
+            Value::Varint(v) => return Some(*v),
+            Value::Bytes(b) => Msg::parse(b)?,
+            _ => return None,
+        };
+        for _ in 0..MAX_WRAPPERS {
+            if let Some(id) = current.varint(1) {
+                return Some(id);
             }
-            Value::Varint(v) => Some(*v),
-            _ => None,
+            current = current.msg(1)?;
         }
+        None
     }
 
     /// All occurrences of field `n` as reference ids (deep-unwrapping nested

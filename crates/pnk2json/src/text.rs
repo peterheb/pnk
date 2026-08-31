@@ -79,7 +79,26 @@ pub fn extract(ctx: &mut Ctx, storage_id: u64) -> Option<ExtractedText> {
     extract_from_msg(ctx, &storage)
 }
 
+/// Contained-storage nesting ceiling. Apple allows one level (a footnote
+/// body); a crafted cyclic storage→attachment→storage graph must bottom out
+/// instead of overflowing the stack (FINDINGS.md H-4).
+const MAX_TEXT_NEST: u32 = 8;
+
 pub fn extract_from_msg(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText> {
+    if ctx.text_extract_depth >= MAX_TEXT_NEST {
+        ctx.warn(
+            crate::model::WarningCode::UnsupportedFeature,
+            format!("text storages nest deeper than {MAX_TEXT_NEST} levels; inner content dropped"),
+        );
+        return None;
+    }
+    ctx.text_extract_depth += 1;
+    let out = extract_from_msg_inner(ctx, storage);
+    ctx.text_extract_depth -= 1;
+    out
+}
+
+fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText> {
     let text = storage.string(3).unwrap_or_default();
     let map = utf16_map(&text);
 

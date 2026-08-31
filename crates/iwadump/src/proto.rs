@@ -84,12 +84,16 @@ struct Scan {
 /// decodable"; the *stream* stays synchronized because payloads are
 /// length-delimited (docs/format/gotchas.md #6).
 pub fn parse_fields(buf: &[u8], layer: Layer) -> Result<Vec<Field>, Error> {
-    scan(buf, None, layer).map(|s| s.fields)
+    scan(buf, None, layer, 0).map(|s| s.fields)
 }
+
+/// Nested-group ceiling: real TSP data nests a handful of levels; a crafted
+/// run of start-group tags (2 bytes per level) must not overflow the stack.
+const MAX_GROUP_DEPTH: u32 = 100;
 
 /// Scan fields until the buffer ends, or until an end-group tag matching
 /// `group_field` appears (`closed == true`).
-fn scan(buf: &[u8], group_field: Option<u32>, layer: Layer) -> Result<Scan, Error> {
+fn scan(buf: &[u8], group_field: Option<u32>, layer: Layer, depth: u32) -> Result<Scan, Error> {
     let mut fields = Vec::new();
     let mut pos = 0usize;
     while pos < buf.len() {
@@ -125,7 +129,13 @@ fn scan(buf: &[u8], group_field: Option<u32>, layer: Layer) -> Result<Scan, Erro
             }
             WIRE_SGROUP => {
                 // Group content runs to the matching end-group tag; recurse.
-                let inner = scan(&buf[pos..], Some(number), layer)?;
+                if depth >= MAX_GROUP_DEPTH {
+                    return Err(err(
+                        layer,
+                        format!("group field {number} nests deeper than {MAX_GROUP_DEPTH} levels"),
+                    ));
+                }
+                let inner = scan(&buf[pos..], Some(number), layer, depth + 1)?;
                 if !inner.closed {
                     return Err(err(layer, format!("group field {number} is never closed")));
                 }

@@ -120,6 +120,10 @@ pub struct Ctx {
     pub datas: HashMap<u64, DataInfoEntry>,
     /// DataInfo identifiers actually referenced from content (for `media[]`).
     pub referenced_datas: BTreeSet<u64>,
+    /// Live nesting depth of text-storage extraction (footnote bodies pull
+    /// contained storages, which can reference attachments that pull more
+    /// storages). Guards a crafted cyclic graph — FINDINGS.md H-4.
+    pub text_extract_depth: u32,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -155,6 +159,7 @@ impl Ctx {
             meta: DocumentMeta { app: app_kind, ..Default::default() },
             datas: HashMap::new(),
             referenced_datas: BTreeSet::new(),
+            text_extract_depth: 0,
         };
         ctx.refine_app();
         ctx.load_metadata_plists();
@@ -555,6 +560,7 @@ impl Ctx {
             meta: DocumentMeta { app: app_kind, ..Default::default() },
             datas: HashMap::new(),
             referenced_datas: std::collections::BTreeSet::new(),
+            text_extract_depth: 0,
         };
         ctx.refine_app();
         ctx.load_metadata_plists();

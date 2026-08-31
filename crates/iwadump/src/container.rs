@@ -154,6 +154,15 @@ fn not_a_zip(label: &str, e: impl std::fmt::Display) -> Error {
 /// `Index.zip` (any directory prefix), mirroring numbers-parser iwork.py:216-218.
 /// Returns (member listing, iwa streams, nested listing when used).
 fn scan_zip(bytes: Vec<u8>, label: &str) -> Result<ScanOutcome, Error> {
+    scan_zip_at_depth(bytes, label, 0)
+}
+
+/// The early-'13 variant nests exactly ONE `Index.zip` inside the document
+/// zip; a crafted chain of nested index zips must not recurse further
+/// (FINDINGS.md H-4).
+const MAX_NESTED_INDEX_DEPTH: u32 = 1;
+
+fn scan_zip_at_depth(bytes: Vec<u8>, label: &str, depth: u32) -> Result<ScanOutcome, Error> {
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
         .map_err(|e| not_a_zip(label, e))?;
     let members: Vec<Member> = (0..archive.len())
@@ -230,9 +239,16 @@ fn scan_zip(bytes: Vec<u8>, label: &str) -> Result<ScanOutcome, Error> {
                 .unwrap_or(false)
         });
         if let Some(idx) = nested {
+            if depth >= MAX_NESTED_INDEX_DEPTH {
+                return Err(Error::new(
+                    Kind::Corrupt,
+                    Layer::Container,
+                    format!("{label}: Index.zip nests deeper than the format allows"),
+                ));
+            }
             let nested_name = archive.name_for_index(idx).unwrap_or("Index.zip").to_string();
             let nested_bytes = read_zip_member(&mut archive, idx)?;
-            let inner = scan_zip(nested_bytes, &format!("{label} → {nested_name}"))?;
+            let inner = scan_zip_at_depth(nested_bytes, &format!("{label} → {nested_name}"), depth + 1)?;
             return Ok(ScanOutcome {
                 members,
                 iwas: inner.iwas,
