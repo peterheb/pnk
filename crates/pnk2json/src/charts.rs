@@ -36,7 +36,7 @@ fn chart_type(v: u64) -> (ChartType, bool) {
         26 => (ChartType::Donut, true),
         27 => (ChartType::Radar, false),
         // mixed / two-axis / multi-data variants and anything new: "other"
-        _ => (ChartType::Other, v >= 12 && v <= 19 || v == 26),
+        _ => (ChartType::Other, (12..=19).contains(&v) || v == 26),
     }
 }
 

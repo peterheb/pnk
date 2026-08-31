@@ -143,7 +143,7 @@ fn normalize_path(mut p: CurvePath, natural: Option<&Size>) -> CurvePath {
             | CurveElement::Cubic { points }
             | CurveElement::Close { points } => points,
         };
-        for xy in pts.chunks_exact(2) {
+        for xy in pts.as_chunks::<2>().0 {
             min.0 = min.0.min(xy[0]);
             min.1 = min.1.min(xy[1]);
             max.0 = max.0.max(xy[0]);
@@ -181,7 +181,7 @@ fn normalize_path(mut p: CurvePath, natural: Option<&Size>) -> CurvePath {
             | CurveElement::Cubic { points }
             | CurveElement::Close { points } => points,
         };
-        for xy in pts.chunks_exact_mut(2) {
+        for xy in pts.as_chunks_mut::<2>().0 {
             xy[0] = (xy[0] - min.0) * sx;
             xy[1] = (xy[1] - min.1) * sy;
         }

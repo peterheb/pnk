@@ -249,6 +249,5 @@ fn storages_to_styled(
         return if out.is_empty() { None } else { Some(out) };
     }
     let fid = m.reference(fallback_field)?;
-    let out = crate::text::extract(ctx, fid).map(|e| vec![e.text]);
-    out
+    crate::text::extract(ctx, fid).map(|e| vec![e.text])
 }

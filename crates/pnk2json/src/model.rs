@@ -638,6 +638,8 @@ pub struct Paragraph {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged, rename_all_fields = "camelCase")]
+// Boxing the big variants is deferred (FINDINGS.md P2); allow for now.
+#[allow(clippy::large_enum_variant)]
 pub enum ParagraphItem {
     /// Plain unstyled text run — the common case.
     Plain(String),
@@ -836,6 +838,8 @@ pub enum TextFit {
     rename_all = "kebab-case",
     rename_all_fields = "camelCase"
 )]
+// Boxing the big variants is deferred (FINDINGS.md P2); allow for now.
+#[allow(clippy::large_enum_variant)]
 pub enum Drawable {
     Shape {
         common: DrawableCommon,
@@ -1131,6 +1135,8 @@ pub enum CellTypeTag {
 /// One grid slot: a plain unformatted value or an explicit cell object.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
+// Boxing the big variants is deferred (FINDINGS.md P2); allow for now.
+#[allow(clippy::large_enum_variant)]
 pub enum GridCell {
     /// Plain unformatted simple value.
     Plain(GridPlain),

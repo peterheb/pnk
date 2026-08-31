@@ -41,13 +41,13 @@ fn para_plain(p: &Paragraph) -> String {
                 // Soft breaks render as spaces in the flat dumpers (the
                 // paragraph block is one line); raw LS/PS would confuse
                 // line-oriented tooling (gotchas #15).
-                s.push_str(&text.replace('\u{2028}', " ").replace('\u{2029}', " "))
+                s.push_str(&text.replace(['\u{2028}', '\u{2029}'], " "))
             }
             ParagraphItem::InlineObject { .. } => s.push(' '), // object placeholder
             ParagraphItem::Field { value, field, .. } => match (value, field) {
                 (Some(v), _) => s.push_str(v),
-                (None, FieldKind::PageNumber {}) => s.push('1'),
-                (None, FieldKind::PageCount {}) => s.push('1'),
+                (None, FieldKind::PageNumber) => s.push('1'),
+                (None, FieldKind::PageCount) => s.push('1'),
                 _ => {}
             },
         }
@@ -67,7 +67,7 @@ fn para_markdown(p: &Paragraph, char_styles: &[CharStyle]) -> String {
                 let style = c_style.and_then(|i| char_styles.get(i as usize));
                 // Soft break → markdown hard line break inside the paragraph.
                 let text = if text.contains('\u{2028}') || text.contains('\u{2029}') {
-                    text.replace('\u{2028}', "  \n").replace('\u{2029}', "  \n")
+                    text.replace(['\u{2028}', '\u{2029}'], "  \n")
                 } else {
                     text.clone()
                 };
@@ -137,12 +137,10 @@ fn drawable_texts(d: &Drawable, out: &mut Vec<(String, String)>) {
                 out.push(("textbox".into(), t));
             }
         }
-        Drawable::Shape { text, .. } => {
-            if let Some(t) = text {
-                let s = styled_plain(t);
-                if !s.is_empty() {
-                    out.push(("shape-text".into(), s));
-                }
+        Drawable::Shape { text: Some(t), .. } => {
+            let s = styled_plain(t);
+            if !s.is_empty() {
+                out.push(("shape-text".into(), s));
             }
         }
         Drawable::Group { children, .. } => {

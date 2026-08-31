@@ -101,7 +101,6 @@ pub fn strip_para_defaults(mut s: ParaStyle) -> ParaStyle {
     if s.default_tab_stop_pt == Some(36.0) {
         s.default_tab_stop_pt = None;
     }
-    if s.writing_direction.is_none() {} // already Option
     s
 }
 
@@ -591,6 +590,12 @@ pub fn collect_font(fonts: &mut BTreeSet<String>, name: &str) {
 /// envelope small while staying non-silent.
 pub struct Counter {
     counts: BTreeMap<String, u64>,
+}
+
+impl Default for Counter {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Counter {

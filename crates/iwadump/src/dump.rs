@@ -355,6 +355,12 @@ pub struct Json {
     needs_comma: Vec<bool>,
 }
 
+impl Default for Json {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Json {
     pub fn new() -> Json {
         Json {

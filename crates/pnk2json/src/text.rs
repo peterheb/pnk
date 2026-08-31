@@ -481,6 +481,8 @@ fn valid_url(u: &str) -> bool {
     lower.starts_with("https://") || lower.starts_with("http://") || lower.starts_with("mailto:")
 }
 
+// Boxing the big variants is deferred (FINDINGS.md P2); allow for now.
+#[allow(clippy::large_enum_variant)]
 enum AttachmentResult {
     Drawable(Drawable, Option<f64>, Option<f64>),
     Field {

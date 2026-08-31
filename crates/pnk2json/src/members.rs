@@ -52,10 +52,7 @@ impl Members {
     /// Bytes of a named member; `None` when absent.
     pub fn get(&self, name: &str) -> Option<Vec<u8>> {
         match &self.inner {
-            MembersInner::Container(c) => match c.read_member(name) {
-                Ok(b) => Some(b),
-                Err(_) => None,
-            },
+            MembersInner::Container(c) => c.read_member(name).ok(),
             MembersInner::Map(m) => m.get(name).cloned(),
             MembersInner::Zip(z) => {
                 let mut z = z.borrow_mut();

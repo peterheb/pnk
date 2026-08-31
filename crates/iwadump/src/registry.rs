@@ -182,7 +182,7 @@ pub fn parse_string_map(json: &str) -> Result<HashMap<u32, String>, Error> {
             i += 1;
             continue;
         }
-        let key = parse_json_string(bytes, &mut i).map_err(|e| err(e))?;
+        let key = parse_json_string(bytes, &mut i).map_err(&err)?;
         skip_ws(&mut i);
         if i >= bytes.len() || bytes[i] != b':' {
             return Err(err(format!("expected `:` after key {key:?} at byte {i}")));

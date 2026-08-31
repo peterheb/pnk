@@ -59,6 +59,7 @@ fn frame_block(compressed: &[u8]) -> Vec<u8> {
 }
 
 /// Build a full `.iwa` stream from raw (already-serialized) archive segments.
+#[allow(dead_code)] // kept as documentation of the fixture-building recipe
 fn iwa_stream(archives: &[Vec<u8>]) -> Vec<u8> {
     let mut decoded = Vec::new();
     for a in archives {
@@ -142,6 +143,7 @@ fn crc32(data: &[u8]) -> u32 {
     crc ^ 0xFFFF_FFFF
 }
 
+#[allow(dead_code)] // kept as documentation of the fixture-building recipe
 fn write_zip(path: &std::path::Path, bytes: &[u8]) {
     std::fs::write(path, bytes).unwrap();
 }

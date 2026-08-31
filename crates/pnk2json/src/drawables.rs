@@ -187,7 +187,6 @@ fn drawable_style(
 ) -> (Option<DrawableStyle>, Option<DrawableCommon>) {
     let mut style = DrawableStyle::default();
     let mut extras = DrawableCommon::default();
-    let any;
     // Per-property "seen at a nearer chain level" flags:
     // fill, stroke, opacity, shadow, reflection, head, tail
     let mut seen = [false; 7];
@@ -272,7 +271,7 @@ fn drawable_style(
     if head.is_some() || tail.is_some() {
         style.line_ends = Some(LineEnds { head, tail });
     }
-    any = style.fill.is_some()
+    let any = style.fill.is_some()
         || style.stroke.is_some()
         || style.line_ends.is_some()
         || extras.opacity.is_some()

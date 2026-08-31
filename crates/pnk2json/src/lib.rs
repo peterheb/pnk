@@ -176,6 +176,7 @@ pub fn to_json_compact(doc: &PnkDocument) -> String {
 /// - Unicode space separators (Zs) and format characters (Cf): invisible or
 ///   width-ambiguous (NBSP, ZWSP, ZWNJ, ZWJ, BOM, bidi marks) — reviewers
 ///   cannot distinguish them from ASCII spaces by eye.
+///
 /// Spec-legal raw in JSON strings; escaping is a no-op semantically
 /// (json.loads of old vs new output yields identical strings). Safe as a
 /// whole-text pass: these code points only occur inside string literals.

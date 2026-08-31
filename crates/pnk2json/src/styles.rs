@@ -63,7 +63,7 @@ pub fn chain(ctx: &Ctx, id: u64, field: u32) -> Vec<Msg> {
 /// First property value along the chain, honoring the null-flag pattern:
 /// `Some(Some(m))` = the payload carrying the field; `Some(None)` = explicitly
 /// cleared; `None` = keep walking (absent everywhere → truly unset).
-fn prop<'a>(msgs: &'a [Msg], field: u32, null_field: Option<u32>) -> Option<Option<&'a Msg>> {
+fn prop(msgs: &[Msg], field: u32, null_field: Option<u32>) -> Option<Option<&Msg>> {
     for m in msgs {
         if let Some(nf) = null_field {
             if m.boolean(nf) == Some(true) {
@@ -549,7 +549,8 @@ pub fn resolve_section_columns(
             eq.varint(1).unwrap_or(1) as u32,
             eq.f32v(2).map(|v| v as f64),
         )
-    } else if let Some(ne) = cols.msg(2) {
+    } else {
+        let ne = cols.msg(2)?;
         // first (1) + following (2, repeated GapWidthArchive) — degrade.
         let count = 1 + ne.msgs(2).len() as u32;
         ctx.warn(
@@ -557,8 +558,6 @@ pub fn resolve_section_columns(
             format!("unequal-width columns degraded to {count} equal columns"),
         );
         (count, None)
-    } else {
-        return None;
     };
     if count < 2 {
         return None;

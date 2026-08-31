@@ -731,8 +731,8 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
                 let origin = cr.msg(1).and_then(|c| c.get(1).and_then(fixed32));
                 let size = cr.msg(2).and_then(|s| s.get(1).and_then(fixed32));
                 if let (Some(op), Some(sp)) = (origin, size) {
-                    let (ocol, orow) = ((op >> 16) as u32, (op & 0xFFFF) as u32);
-                    let (scol, srow) = ((sp >> 16) as u32, (sp & 0xFFFF) as u32);
+                    let (ocol, orow) = (op >> 16, op & 0xFFFF);
+                    let (scol, srow) = (sp >> 16, sp & 0xFFFF);
                     merges.push(TableMerge {
                         anchor_row: orow,
                         anchor_column: ocol,
@@ -1153,8 +1153,10 @@ fn convert_tile(
         // Packed little-endian signed 16-bit offsets; wide offsets are
         // quarter-offsets (multiply by 4). Negative = absent cell.
         let mut offsets: Vec<i32> = offsets_raw
-            .chunks_exact(2)
-            .map(|c| i16::from_le_bytes([c[0], c[1]]) as i32)
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|c| i16::from_le_bytes(*c) as i32)
             .collect();
         if wide {
             for o in offsets.iter_mut() {
@@ -1645,6 +1647,8 @@ fn custom_pattern(ctx: &Ctx, f: &Msg) -> Option<String> {
     None
 }
 
+// The argument list mirrors the cell-storage layout; restructuring is not worth it.
+#[allow(clippy::too_many_arguments)]
 fn pick_format(
     ctx: &Ctx,
     num: Option<i32>,
@@ -1719,7 +1723,7 @@ fn pick_format(
                 // up-to-N-digit sentinels (parser: numbers-parser
                 // FractionAccuracy)
                 Some(262) => Some(match f.varint(11) {
-                    Some(acc) if acc >= 2 && acc <= 100 => format!("fraction-{acc}"),
+                    Some(acc) if (2..=100).contains(&acc) => format!("fraction-{acc}"),
                     _ => "fraction".to_string(),
                 }),
                 // durations: style (f7: 0 compact "28:40" / 1 short "28m 40s" /
@@ -1997,8 +2001,10 @@ fn decode_cell_v4(
     }
     let cell_type = buf[1];
     let u32s: Vec<u32> = buf
-        .chunks_exact(4)
-        .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|c| u32::from_le_bytes(*c))
         .collect();
 
     // Slot 1 is a v3-style presence bitfield for the LEADING fields, laid out
