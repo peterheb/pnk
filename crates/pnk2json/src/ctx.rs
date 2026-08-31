@@ -259,6 +259,19 @@ impl Ctx {
                 paths: None,
             });
         }
+        if self.loaded.patches_dropped > 0 {
+            let n = self.loaded.patches_dropped;
+            self.warnings.push(Warning {
+                code: WarningCode::UnsupportedFeature,
+                message: format!(
+                    "{n} incremental-save patch(es) could not be applied; affected objects may show pre-edit content"
+                ),
+                path: None,
+                detail: Some("incremental-save".to_string()),
+                count: None,
+                paths: None,
+            });
+        }
         let undecodable = self.loaded.undecodable_ids.clone();
         for (id, count) in undecodable {
             let name = self
