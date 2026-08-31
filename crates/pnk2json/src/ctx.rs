@@ -430,7 +430,7 @@ impl Ctx {
             let byte_length = entry.materialized_length;
             let remote = entry.remote_url.clone();
             let preferred = entry.preferred_file_name.clone();
-            let pixel = entry.pixel_size;
+            let _pixel = entry.pixel_size;
             // Materialized bytes absent → media-missing (docs/format/media.md
             // resolution chain step 3). Independent of the optional length
             // metadata (FINDINGS.md L-4), and a remote-only asset warns too:

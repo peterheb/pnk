@@ -123,22 +123,6 @@ fn fmt_num(n: f64) -> String {
     }
 }
 
-fn cell_value_plain(v: &CellValue) -> String {
-    match v {
-        CellValue::Empty => String::new(),
-        CellValue::Number { value } => fmt_num(*value),
-        CellValue::Text { value } => value.clone(),
-        CellValue::Bool { value } => if *value { "TRUE" } else { "FALSE" }.to_string(),
-        CellValue::Date { value } => value.clone(),
-        CellValue::Duration { value } => format!("{}s", fmt_num(*value)),
-        CellValue::Currency { value, currency_code } => match currency_code {
-            Some(c) => format!("{} {}", fmt_num(*value), c),
-            None => fmt_num(*value),
-        },
-        CellValue::Richtext { text } => styled_plain(text),
-        CellValue::Error { value } => format!("ERROR: {value}"),
-    }
-}
 
 fn drawable_texts(d: &Drawable, out: &mut Vec<(String, String)>) {
     // (kind, text) pairs, in paint order; recurse into groups.

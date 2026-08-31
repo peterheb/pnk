@@ -250,7 +250,7 @@ fn apply_patches(
         }
         // Replace-in-place keeps field order stable (semantically irrelevant
         // in proto2, but deterministic output matters).
-        let mut set_fields = |base: &mut Msg, replacements: Vec<Field>| {
+        let set_fields = |base: &mut Msg, replacements: Vec<Field>| {
             let mut nums: Vec<u32> = Vec::new();
             for f in &replacements {
                 if !nums.contains(&f.number) {
@@ -385,7 +385,7 @@ pub fn streams_from_bytes(
 
     // One pass by index: inflate each `.iwa` (bounded), skipping directories
     // and LZFSE operation logs (gotcha #11: `bvx` magic, not snappy IWA).
-    let mut collect =
+    let collect =
         |zip: &mut zip::ZipArchive<std::io::Cursor<&[u8]>>, remaining: &mut u64| -> Result<Vec<(String, Vec<u8>)>, Error> {
             let mut out = Vec::new();
             for i in 0..zip.len() {

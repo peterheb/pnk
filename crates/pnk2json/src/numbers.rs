@@ -194,7 +194,7 @@ fn convert_sheet(ctx: &mut Ctx, sid: u64) -> Sheet {
             }
             cur = sm.msg(1).and_then(|b| b.reference(3)).or_else(|| sm.reference(3));
         }
-        let mut solid = |ctx: &mut Ctx, f: Option<Msg>, what: &str| {
+        let solid = |ctx: &mut Ctx, f: Option<Msg>, what: &str| {
             let f = f?;
             match crate::tsd::fill_of(ctx, &f) {
                 Some(Fill::Solid { color }) => Some(color),

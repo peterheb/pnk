@@ -204,7 +204,7 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> KeynoteDocument {
 }
 
 fn empty_keynote(ctx: &mut Ctx) -> KeynoteDocument {
-    let mut doc = KeynoteDocument {
+    let doc = KeynoteDocument {
         kind: "keynote".to_string(),
         meta: ctx.meta.clone(),
         warnings: Vec::new(),

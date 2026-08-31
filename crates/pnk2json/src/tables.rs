@@ -17,7 +17,6 @@ use crate::styles;
 struct ListEntry {
     string: Option<String>,
     reference: Option<u64>,
-    has_formula: bool,
     format: Option<Msg>,
     custom_format: Option<Msg>,
 }
@@ -37,7 +36,6 @@ fn load_data_list(ctx: &Ctx, list_id: Option<u64>) -> DataList {
         out.entries.entry(key).or_insert_with(|| ListEntry {
             string: e.string(3),
             reference: e.reference(4).or_else(|| e.reference(9)),
-            has_formula: e.has(5),
             format: e.msg(6),
             custom_format: e.msg(8),
         });
@@ -53,7 +51,6 @@ fn load_data_list(ctx: &Ctx, list_id: Option<u64>) -> DataList {
                 out.entries.entry(key).or_insert_with(|| ListEntry {
                     string: e.string(3),
                     reference: e.reference(4).or_else(|| e.reference(9)),
-                    has_formula: e.has(5),
                     format: e.msg(6),
                     custom_format: e.msg(8),
                 });
@@ -763,7 +760,7 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
         let mut hrow = section_style(ctx, &m, 19, 25);
         let mut hcol = section_style(ctx, &m, 20, 26);
         let mut foot = section_style(ctx, &m, 21, 27);
-        let mut stroke_at = |ctx: &mut Ctx, f: u32| {
+        let stroke_at = |ctx: &mut Ctx, f: u32| {
             first(f).and_then(|p| p.msg(f)).and_then(|sm| table_stroke(ctx, &sm))
         };
         let body_h = if h_vis { stroke_at(ctx, 60) } else { None };
@@ -1169,7 +1166,7 @@ fn decode_cell(
     buf: &[u8],
     string_table: &DataList,
     style_table: &DataList,
-    formula_table: &DataList,
+    _formula_table: &DataList,
     formula_error_table: &DataList,
     format_table: &DataList,
     custom_format_table: &DataList,
@@ -1231,6 +1228,7 @@ fn decode_cell(
     let duration_format_id = if flags & 0x10000 != 0 { take_i32!() } else { None };
     let text_format_id = if flags & 0x20000 != 0 { take_i32!() } else { None };
     let _bool_format = if flags & 0x40000 != 0 { take_i32!() } else { None };
+    let _ = off; // the final take's advance is intentionally unread
 
     // Value by cell type (TST.CellType byte 1; 10 = currency per
     // numbers-parser CURRENCY_CELL_TYPE).

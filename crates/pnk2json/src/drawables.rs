@@ -107,7 +107,7 @@ fn convert_drawable_inner(
 
 /// Extract `DrawableCommon` from a `TSD.DrawableArchive` payload. `Err(())`
 /// when the payload carries no geometry at all.
-fn drawable_common(ctx: &mut Ctx, m: &Msg) -> Result<DrawableCommon, ()> {
+fn drawable_common(_ctx: &mut Ctx, m: &Msg) -> Result<DrawableCommon, ()> {
     let mut c = DrawableCommon::default();
     let mut any = false;
     if let Some(g) = m.msg(1) {
@@ -177,7 +177,7 @@ fn drawable_common(ctx: &mut Ctx, m: &Msg) -> Result<DrawableCommon, ()> {
 fn drawable_style(ctx: &mut Ctx, style_ref: Option<u64>, is_media: bool) -> (Option<DrawableStyle>, Option<DrawableCommon>) {
     let mut style = DrawableStyle::default();
     let mut extras = DrawableCommon::default();
-    let mut any = false;
+    let any;
     // Per-property "seen at a nearer chain level" flags:
     // fill, stroke, opacity, shadow, reflection, head, tail
     let mut seen = [false; 7];
@@ -189,7 +189,6 @@ fn drawable_style(ctx: &mut Ctx, style_ref: Option<u64>, is_media: bool) -> (Opt
         if !visited.insert(sid) || visited.len() > 16 {
             break; // cycle / runaway chain guard
         }
-        cur = None;
         let Some(sm) = ctx.loaded.msg(sid).cloned() else {
             ctx.warn_detail(
                 WarningCode::UnresolvedReference,
