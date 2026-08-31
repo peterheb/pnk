@@ -311,9 +311,23 @@ fn is_command_name(name: &str) -> bool {
 // Bytes-based loading (used by the wasm binding, where there is no filesystem)
 // ---------------------------------------------------------------------------
 
+/// Ceiling on zip entry count — real documents carry at most a few thousand
+/// members; a many-entry archive is an algorithmic-complexity vector.
+const MAX_ZIP_ENTRIES: usize = 100_000;
+
+/// Total inflated `.iwa` budget: generous multiple of the compressed input
+/// (DEFLATE on already-snappy data stays well under 20x) with a floor so
+/// tiny documents aren't over-constrained. Bounds classic zip bombs.
+fn iwa_budget(compressed_len: usize) -> u64 {
+    (compressed_len as u64).saturating_mul(20).max(256 * 1024 * 1024)
+}
+
 /// Container-level decode from raw document bytes: reject encrypted/legacy,
-/// collect `.iwa` members (recursing into a nested `Index.zip`), frame and
+/// collect `.iwa` members (descending into a nested `Index.zip`), frame and
 /// envelope-parse each stream. Mirrors iwadump's container semantics.
+/// Single pass over each zip's entries with an expansion budget — the old
+/// shape reopened and reparsed the central directory once per member and
+/// inflated without bound (FINDINGS.md H-2).
 pub fn streams_from_bytes(
     bytes: &[u8],
 ) -> Result<Vec<StreamView>, iwadump::Error> {
@@ -325,13 +339,15 @@ pub fn streams_from_bytes(
     let mut zip = zip::ZipArchive::new(cursor).map_err(|e| {
         Error::new(Kind::Unsupported, layer, format!("{label}: not a readable ZIP container: {e}"))
     })?;
-
-    let mut names: Vec<String> = Vec::new();
-    for i in 0..zip.len() {
-        if let Ok(f) = zip.by_index_raw(i) {
-            names.push(f.name().to_string());
-        }
+    if zip.len() > MAX_ZIP_ENTRIES {
+        return Err(Error::new(
+            Kind::Unsupported,
+            layer,
+            format!("{label}: {} zip entries exceeds the {MAX_ZIP_ENTRIES}-entry limit", zip.len()),
+        ));
     }
+
+    let names: Vec<String> = zip.file_names().map(|n| n.to_string()).collect();
 
     // Encrypted: .iwph / .iwp* members (gotchas #12).
     for n in &names {
@@ -358,55 +374,67 @@ pub fn streams_from_bytes(
         }
     }
 
-    // Collect .iwa members; if none at top level, recurse into a nested
-    // Index.zip (gotcha #5).
-    let mut read_member = |name: &str| -> Option<Vec<u8>> {
-        let mut z = zip::ZipArchive::new(std::io::Cursor::new(bytes)).ok()?;
-        let mut f = z.by_name(name).ok()?;
-        let mut buf = Vec::new();
-        std::io::Read::read_to_end(&mut f, &mut buf).ok()?;
-        Some(buf)
+    let mut remaining = iwa_budget(bytes.len());
+    let over_budget = || {
+        Error::new(
+            Kind::Corrupt,
+            layer,
+            format!("{label}: inflated .iwa members exceed the expansion budget; refusing further decompression"),
+        )
     };
 
-    let mut collect = |names: &[String], read: &mut dyn FnMut(&str) -> Option<Vec<u8>>| -> Vec<(String, Vec<u8>)> {
-        let mut out = Vec::new();
-        for n in names {
-            if !n.ends_with('/') && n.to_ascii_lowercase().ends_with(".iwa") {
-                if let Some(b) = read(n) {
-                    // OperationStorage.iwa is an LZFSE collaboration log, not a
-                    // snappy IWA stream (gotcha #11): skip by magic.
-                    if b.starts_with(b"bvx") {
-                        continue;
-                    }
-                    out.push((n.clone(), b));
+    // One pass by index: inflate each `.iwa` (bounded), skipping directories
+    // and LZFSE operation logs (gotcha #11: `bvx` magic, not snappy IWA).
+    let mut collect =
+        |zip: &mut zip::ZipArchive<std::io::Cursor<&[u8]>>, remaining: &mut u64| -> Result<Vec<(String, Vec<u8>)>, Error> {
+            let mut out = Vec::new();
+            for i in 0..zip.len() {
+                let Ok(mut f) = zip.by_index(i) else { continue };
+                if f.is_dir() || !f.name().to_ascii_lowercase().ends_with(".iwa") {
+                    continue;
                 }
+                let name = f.name().to_string();
+                let mut buf = Vec::new();
+                let mut limited = std::io::Read::take(&mut f, remaining.saturating_add(1));
+                if std::io::Read::read_to_end(&mut limited, &mut buf).is_err() {
+                    continue;
+                }
+                if buf.len() as u64 > *remaining {
+                    return Err(over_budget());
+                }
+                *remaining -= buf.len() as u64;
+                if buf.starts_with(b"bvx") {
+                    continue;
+                }
+                out.push((name, buf));
             }
-        }
-        out
-    };
+            Ok(out)
+        };
 
-    let mut iwas = collect(&names, &mut read_member);
+    let mut iwas = collect(&mut zip, &mut remaining)?;
     if iwas.is_empty() {
-        // Nested Index.zip variant.
-        let nested_name = names.iter().find(|n| n.ends_with("Index.zip") && !n.ends_with('/')).cloned();
+        // Nested Index.zip variant (gotcha #5) — exactly one level deep.
+        let nested_name =
+            names.iter().find(|n| n.ends_with("Index.zip") && !n.ends_with('/')).cloned();
         if let Some(nname) = nested_name {
-            if let Some(nested_bytes) = read_member(&nname) {
-                if let Ok(mut inner) = zip::ZipArchive::new(std::io::Cursor::new(&nested_bytes)) {
-                    let mut inner_names = Vec::new();
-                    for i in 0..inner.len() {
-                        if let Ok(f) = inner.by_index_raw(i) {
-                            inner_names.push(f.name().to_string());
-                        }
-                    }
-                    let mut inner_read = |name: &str| -> Option<Vec<u8>> {
-                        let mut z = zip::ZipArchive::new(std::io::Cursor::new(&nested_bytes)).ok()?;
-                        let mut f = z.by_name(name).ok()?;
-                        let mut buf = Vec::new();
-                        std::io::Read::read_to_end(&mut f, &mut buf).ok()?;
-                        Some(buf)
-                    };
-                    iwas = collect(&inner_names, &mut inner_read);
+            let mut nested_bytes = Vec::new();
+            if let Ok(mut f) = zip.by_name(&nname) {
+                let mut limited = std::io::Read::take(&mut f, remaining.saturating_add(1));
+                let _ = std::io::Read::read_to_end(&mut limited, &mut nested_bytes);
+            }
+            if nested_bytes.len() as u64 > remaining {
+                return Err(over_budget());
+            }
+            remaining -= nested_bytes.len() as u64;
+            if let Ok(mut inner) = zip::ZipArchive::new(std::io::Cursor::new(nested_bytes.as_slice())) {
+                if inner.len() > MAX_ZIP_ENTRIES {
+                    return Err(Error::new(
+                        Kind::Unsupported,
+                        layer,
+                        format!("{label}: nested Index.zip entry count exceeds the {MAX_ZIP_ENTRIES}-entry limit"),
+                    ));
                 }
+                iwas = collect(&mut inner, &mut remaining)?;
             }
         }
     }
@@ -418,7 +446,6 @@ pub fn streams_from_bytes(
         ));
     }
 
-    let registry = Registry::embedded()?;
     let mut streams = Vec::with_capacity(iwas.len());
     for (name, raw) in &iwas {
         let iwa = iwadump::IwaStream::parse(name, raw)?;

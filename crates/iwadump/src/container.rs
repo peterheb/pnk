@@ -131,6 +131,9 @@ fn ext_is_tef(ext: &str) -> bool {
     }
 }
 
+/// Per-member inflation ceiling. Real members top out in the hundreds of MB.
+const MAX_MEMBER_BYTES: u64 = 1024 * 1024 * 1024;
+
 fn read_zip_member<R: Read + std::io::Seek>(
     archive: &mut zip::ZipArchive<R>,
     index: usize,
@@ -138,10 +141,28 @@ fn read_zip_member<R: Read + std::io::Seek>(
     let mut f = archive.by_index(index).map_err(|e| {
         Error::new(Kind::Corrupt, Layer::Container, format!("cannot open container member: {e}"))
     })?;
-    let mut buf = Vec::with_capacity(f.size() as usize);
-    f.read_to_end(&mut buf).map_err(|e| {
+    // The declared size is untrusted input twice over: don't pre-allocate
+    // from it, and don't let the actual stream inflate past the ceiling
+    // either — a bomb can declare small and expand huge (FINDINGS.md H-2).
+    if f.size() > MAX_MEMBER_BYTES {
+        return Err(Error::new(
+            Kind::Corrupt,
+            Layer::Container,
+            format!("container member declares {} bytes (limit {MAX_MEMBER_BYTES})", f.size()),
+        ));
+    }
+    let mut buf = Vec::with_capacity((f.size().min(16 * 1024 * 1024)) as usize);
+    let mut limited = (&mut f).take(MAX_MEMBER_BYTES + 1);
+    limited.read_to_end(&mut buf).map_err(|e| {
         Error::new(Kind::Corrupt, Layer::Container, format!("cannot read container member: {e}"))
     })?;
+    if buf.len() as u64 > MAX_MEMBER_BYTES {
+        return Err(Error::new(
+            Kind::Corrupt,
+            Layer::Container,
+            format!("container member inflates past {MAX_MEMBER_BYTES} bytes"),
+        ));
+    }
     Ok(buf)
 }
 
@@ -417,14 +438,60 @@ impl Container {
                     Err(e) => Err(e),
                 }
             }
-            Some(Source::Dir(root)) => fs::read(root.join(name)).map_err(|e| {
-                Error::new(Kind::Io, Layer::Container, format!("member {name}: {e}"))
-            }),
+            Some(Source::Dir(root)) => {
+                // Containment (FINDINGS.md M-1): `name` is document-derived
+                // (DataInfo.file_name) — an absolute path, `..`, or a
+                // symlink pointing outside the package must never disclose
+                // files beyond the package root.
+                let rel = sanitized_member_path(name).ok_or_else(|| {
+                    Error::new(
+                        Kind::Io,
+                        Layer::Container,
+                        format!("member {name}: not a plain relative member name"),
+                    )
+                })?;
+                let io_err = |e: std::io::Error| {
+                    Error::new(Kind::Io, Layer::Container, format!("member {name}: {e}"))
+                };
+                let canon_root = root.canonicalize().map_err(io_err)?;
+                let canon = root.join(rel).canonicalize().map_err(io_err)?;
+                if !canon.starts_with(&canon_root) || !canon.is_file() {
+                    return Err(Error::new(
+                        Kind::Io,
+                        Layer::Container,
+                        format!("member {name}: escapes the package root or is not a regular file"),
+                    ));
+                }
+                fs::read(canon).map_err(io_err)
+            }
             None => Err(Error::new(
                 Kind::Io,
                 Layer::Container,
                 "no retained source (legacy raw listing only)".to_string(),
             )),
+        }
+    }
+
+    /// Whether a member exists, WITHOUT inflating it (flat forms check the
+    /// central-directory listing; package dirs stat the contained path).
+    pub fn has_member(&self, name: &str) -> bool {
+        match &self.source {
+            Some(Source::Flat(_)) => {
+                let suffix = format!("/{name}");
+                let in_list = |ms: &[Member]| {
+                    ms.iter().any(|m| m.name == name || m.name.ends_with(&suffix))
+                };
+                in_list(&self.members)
+                    || self.nested_members.as_deref().is_some_and(in_list)
+            }
+            Some(Source::Dir(root)) => {
+                let Some(rel) = sanitized_member_path(name) else { return false };
+                let Ok(canon_root) = root.canonicalize() else { return false };
+                root.join(rel)
+                    .canonicalize()
+                    .is_ok_and(|c| c.starts_with(&canon_root) && c.is_file())
+            }
+            None => false,
         }
     }
 
@@ -451,6 +518,21 @@ impl Container {
         })?;
         read_zip_member(&mut archive, index)
     }
+}
+
+/// Validate a document-derived member name for filesystem use: only plain
+/// relative path components — no root, no drive prefix, no `..`, no `.`.
+fn sanitized_member_path(name: &str) -> Option<std::path::PathBuf> {
+    use std::path::Component;
+    let p = std::path::Path::new(name);
+    let mut out = std::path::PathBuf::new();
+    for c in p.components() {
+        match c {
+            Component::Normal(part) => out.push(part),
+            _ => return None,
+        }
+    }
+    (!out.as_os_str().is_empty()).then_some(out)
 }
 
 #[cfg(test)]
