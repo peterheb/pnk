@@ -62,6 +62,12 @@ pub fn read_varint(buf: &[u8], pos: &mut usize, layer: Layer) -> Result<u64, Err
         }
         let b = buf[*pos];
         *pos += 1;
+        // Tenth byte: only its lowest bit fits in u64 — wider payloads used
+        // to truncate silently, letting 2^64+n masquerade as n
+        // (FINDINGS.md M-3).
+        if shift == 63 && (b & 0x7e) != 0 {
+            return Err(Error::new(Kind::Corrupt, layer, String::from("varint exceeds 64 bits")));
+        }
         value |= ((b & 0x7f) as u64) << shift;
         if b & 0x80 == 0 {
             return Ok(value);
@@ -99,6 +105,11 @@ fn scan(buf: &[u8], group_field: Option<u32>, layer: Layer, depth: u32) -> Resul
     while pos < buf.len() {
         let start = pos;
         let tag = read_varint(buf, &mut pos, layer)?;
+        // Protobuf caps field numbers at 2^29 - 1; a wider tag used to
+        // truncate through the u32 cast (FINDINGS.md M-3).
+        if tag >> 3 > 536_870_911 {
+            return Err(err(layer, format!("field number {} exceeds the protobuf maximum", tag >> 3)));
+        }
         let number = (tag >> 3) as u32;
         let wire = (tag & 0x7) as u8;
         if number == 0 {

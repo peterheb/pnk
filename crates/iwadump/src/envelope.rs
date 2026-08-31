@@ -164,16 +164,25 @@ pub fn parse_stream(decoded: &[u8]) -> Result<Vec<ArchiveInfo>, Error> {
 /// `TSP.MessageInfo` header only (payload sliced separately by `length`).
 fn parse_message_info(buf: &[u8]) -> Result<MessageInfo, Error> {
     let fields = proto::parse_fields(buf, Layer::Envelope)?;
-    let mut type_id = 0u32;
-    let mut length = 0u32;
+    let mut type_id: Option<u32> = None;
+    let mut length: Option<u32> = None;
     let mut version = Vec::new();
     let mut object_references = Vec::new();
     let mut data_references = Vec::new();
     let mut patch = Vec::new();
+    // `type` and `length` are proto2-REQUIRED and must fit u32: silently
+    // defaulting an absent type to 0 turned corrupt headers into patch
+    // messages, and `as u32` let 2^32 + 195 masquerade as known id 195
+    // (FINDINGS.md M-3).
+    let narrow = |v: u64, what: &str| {
+        u32::try_from(v).map_err(|_| {
+            Error::new(Kind::Corrupt, Layer::Envelope, format!("MessageInfo.{what} {v} exceeds u32"))
+        })
+    };
     for f in &fields {
         match (f.number, &f.value) {
-            (1, Value::Varint(v)) => type_id = *v as u32,
-            (3, Value::Varint(v)) => length = *v as u32,
+            (1, Value::Varint(v)) => type_id = Some(narrow(*v, "type")?),
+            (3, Value::Varint(v)) => length = Some(narrow(*v, "length")?),
             (2, Value::Bytes(b)) => version.extend(proto::packed_u64s(b, Layer::Envelope)?.into_iter().map(|v| v as u32)),
             (2, Value::Varint(v)) => version.push(*v as u32),
             (5, Value::Bytes(b)) => object_references.extend(proto::packed_u64s(b, Layer::Envelope)?),
@@ -185,6 +194,13 @@ fn parse_message_info(buf: &[u8]) -> Result<MessageInfo, Error> {
             _ => {} // unknown fields on MessageInfo: skipped, not an error
         }
     }
+    let (Some(type_id), Some(length)) = (type_id, length) else {
+        return Err(Error::new(
+            Kind::Corrupt,
+            Layer::Envelope,
+            "MessageInfo missing required type/length fields",
+        ));
+    };
     Ok(MessageInfo {
         type_id,
         length,
