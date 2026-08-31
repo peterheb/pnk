@@ -220,6 +220,16 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
                 boundaries.push(e.utf16_off);
             }
         }
+        // Smart-field spans (hyperlinks, date fields) are boundaries too:
+        // without them a field found anywhere in a longer segment decorated
+        // the WHOLE segment, expanding a link into surrounding text
+        // (FINDINGS.md M-7). Each entry offset starts or (null object) ends
+        // a span, so cutting at every offset confines the field exactly.
+        for e in &smart_entries {
+            if e.utf16_off > p_start_u16 && e.utf16_off < p_end_u16 {
+                boundaries.push(e.utf16_off);
+            }
+        }
         for (ci, ch) in text.chars().enumerate().skip(*start).take(end.saturating_sub(*start)) {
             if ch == '\u{FFFC}' {
                 boundaries.push(map[ci]);
@@ -245,7 +255,7 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
 
             let seg_start_char = u16_to_char_index(&map, b0);
             let seg_end_char = u16_to_char_index(&map, b1);
-            let seg: String = text
+            let mut seg: String = text
                 .chars()
                 .skip(seg_start_char)
                 .take(seg_end_char - seg_start_char)
@@ -269,12 +279,14 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
                         value,
                         field,
                     });
-                    // The anchor occupies exactly one char; the rest of the
-                    // segment continues as text.
-                    if seg.chars().count() > 1 {
-                        items.push(ParagraphItem::Plain(seg.chars().skip(1).collect()));
+                    // The anchor occupies exactly one char; the remainder
+                    // falls THROUGH to the normal path so it keeps the run's
+                    // style and any hyperlink (FINDINGS.md M-7 — it used to
+                    // flatten to an unstyled Plain run).
+                    seg = seg.chars().skip(1).collect();
+                    if seg.is_empty() {
+                        continue;
                     }
-                    continue;
                 }
             }
 
@@ -283,12 +295,9 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
                 .then(|| attach_entries.iter().find(|e| e.utf16_off == b0))
                 .flatten();
             if let Some(att) = att_at_start {
-                match resolve_attachment(
-                    ctx,
-                    att.object_id,
-                    pi as u32,
-                    &mut footnotes,
-                ) {
+                let resolved = resolve_attachment(ctx, att.object_id, pi as u32, &mut footnotes);
+                let consumed_anchor = !matches!(resolved, AttachmentResult::None);
+                match resolved {
                     AttachmentResult::Drawable(drawable, h_off, v_off) => {
                         let offset = if h_off.is_some() || v_off.is_some() {
                             Some(InlineOffset { h_pt: h_off, v_pt: v_off })
@@ -300,13 +309,6 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
                             drawable,
                             offset,
                         });
-                        // Remaining chars of the segment (if any) continue as
-                        // a text run via the normal path below.
-                        if seg.chars().count() > 1 {
-                            let rest: String = seg.chars().skip(1).collect();
-                            items.push(ParagraphItem::Plain(rest));
-                        }
-                        continue;
                     }
                     AttachmentResult::Field { style, value, field } => {
                         items.push(ParagraphItem::Field {
@@ -315,27 +317,33 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
                             value,
                             field,
                         });
-                        // Remaining chars of the segment continue as a text
-                        // run (the FFFC anchor occupies exactly one char).
-                        if seg.chars().count() > 1 {
-                            let rest: String = seg.chars().skip(1).collect();
-                            items.push(ParagraphItem::Plain(rest));
-                        }
-                        continue;
                     }
                     AttachmentResult::None => {}
                 }
+                if consumed_anchor {
+                    // The FFFC anchor occupies exactly one char; the
+                    // remainder falls THROUGH to the normal path so it keeps
+                    // the run's style and any hyperlink (FINDINGS.md M-7 —
+                    // it used to flatten to an unstyled Plain run).
+                    seg = seg.chars().skip(1).collect();
+                    if seg.is_empty() {
+                        continue;
+                    }
+                }
             }
 
-            // Smart fields overlapping this segment: date fields or
-            // hyperlinks. Dispatch on the record's registry NAME — field
-            // sniffing misfired on TSWP.PlaceholderSmartFieldArchive, whose
-            // field 2 (localizable bool) turned whole template paragraphs
-            // into garbage links (00C Textbook fixture).
+            // Smart field covering this segment: date fields or hyperlinks.
+            // Span semantics like char styles — the entry at-or-before b0
+            // governs (a null entry ends the field), and the boundary set
+            // above guarantees a segment never straddles a field edge
+            // (FINDINGS.md M-7). Dispatch on the record's registry NAME —
+            // field sniffing misfired on TSWP.PlaceholderSmartFieldArchive,
+            // whose field 2 (localizable bool) turned whole template
+            // paragraphs into garbage links (00C Textbook fixture).
             let mut hyperlink: Option<String> = None;
             let mut field_kind: Option<FieldKind> = None;
-            for se in &smart_entries {
-                if se.utf16_off >= b0 && se.utf16_off < b1 {
+            {
+                if let Some(se) = entry_at(&smart_entries, b0) {
                     if let Some(sid) = se.object_id {
                         let type_name = ctx
                             .loaded
