@@ -414,8 +414,10 @@ pub fn streams_from_bytes(
     let mut iwas = collect(&mut zip, &mut remaining)?;
     if iwas.is_empty() {
         // Nested Index.zip variant (gotcha #5) — exactly one level deep.
-        let nested_name =
-            names.iter().find(|n| n.ends_with("Index.zip") && !n.ends_with('/')).cloned();
+        let nested_name = names
+            .iter()
+            .find(|n| n.to_lowercase().ends_with("index.zip") && !n.ends_with('/'))
+            .cloned();
         if let Some(nname) = nested_name {
             let mut nested_bytes = Vec::new();
             if let Ok(mut f) = zip.by_name(&nname) {
@@ -433,6 +435,26 @@ pub fn streams_from_bytes(
                         layer,
                         format!("{label}: nested Index.zip entry count exceeds the {MAX_ZIP_ENTRIES}-entry limit"),
                     ));
+                }
+                // Encrypted/legacy markers apply INSIDE the nested index
+                // too — skipping the re-check accepted encrypted nested
+                // documents as empty ones (FINDINGS.md M-4).
+                for n in inner.file_names() {
+                    let base = n.rsplit('/').next().unwrap_or(n);
+                    if base.starts_with(".iwph") || base.starts_with(".iwpv") {
+                        return Err(Error::new(
+                            Kind::Encrypted,
+                            layer,
+                            format!("{label}: encrypted iWork document (nested member `{base}`) — password-protected files are not supported"),
+                        ));
+                    }
+                    if LEGACY_MARKERS.contains(&base.to_lowercase().as_str()) {
+                        return Err(Error::new(
+                            Kind::Legacy,
+                            layer,
+                            format!("{label}: legacy iWork document (nested marker `{base}`) — re-save with a current version of Pages, Numbers, or Keynote"),
+                        ));
+                    }
                 }
                 iwas = collect(&mut inner, &mut remaining)?;
             }

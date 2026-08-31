@@ -110,9 +110,19 @@ pub fn convert_ctx(ctx: &mut ctx::Ctx) -> Result<PnkDocument, iwadump::Error> {
     // Aggregate loader findings into envelope warnings first.
     ctx.drain_loader_warnings();
 
+    // Object 1 is the document root by convention (docs/format/objects.md);
+    // every file in the 964-file corpus carries a decodable one. A missing
+    // root means this is not a usable iWork document — reject instead of
+    // fabricating an empty Pages document from Msg::default()
+    // (FINDINGS.md M-4: corrupt/arbitrary ZIPs were accepted as empty docs).
     let root = ctx.loaded.msg(1).cloned();
-    let empty = pb::Msg::default();
-    let root_ref = root.as_ref().unwrap_or(&empty);
+    let Some(root_ref) = root.as_ref() else {
+        return Err(iwadump::Error::new(
+            iwadump::error::Kind::Unsupported,
+            iwadump::error::Layer::Message,
+            "no decodable document root (object 1) — not a usable iWork document",
+        ));
+    };
     let mut doc = match ctx.app_kind {
         model::AppKind::Pages => PnkDocument::Pages(pages::convert_document(ctx, root_ref)),
         model::AppKind::Numbers => PnkDocument::Numbers(numbers::convert_document(ctx, root_ref)),

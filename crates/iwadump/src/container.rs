@@ -186,16 +186,25 @@ const MAX_NESTED_INDEX_DEPTH: u32 = 1;
 fn scan_zip_at_depth(bytes: Vec<u8>, label: &str, depth: u32) -> Result<ScanOutcome, Error> {
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
         .map_err(|e| not_a_zip(label, e))?;
-    let members: Vec<Member> = (0..archive.len())
-        .filter_map(|i| {
-            let f = archive.by_index_raw(i).ok()?;
-            Some(Member {
-                name: f.name().to_string(),
-                size: f.size(),
-                compressed_size: f.compressed_size(),
-            })
-        })
-        .collect();
+    // One Member per zip index, IN zip-index order — an unreadable entry
+    // must not shift later members onto the wrong index (the `.iwa` loop
+    // below reads by position) nor make an encryption/legacy marker vanish
+    // from detection (FINDINGS.md M-4). `name_for_index` still names
+    // entries whose headers `by_index_raw` refuses.
+    let mut members: Vec<Member> = Vec::with_capacity(archive.len());
+    for i in 0..archive.len() {
+        let readable = archive.by_index_raw(i).ok().map(|f| Member {
+            name: f.name().to_string(),
+            size: f.size(),
+            compressed_size: f.compressed_size(),
+        });
+        members.push(readable.unwrap_or_else(|| Member {
+            name: archive.name_for_index(i).unwrap_or("").to_string(),
+            size: 0,
+            compressed_size: 0,
+        }));
+    }
+    let members = members;
 
     // Encrypted documents: `.iwph` is the classic password-protection marker
     // (numbers-parser iwork.py:205-212 rejects it the same way; real fixtures
@@ -424,10 +433,13 @@ impl Container {
                 match Self::member_from_zip(bytes, name) {
                     Ok(bytes) => Ok(bytes),
                     Err(first) if self.form == ContainerForm::FlatZipNested => {
+                        // Case-insensitive, matching what open() accepted —
+                        // an INDEX.ZIP found at open time must also be found
+                        // here (FINDINGS.md L-3).
                         let Some(nested_name) = self
                             .members
                             .iter()
-                            .find(|m| m.name.ends_with("Index.zip"))
+                            .find(|m| m.name.to_lowercase().ends_with("index.zip"))
                             .map(|m| m.name.clone())
                         else {
                             return Err(first);
