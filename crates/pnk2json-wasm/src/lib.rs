@@ -27,6 +27,24 @@ fn clear_transcode_cache() {
     TRANSCODE_CACHE.with(|c| c.borrow_mut().clear());
 }
 
+/// Drop the previous document's context and transcode cache. Called at the
+/// START of every conversion, not just after success: a failed convert must
+/// not leave the prior document's media queryable via `media_bytes`.
+fn clear_document_state() {
+    LAST_CTX.with(|slot| *slot.borrow_mut() = None);
+    clear_transcode_cache();
+}
+
+/// Cap on total cached transcoded bytes. Past it, transcodes are still
+/// served but recomputed per request instead of cached.
+const MAX_CACHE_BYTES: usize = 256 * 1024 * 1024;
+
+fn cache_bytes() -> usize {
+    TRANSCODE_CACHE.with(|c| {
+        c.borrow().values().map(|v| v.as_ref().map_or(0, |p| p.len())).sum()
+    })
+}
+
 /// TIFF magic: little-endian `II*\0` or big-endian `MM\0*` (TIFF 6.0 §2).
 fn is_tiff(bytes: &[u8]) -> bool {
     bytes.len() >= 4
@@ -38,11 +56,17 @@ fn is_tiff(bytes: &[u8]) -> bool {
 /// image decoders by content signature, not MIME type, so the PNG renders
 /// even though the blob is still labeled image/tiff by its file name.
 fn tiff_to_png(bytes: &[u8]) -> Option<Vec<u8>> {
-    // Explicit no_limits: pasted TIFFs reach 22413x4183 (375MB decoded), past
-    // the tiff decoder's default buffer cap — b52c89c1's word-art images.
+    // Explicit generous limits, NOT no_limits: pasted TIFFs legitimately
+    // reach 22413x4183 (375MB decoded — b52c89c1's word-art images), past
+    // the decoder's 512MB default, but a crafted header must not be able to
+    // request unbounded decode memory and kill the WASM instance.
     let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes));
     reader.set_format(image::ImageFormat::Tiff);
-    reader.no_limits();
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(50_000);
+    limits.max_image_height = Some(50_000);
+    limits.max_alloc = Some(1024 * 1024 * 1024);
+    reader.limits(limits);
     let img = reader.decode().ok()?;
     // Slides never need more than ~4K of texture: downscale monsters so the
     // PNG re-encode (and the browser blob) stays tractable.
@@ -65,33 +89,33 @@ fn tiff_to_png(bytes: &[u8]) -> Option<Vec<u8>> {
 
 #[wasm_bindgen]
 pub fn convert(bytes: &[u8]) -> Result<String, JsError> {
+    clear_document_state();
     let mut ctx = pnk2json::ctx::Ctx::from_bytes(bytes)
         .map_err(|e| JsError::new(&e.to_string()))?;
     let doc = pnk2json::convert_ctx(&mut ctx).map_err(|e| JsError::new(&e.to_string()))?;
     LAST_CTX.with(|slot| *slot.borrow_mut() = Some(ctx));
-    clear_transcode_cache();
     Ok(pnk2json::to_json_compact(&doc))
 }
 
 /// Pretty-printed JSON (debug/inspection use; ~3x larger than compact).
 #[wasm_bindgen]
 pub fn convert_pretty(bytes: &[u8]) -> Result<String, JsError> {
+    clear_document_state();
     let mut ctx = pnk2json::ctx::Ctx::from_bytes(bytes)
         .map_err(|e| JsError::new(&e.to_string()))?;
     let doc = pnk2json::convert_ctx(&mut ctx).map_err(|e| JsError::new(&e.to_string()))?;
     LAST_CTX.with(|slot| *slot.borrow_mut() = Some(ctx));
-    clear_transcode_cache();
     Ok(pnk2json::to_json(&doc))
 }
 
 /// Markdown fallback dump from raw bytes.
 #[wasm_bindgen]
 pub fn convert_markdown(bytes: &[u8]) -> Result<String, JsError> {
+    clear_document_state();
     let mut ctx = pnk2json::ctx::Ctx::from_bytes(bytes)
         .map_err(|e| JsError::new(&e.to_string()))?;
     let doc = pnk2json::convert_ctx(&mut ctx).map_err(|e| JsError::new(&e.to_string()))?;
     LAST_CTX.with(|slot| *slot.borrow_mut() = Some(ctx));
-    clear_transcode_cache();
     Ok(pnk2json::dumptext::to_markdown(&doc))
 }
 
@@ -121,7 +145,10 @@ pub fn media_bytes(data_id: &str) -> Option<Vec<u8>> {
             Some(p) => p,
             None => {
                 let p = tiff_to_png(&raw);
-                TRANSCODE_CACHE.with(|c| c.borrow_mut().insert(id, p.clone()));
+                let added = p.as_ref().map_or(0, |v| v.len());
+                if cache_bytes() + added <= MAX_CACHE_BYTES {
+                    TRANSCODE_CACHE.with(|c| c.borrow_mut().insert(id, p.clone()));
+                }
                 p
             }
         };
