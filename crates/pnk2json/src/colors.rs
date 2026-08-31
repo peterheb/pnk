@@ -83,8 +83,12 @@ pub fn iso_from_apple_seconds(seconds: f64) -> String {
     // 2001-01-01T00:00:00Z = 978307200 unix seconds.
     const EPOCH_UNIX: f64 = 978_307_200.0;
     let unix = seconds + EPOCH_UNIX;
-    let secs = unix.floor() as i64;
-    let millis = ((unix - unix.floor()) * 1000.0).round() as u32;
+    // Round the TOTAL timestamp to milliseconds first, then decompose:
+    // rounding the fractional part on its own can produce millis == 1000
+    // with no carry into the second (e.g. ...59.9996 -> "...59.1000Z").
+    let millis_total = (unix * 1000.0).round() as i64;
+    let secs = millis_total.div_euclid(1000);
+    let millis = millis_total.rem_euclid(1000) as u32;
     let days = secs.div_euclid(86_400);
     let sod = secs.rem_euclid(86_400);
     let (h, mi, s) = (sod / 3600, (sod % 3600) / 60, sod % 60);
