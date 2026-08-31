@@ -1282,7 +1282,11 @@ fn decode_cell(
                 None => CellValue::Text { value: String::new() },
             }
         }
-        0 | 1 => return None, // generic / span cell: no stored value
+        // Generic/span cell: no stored value, but style/formula/format
+        // metadata may still paint it (a fill, a rule) — resolve those
+        // below and keep the cell when any survive; a fully bare one is
+        // dropped at the end (FINDINGS.md M-6).
+        0 | 1 => CellValue::Empty,
         4 => match (d128.or(double), seconds, string_id) {
             (Some(v), _, _) => CellValue::Number { value: v },
             (_, Some(sec), _) => {
@@ -1365,6 +1369,16 @@ fn decode_cell(
         );
     }
     let (v, type_tag, cur) = value_into_parts(value);
+    // A valueless cell that resolved no style, formula, or format carries
+    // nothing renderable — only now is dropping it safe (FINDINGS.md M-6).
+    if matches!(v, GridValue::None)
+        && type_tag.is_none()
+        && cell_style_index.is_none()
+        && formula.is_none()
+        && format.is_none()
+    {
+        return None;
+    }
     Some((
         row,
         col,

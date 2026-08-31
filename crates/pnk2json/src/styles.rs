@@ -632,15 +632,35 @@ pub fn resolve_cell_style(ctx: &mut Ctx, id: u64) -> Option<TableCellStyle> {
                 bottom: pad.f32v(4).map(|v| v as f64),
             });
         }
-        if s.borders.is_none() {
+        {
             // Modern per-side strokes (fields 10-13); deprecated per-side
-            // table strokes (4-7) share the shape but are legacy.
+            // table strokes (4-7) share the shape but are legacy. Each side
+            // inherits independently along the parent chain — a child that
+            // overrides one edge must not blank the ancestors' other edges
+            // (FINDINGS.md M-6).
             let top = p.msg(10).and_then(|st| crate::tsd::stroke_of(ctx, &st));
             let right = p.msg(11).and_then(|st| crate::tsd::stroke_of(ctx, &st));
             let bottom = p.msg(12).and_then(|st| crate::tsd::stroke_of(ctx, &st));
             let left = p.msg(13).and_then(|st| crate::tsd::stroke_of(ctx, &st));
             if top.is_some() || right.is_some() || bottom.is_some() || left.is_some() {
-                s.borders = Some(CellBorders { top, right, bottom, left });
+                let b = s.borders.get_or_insert(CellBorders {
+                    top: None,
+                    right: None,
+                    bottom: None,
+                    left: None,
+                });
+                if b.top.is_none() {
+                    b.top = top;
+                }
+                if b.right.is_none() {
+                    b.right = right;
+                }
+                if b.bottom.is_none() {
+                    b.bottom = bottom;
+                }
+                if b.left.is_none() {
+                    b.left = left;
+                }
             }
         }
     }
