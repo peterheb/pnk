@@ -728,9 +728,15 @@ pub struct DrawableCommon {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reflection: Option<Reflection>,
     /// Keynote build/animation attached to this drawable (keynote.ts module
-    /// augmentation of DrawableCommon).
+    /// augmentation of DrawableCommon). First build in slide order.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub keynote_build: Option<BuildSpec>,
+    /// ALL builds on this drawable in slide order (build-in + build-out +
+    /// actions). Present only when there are two or more — a single build
+    /// lives in `keynote_build` alone (FINDINGS.md M-8: later builds were
+    /// silently dropped).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub keynote_builds: Option<Vec<BuildSpec>>,
     /// Placeholder role when this drawable is a master/template placeholder
     /// (keynote.ts / pages.ts — `placeholder: { role, inherited }`).
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -534,8 +534,15 @@ fn set_build(d: &mut Drawable, spec: BuildSpec) {
         | Drawable::ConnectionLine { common, .. }
         | Drawable::Table { common, .. }
         | Drawable::Chart { common, .. } => {
-            if common.keynote_build.is_none() {
-                common.keynote_build = Some(spec);
+            // First build stays on keynote_build; the moment a SECOND
+            // arrives, keynote_builds carries the whole ordered list —
+            // later build-outs/actions used to vanish (FINDINGS.md M-8).
+            match (&mut common.keynote_build, &mut common.keynote_builds) {
+                (first @ None, _) => *first = Some(spec),
+                (Some(first), builds @ None) => {
+                    *builds = Some(vec![first.clone(), spec]);
+                }
+                (_, Some(builds)) => builds.push(spec),
             }
         }
         _ => {}
@@ -592,24 +599,56 @@ fn inherit_placeholders(
             _ => (None, false),
         };
         let Some(role) = role else { continue };
-        if has_text {
-            continue;
-        }
         let Some((mpid, _)) = master_placeholders.iter().find(|(_, r)| *r == role) else {
             continue;
         };
         let Some(master_common) = master_placeholder_common(ctx, *mpid) else { continue };
-        let inherited_common = apply_inherited(&master_common);
+        // Property-by-property (FINDINGS.md M-8): the old code replaced the
+        // WHOLE common block for empty placeholders (clobbering explicit
+        // child geometry/style) and skipped text-bearing ones entirely
+        // (missing master properties never inherited). Now every
+        // placeholder fills only its absent fields from the master.
         match d {
             Drawable::Shape { common, .. } | Drawable::Textbox { common, .. } => {
-                *common = inherited_common;
-                if let Some(p) = common.placeholder.as_mut() {
-                    p.inherited = Some(true);
+                let filled = merge_common_from_master(common, &master_common, has_text);
+                if filled {
+                    if let Some(p) = common.placeholder.as_mut() {
+                        p.inherited = Some(true);
+                    }
                 }
             }
             _ => {}
         }
     }
+}
+
+/// Fill the child's ABSENT geometry/style fields from the master
+/// placeholder; explicit child values always win. Style inherits only for
+/// text-free placeholders — a text-bearing one already resolved its look
+/// through the style chain. Returns whether anything was taken.
+fn merge_common_from_master(
+    child: &mut DrawableCommon,
+    master: &DrawableCommon,
+    has_text: bool,
+) -> bool {
+    let mut filled = false;
+    if child.position.is_none() && master.position.is_some() {
+        child.position = master.position;
+        filled = true;
+    }
+    if child.size.is_none() && master.size.is_some() {
+        child.size = master.size;
+        filled = true;
+    }
+    if child.angle_deg.is_none() && master.angle_deg.is_some() {
+        child.angle_deg = master.angle_deg;
+        filled = true;
+    }
+    if !has_text && child.style.is_none() && master.style.is_some() {
+        child.style = master.style.clone();
+        filled = true;
+    }
+    filled
 }
 
 fn placeholder_role(ctx: &Ctx, pid: u64) -> Option<String> {
@@ -640,18 +679,6 @@ fn master_placeholder_common(ctx: &mut Ctx, pid: u64) -> Option<DrawableCommon> 
     match d {
         Drawable::Textbox { common, .. } | Drawable::Shape { common, .. } => Some(common),
         _ => None,
-    }
-}
-
-/// Bake the master placeholder's geometry/style into the inheriting copy.
-fn apply_inherited(master: &DrawableCommon) -> DrawableCommon {
-    DrawableCommon {
-        position: master.position,
-        size: master.size,
-        angle_deg: master.angle_deg,
-        style: master.style.clone(),
-        placeholder: master.placeholder.clone(),
-        ..Default::default()
     }
 }
 

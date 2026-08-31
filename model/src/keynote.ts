@@ -177,8 +177,14 @@ export interface KeynoteDocument extends DocumentEnvelope {
 // keep shared.ts app-neutral.
 declare module "./shared" {
   interface DrawableCommon {
-    /** Keynote build/animation attached to this drawable. */
+    /** Keynote build/animation attached to this drawable (first in slide order). */
     keynoteBuild?: BuildSpec;
+    /**
+     * All builds on this drawable in slide order (build-in + build-out +
+     * actions). Present only when there are two or more; a single build
+     * lives in keynoteBuild alone.
+     */
+    keynoteBuilds?: BuildSpec[];
     /**
      * Placeholder identity: role from the converter plus the inherited flag
      * (master-derived geometry/style). [proto: KN.PlaceholderArchive.Kind]
