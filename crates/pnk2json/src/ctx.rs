@@ -403,22 +403,17 @@ impl Ctx {
         r
     }
 
-    /// Are the bytes for this DataInfo actually reachable (Data/ member
-    /// present, or a remote URL recorded)? Template packages ship only
-    /// `-small` preview variants; callers use this to pick a materialized
-    /// alternative (agent P, 00C Textbook fixture).
+    /// Are the bytes for this DataInfo actually reachable in the container?
+    /// A `remote_url` does NOT count: this viewer is explicitly offline and
+    /// never fetches, so a remote-only original must lose to a materialized
+    /// alternative such as a packaged `-small` preview (FINDINGS.md M-10;
+    /// template packages ship only those variants — 00C Textbook fixture).
+    /// Name-only check — never inflates the member (FINDINGS.md H-2).
     pub fn data_available(&self, data_id: u64) -> bool {
         self.datas
             .get(&data_id)
-            .map(|e| {
-                e.remote_url.is_some()
-                    || e
-                        .file_name
-                        .as_deref()
-                        .or(e.preferred_file_name.as_deref())
-                        .map(|n| self.members.data_file(n).is_some())
-                        .unwrap_or(false)
-            })
+            .and_then(|e| e.file_name.as_deref().or(e.preferred_file_name.as_deref()))
+            .map(|n| self.members.has_data_file(n))
             .unwrap_or(false)
     }
 
@@ -437,20 +432,20 @@ impl Ctx {
             let preferred = entry.preferred_file_name.clone();
             let pixel = entry.pixel_size;
             // Materialized bytes absent → media-missing (docs/format/media.md
-            // resolution chain step 3).
+            // resolution chain step 3). Independent of the optional length
+            // metadata (FINDINGS.md L-4), and a remote-only asset warns too:
+            // this viewer never fetches (FINDINGS.md M-10).
             if let Some(name) = &file_name {
-                if self.members.data_file(name).is_none()
-                    && remote.is_none()
-                    && byte_length.is_some_and(|l| l > 0)
-                {
-                    self.warn_detail(
-                        WarningCode::MediaMissing,
+                if !self.members.has_data_file(name) {
+                    let shown = preferred.unwrap_or_else(|| name.clone());
+                    let message = if remote.is_some() {
                         format!(
-                            "media bytes for `{}` (data id {id}) are not in the container",
-                            preferred.unwrap_or_else(|| name.clone())
-                        ),
-                        name.clone(),
-                    );
+                            "media `{shown}` (data id {id}) is remote-only; this offline viewer cannot fetch it"
+                        )
+                    } else {
+                        format!("media bytes for `{shown}` (data id {id}) are not in the container")
+                    };
+                    self.warn_detail(WarningCode::MediaMissing, message, name.clone());
                 }
             }
             assets.push(MediaAsset {
@@ -537,21 +532,10 @@ impl Ctx {
     pub fn from_bytes(bytes: &[u8]) -> Result<Ctx, iwadump::Error> {
         use iwadump::error::{Error, Kind, Layer};
         let streams = loader::streams_from_bytes(bytes)?;
-        // Collect non-IWA members (metadata plists, Data/) for the envelope.
-        let mut map: HashMap<String, Vec<u8>> = HashMap::new();
-        if let Ok(mut zip) = zip::ZipArchive::new(std::io::Cursor::new(bytes)) {
-            for i in 0..zip.len() {
-                let Ok(mut f) = zip.by_index(i) else { continue };
-                if f.is_dir() || f.name().to_ascii_lowercase().ends_with(".iwa") {
-                    continue;
-                }
-                let name = f.name().to_string();
-                let mut buf = Vec::new();
-                if std::io::Read::read_to_end(&mut f, &mut buf).is_ok() {
-                    map.insert(name, buf);
-                }
-            }
-        }
+        // Non-IWA members (metadata plists, Data/) stay LAZY: the compressed
+        // document is retained once and members inflate on demand, so unused
+        // media and junk entries never occupy memory (FINDINGS.md H-2).
+        let members = Members::from_zip_bytes(bytes.to_vec());
         let registry = Registry::embedded()?;
         let app = iwadump::dump::detect_app(&streams);
         let app_kind = match app {
@@ -565,7 +549,7 @@ impl Ctx {
             app_kind,
             registry,
             loaded,
-            members: Members::from_map(map),
+            members,
             warnings: Vec::new(),
             fonts: std::collections::BTreeSet::new(),
             para_pool: StylePool::default(),
