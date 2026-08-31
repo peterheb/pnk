@@ -19,19 +19,23 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> NumbersDocument {
         let type_id = rec.map(|r| r.type_id).unwrap_or(0);
         match type_id {
             ids::TN_FORM_BASED_SHEET => {
-                // TN.FormBasedSheetArchive { super = 1 (SheetArchive),
-                // table_id = 2 (CFUUID) } — recorded, not rendered.
-                let form = ctx.loaded.msg(sid).and_then(|m| {
-                    m.reference(1).and_then(|super_id| {
-                        ctx.loaded.msg(super_id).and_then(|s| {
-                            Some(NumbersForm {
-                                sheet_name: s.string(1),
-                                bound_table_name: m
-                                    .msg(2)
-                                    .and_then(|u| u.string(1)),
-                            })
-                        })
-                    })
+                // TN.FormBasedSheetArchive { super = 1 (INLINE TN.SheetArchive
+                // — Apple's superclass idiom embeds the parent, it is not a
+                // TSP.Reference), table_id = 2 (TSP.CFUUIDArchive) } [proto:
+                // TNArchives.proto:168-171, TSPMessages.proto:131-137].
+                // Recorded, not rendered. The old decode chased field 1 as a
+                // reference (resolving nothing) and read the binary UUID as a
+                // lossy string (FINDINGS.md M-5).
+                let form = ctx.loaded.msg(sid).map(|m| {
+                    let sheet_name = m.msg(1).and_then(|s| s.string(1)).or_else(|| {
+                        m.reference(1)
+                            .and_then(|id| ctx.loaded.msg(id))
+                            .and_then(|s| s.string(1))
+                    });
+                    NumbersForm {
+                        sheet_name,
+                        bound_table_name: m.msg(2).and_then(cfuuid_string),
+                    }
                 });
                 if let Some(f) = form {
                     forms.push(f);
@@ -69,6 +73,29 @@ impl NumbersDocument {
         self.meta.locale = locale;
         self
     }
+}
+
+/// `TSP.CFUUIDArchive` → canonical 8-4-4-4-12 string: `uuid_bytes` (field 1)
+/// when present, else the four big-endian uint32 words (fields 2-5).
+fn cfuuid_string(u: Msg) -> Option<String> {
+    let from_bytes: Option<[u8; 16]> = u.bytes(1).and_then(|b| <[u8; 16]>::try_from(b).ok());
+    let bytes = from_bytes.or_else(|| {
+        let words = [u.varint(2)?, u.varint(3)?, u.varint(4)?, u.varint(5)?];
+        let mut out = [0u8; 16];
+        for (i, w) in words.iter().enumerate() {
+            out[i * 4..i * 4 + 4].copy_from_slice(&(*w as u32).to_be_bytes());
+        }
+        Some(out)
+    })?;
+    let hex: Vec<String> = bytes.iter().map(|b| format!("{b:02X}")).collect();
+    Some(format!(
+        "{}-{}-{}-{}-{}",
+        hex[0..4].join(""),
+        hex[4..6].join(""),
+        hex[6..8].join(""),
+        hex[8..10].join(""),
+        hex[10..16].join("")
+    ))
 }
 
 fn convert_sheet(ctx: &mut Ctx, sid: u64) -> Sheet {
@@ -146,20 +173,44 @@ fn convert_sheet(ctx: &mut Ctx, sid: u64) -> Sheet {
         }
     };
 
-    // Sheet style: TN.SheetStyleArchive (tab color / canvas fill) — field 22.
-    // The message shape is not in the local protos; decode best-effort:
-    // treat a TSP.Color fill at field 1 and a color at field 2.
+    // Sheet style: field 22 → TN.SheetStyleArchive { super = 1
+    // (TSS.StyleArchive, parent at 3), override_count = 2,
+    // sheet_properties = 3 { fill = 1, tab_color = 2 — both
+    // TSD.FillArchive } } [proto: .scratch/otorp/Numbers/
+    // TNArchives.proto:156-166]. Properties inherit along the TSS parent
+    // chain. The old decode read fields 1/2 as direct colors and emitted {}
+    // for every real sheet style (FINDINGS.md M-5).
     let style = m.reference(22).and_then(|stid| {
-        ctx.loaded.msg(stid).map(|st| SheetStyle {
-            tab_color: st.msg(1).and_then(|c| {
-                let mut w = Vec::new();
-                crate::colors::color_hex(&c, &mut |r| w.push(r))
-            }),
-            fill: st.msg(2).and_then(|c| {
-                let mut w = Vec::new();
-                crate::colors::color_hex(&c, &mut |r| w.push(r))
-            }),
-        })
+        let mut props: Vec<Msg> = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        let mut cur = Some(stid);
+        while let Some(id) = cur {
+            if !seen.insert(id) {
+                break;
+            }
+            let Some(sm) = ctx.loaded.msg(id).cloned() else { break };
+            if let Some(p) = sm.msg(3) {
+                props.push(p);
+            }
+            cur = sm.msg(1).and_then(|b| b.reference(3)).or_else(|| sm.reference(3));
+        }
+        let mut solid = |ctx: &mut Ctx, f: Option<Msg>, what: &str| {
+            let f = f?;
+            match crate::tsd::fill_of(ctx, &f) {
+                Some(Fill::Solid { color }) => Some(color),
+                Some(_) => {
+                    ctx.warn(
+                        WarningCode::UnsupportedFeature,
+                        format!("sheet {what} uses a non-solid fill; not modeled"),
+                    );
+                    None
+                }
+                None => None,
+            }
+        };
+        let fill = solid(ctx, props.iter().find_map(|p| p.msg(1)), "canvas fill");
+        let tab_color = solid(ctx, props.iter().find_map(|p| p.msg(2)), "tab color");
+        (fill.is_some() || tab_color.is_some()).then_some(SheetStyle { tab_color, fill })
     });
 
     Sheet {
