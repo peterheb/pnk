@@ -352,7 +352,12 @@ button:hover { border-color: var(--muted); }
 
 .sheet-area { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px; overflow: auto; }
 .sheet-canvas { position: relative; }
-table.sheet-table { border-collapse: collapse; font-size: 13px; margin: 0 0 18px; }
+table.sheet-table { border-collapse: collapse; font-size: 12px; margin: 0 0 18px; } /* 12px = the model's omit-default 12pt */
+/* rich-text cells render their paragraphs in place: no paragraph margins,
+   line structure from the runs */
+table.sheet-table .styled-text p, table.sheet-table .styled-text h1, table.sheet-table .styled-text h2,
+table.sheet-table .styled-text h3, table.sheet-table .styled-text h4, table.sheet-table .styled-text h5 { margin: 0; }
+table.sheet-table .styled-text { white-space: pre-wrap; }
 table.sheet-table td, table.sheet-table th {
   border: 1px solid #e3e3e8;
   padding: 4px 8px;
@@ -393,7 +398,16 @@ table.sheet-table td.cell-error { color: #b03030; font-style: italic; }
    paragraph margins from collapsing out, so offscreen measurement and the
    final page agree. Tight defaults: Apple has no implicit paragraph margins;
    spacing comes from the paragraph styles. */
-.pages-print { display: flow-root; color: #1d1d1f; line-height: 1.2; font-size: 11px; }
+/* 12px = the model's omit-default 12pt (crates/pnk2json ctx.rs
+   strip_char_defaults drops fontSizePt 12): a run with no size IS 12pt.
+   11px shrank every default-size body (16b4195d: Arial 12 body rendered
+   at 11, packing 8 Apple pages into 6). */
+.pages-print { display: flow-root; color: #1d1d1f; line-height: 1.2; font-size: 12px; }
+/* "Move with Text" objects: a float carrying the exclusion box (its
+   shape-outside insets the anchor-to-object gap) with the drawable
+   absolutely positioned inside at the anchor-relative offset. */
+.pages-anchor { position: relative; overflow: visible; z-index: 1; }
+.pages-anchor > .canvas-drawable { position: absolute; }
 .pages-print p { margin: 0; }
 .pages-print h1, .pages-print h2, .pages-print h3,
 .pages-print h4, .pages-print h5, .pages-print h6 { margin: 0; }
@@ -422,7 +436,7 @@ table.sheet-table td, table.sheet-table th { overflow: hidden; }
 table.sheet-table.exact-cols td, table.sheet-table.exact-cols th { min-width: 0; }
 /* headers/footers inside word-processing page frames: 3 column storages
    (left/center/right), absolutely positioned at the header/footer margins */
-.pages-hf { position: absolute; display: flex; gap: 8px; font-size: 11px; color: #1d1d1f; }
+.pages-hf { position: absolute; display: flex; gap: 8px; font-size: 12px; color: #1d1d1f; }
 .pages-hf-col { flex: 1 1 0; min-width: 0; }
 .pages-hf .styled-text p { margin: 0; }
 /* footnote marks render as superscript indexes */

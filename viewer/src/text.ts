@@ -62,7 +62,47 @@ export function applyCharStyle(el: HTMLElement, cs: CharStyle | undefined): void
   if (cs.backgroundColor) s.backgroundColor = cs.backgroundColor;
 }
 
-export function applyParaStyle(el: HTMLElement, ps: ParaStyle): void {
+/**
+ * Natural (single-spaced) line height per em for common faces: ascent +
+ * descent + line gap from the font's hhea table. Apple's line-spacing
+ * MULTIPLE scales THIS, not the font size — 16b4195d's Arial 12pt body at
+ * 1.2× measures a 16.7pt pitch in Pages' export (1.2 × 1.15 × 12), where a
+ * unitless CSS line-height of 1.2 gave 14.4pt and packed 8 pages into 6.
+ * Keyed by despaced lowercase prefix; unknown faces use 1.2, the browser's
+ * usual `normal`. [inferred: metrics from the fonts' hhea tables]
+ */
+const FONT_LINE_HEIGHTS: [RegExp, number][] = [
+  [/^helveticaneue/, 1.19],
+  [/^helvetica/, 1.15],
+  [/^arial/, 1.15],
+  [/^timesnewroman|^times/, 1.15],
+  [/^georgia/, 1.136],
+  [/^verdana|^tahoma/, 1.215],
+  [/^trebuchet/, 1.16],
+  [/^calibri/, 1.22],
+  [/^cambria/, 1.17],
+  [/^avenir/, 1.366],
+  [/^sfpro|^sf-|^\.sf|^sfns/, 1.19],
+  [/^palatino/, 1.35],
+  [/^baskerville/, 1.14],
+  [/^gillsans/, 1.15],
+  [/^futura/, 1.32],
+  [/^couriernew/, 1.13],
+  [/^menlo|^monaco/, 1.17],
+  [/^noteworthy/, 1.46],
+  [/^optima/, 1.19],
+  [/^hoefler/, 1.37],
+  [/^didot/, 1.33],
+  [/^seravek/, 1.25],
+];
+
+export function naturalLineHeight(fontName: string | undefined): number {
+  if (!fontName) return 1.2;
+  const flat = fontName.replace(/[\s-]+/g, "").toLowerCase();
+  return FONT_LINE_HEIGHTS.find(([re]) => re.test(flat))?.[1] ?? 1.2;
+}
+
+export function applyParaStyle(el: HTMLElement, ps: ParaStyle, fontName?: string): void {
   const s = el.style;
   const align = ps.horizontalAlignment;
   if (align === "center" || align === "right" || align === "justify") s.textAlign = align;
@@ -78,7 +118,8 @@ export function applyParaStyle(el: HTMLElement, ps: ParaStyle): void {
   if (firstIndent - leftIndent) s.textIndent = `${firstIndent - leftIndent}px`;
   if (ps.spaceBeforePt) s.marginTop = `${ps.spaceBeforePt}px`;
   if (ps.spaceAfterPt) s.marginBottom = `${ps.spaceAfterPt}px`;
-  if (ps.lineSpacingMultiple) s.lineHeight = String(ps.lineSpacingMultiple);
+  // multiple × the face's natural line height (see FONT_LINE_HEIGHTS)
+  if (ps.lineSpacingMultiple) s.lineHeight = (ps.lineSpacingMultiple * naturalLineHeight(fontName)).toFixed(3);
   else if (ps.lineSpacingExactPt) s.lineHeight = `${ps.lineSpacingExactPt}px`;
   if (ps.backgroundColor) s.backgroundColor = ps.backgroundColor;
   if (ps.border) {
@@ -230,10 +271,16 @@ export function renderParagraph(
     )
     .filter((n): n is number => !!n);
   if (runSizes.length) el.style.fontSize = `${Math.max(...runSizes)}px`;
+  // the dominant face sets the natural line height the spacing multiple scales
+  const paraFont = p.items
+    .map((it) =>
+      typeof it === "string" || "type" in it ? undefined : charStyleOf(doc, (it as TextRun).cStyle)?.fontName,
+    )
+    .find((n): n is string => !!n);
 
   if (!hasMarker) {
     listState.lastKey = null;
-    if (style) applyParaStyle(el, style);
+    if (style) applyParaStyle(el, style, paraFont);
   } else {
     // numbering: the stored restart flag (surfaced as list.start on the
     // paragraph's pooled style) resets the counter; otherwise numbering
@@ -255,7 +302,7 @@ export function renderParagraph(
     const wrap = document.createElement("div");
     wrap.className = "list-item";
     if (style) {
-      applyParaStyle(wrap, style);
+      applyParaStyle(wrap, style, paraFont);
       el.style.marginTop = "0";
       el.style.marginBottom = "0";
       el.style.marginLeft = "0";
