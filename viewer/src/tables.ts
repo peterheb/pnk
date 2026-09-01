@@ -12,7 +12,8 @@ import type {
   TableModel,
   TableMerge,
 } from "../../model/src/shared";
-import { applyCharStyle } from "./text";
+import { applyCharStyle, renderStyledText } from "./text";
+import type { HydratedDoc } from "./hydrate";
 import { cellStyleOf } from "./hydrate";
 import type { ViewerCtx } from "./ctx";
 
@@ -406,7 +407,7 @@ function applyCellStyle(td: HTMLTableCellElement, style: TableCellStyle | undefi
 }
 
 /** One TableModel as a real table; hidden rows/columns are skipped. */
-export function renderTable(model: TableModel, ctx?: ViewerCtx): HTMLTableElement {
+export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedDoc): HTMLTableElement {
   const table = document.createElement("table");
   table.className = "sheet-table";
   if (model.name) {
@@ -505,6 +506,11 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx): HTMLTableElemen
       }
       if (section) applyCellStyle(td, section, header, footer, ctx);
       const style = cellStyleOf(model, norm?.cellStyleIndex);
+      // A cell with its OWN style resolves fill through that style's
+      // parent chain, not the table's section default or banding: 0839b6d2
+      // (docx import) stores fill-less cell styles over a blue-banded table
+      // style and Pages paints white cells.
+      if (style) td.style.backgroundColor = "";
       applyCellStyle(td, style, header, footer, ctx);
       if (norm) {
         const format = norm.fmt !== undefined ? formats[norm.fmt] : undefined;
@@ -516,10 +522,19 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx): HTMLTableElemen
         if (!td.style.textAlign && numeric && norm.type !== "error") td.style.textAlign = "right";
         if (norm.type === "error") td.classList.add("cell-error");
         const text = valueToText(norm, format);
-        td.textContent = text;
-        // multi-paragraph cell text (rich-text cells join with \n) keeps
-        // its line structure like Apple
-        if (text.includes("\n")) td.style.whiteSpace = "pre-line";
+        const rich = norm.type === "richtext" && typeof norm.v === "object" && norm.v !== null && "paragraphs" in norm.v
+          ? norm.v : null;
+        if (rich && hdoc && ctx) {
+          // Rich-text cells keep their runs: the cell style's text look is
+          // only the base (0839b6d2, a docx import, stores a 1pt cell font
+          // under 11pt runs — flattened, "Nome:" vanished into a 1px line).
+          td.replaceChildren(renderStyledText(rich, hdoc, ctx));
+        } else {
+          td.textContent = text;
+          // multi-paragraph cell text (rich-text cells join with \n) keeps
+          // its line structure like Apple
+          if (text.includes("\n")) td.style.whiteSpace = "pre-line";
+        }
       }
       td.dataset.row = String(r);
       td.dataset.col = String(c);

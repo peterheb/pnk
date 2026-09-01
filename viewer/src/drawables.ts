@@ -795,6 +795,26 @@ function contactShadowEl(c: DrawableCommon): HTMLElement | null {
   return blob;
 }
 
+/**
+ * Box-shaped drawables (textboxes, images) paint their stroke as a CSS
+ * border. A picture FRAME replaces the stroke: Pages' presets are a white
+ * mat with a soft drop shadow (10a06959's "Formal Shadow" name-tag box —
+ * the 2pt black stroke stored beneath it never shows). Mat width scales
+ * with the frame's asset scale; the exact bitmap frames are not modeled.
+ */
+function applyBoxStroke(div: HTMLElement, stroke: Stroke | undefined): void {
+  if (!stroke) return;
+  if (stroke.frame) {
+    const mat = Math.round(4 + 16 * (stroke.frame.assetScale ?? 0.5));
+    div.style.border = `${mat}px solid #fff`;
+    div.style.boxShadow = "0 2px 7px rgba(0,0,0,0.38)";
+    div.style.boxSizing = "content-box";
+    div.style.margin = `${-mat}px 0 0 ${-mat}px`;
+    return;
+  }
+  if (stroke.widthPt > 0) div.style.border = `${stroke.widthPt}px solid ${stroke.color}`;
+}
+
 /** One drawable on a canvas: absolutely positioned inside .canvas-inner. */
 export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerCtx): HTMLElement {
   const div = el("div", "canvas-drawable");
@@ -820,9 +840,7 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
     // text on nothing).
     const bg = fillToCss(c.style?.fill);
     if (bg) div.style.background = bg;
-    if (c.style?.stroke && c.style.stroke.widthPt > 0) {
-      div.style.border = `${c.style.stroke.widthPt}px solid ${c.style.stroke.color}`;
-    }
+    applyBoxStroke(div, c.style?.stroke);
     const layer = textLayer(d, doc, ctx);
     if (layer) {
       // Zero-size textboxes (Keynote emits some badge labels at 0×0) carry
@@ -867,6 +885,8 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
     }
   } else if (d.type === "image") {
     const img = imageEl(d.image.dataId, d.image.preferredFileName ?? d.image.fileName, ctx, d.image.preferredFileName, d.thumbnail);
+    // photo borders / picture frames (the stroke lives on the image style)
+    applyBoxStroke(div, c.style?.stroke);
     const m = d.mask?.common;
     if (m?.position && m.size && m.size.width > 0 && m.size.height > 0) {
       // TSD.ImageArchive.mask: the mask frame is in the image drawable's own
@@ -904,7 +924,7 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
     div.appendChild(shapeSvg({ path: d.path }, w, h, c.style));
   } else if (d.type === "table") {
     const wrap = el("div", "canvas-table-wrap");
-    wrap.appendChild(renderTable(d.table, ctx));
+    wrap.appendChild(renderTable(d.table, ctx, doc));
     div.appendChild(wrap);
   } else if (d.type === "chart") {
     const svg = chartSvg(d.chart, w, h);
@@ -948,7 +968,7 @@ export function renderFlowDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerCtx
   }
   if (d.type === "table") {
     const wrap = el("div", "flow-table");
-    wrap.appendChild(renderTable(d.table, ctx));
+    wrap.appendChild(renderTable(d.table, ctx, doc));
     return wrap;
   }
   if (d.type === "group") {
