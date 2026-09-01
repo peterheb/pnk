@@ -408,6 +408,16 @@ pub fn stroke_of(ctx: &mut Ctx, m: &Msg) -> Option<Stroke> {
         }
         None => (None, None),
     };
+    // Picture frame (field 8, TSD.FrameArchive): the frame asset replaces
+    // the plain stroke look — 10a06959's "Formal Shadow" textbox stores a
+    // 2pt black stroke underneath, and Pages draws a white mat + shadow.
+    let frame = m.msg(8).and_then(|f| {
+        let name = f.string(2)?;
+        (!name.is_empty()).then(|| StrokeFrame {
+            name,
+            asset_scale: f.f32v(3).map(|v| v as f64),
+        })
+    });
     Some(Stroke {
         color,
         width_pt: m.f32v(2).unwrap_or(1.0) as f64,
@@ -416,6 +426,7 @@ pub fn stroke_of(ctx: &mut Ctx, m: &Msg) -> Option<Stroke> {
         miter_limit: m.f32v(5).map(|v| v as f64),
         dash,
         dash_phase,
+        frame,
     })
 }
 

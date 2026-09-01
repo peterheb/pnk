@@ -192,6 +192,14 @@ export interface Stroke {
   dash?: number[];
   /** Dash phase offset in points. */
   dashPhase?: number;
+  /**
+   * Picture frame drawn INSTEAD of the plain stroke: Pages' frame presets
+   * ("Formal Shadow", "Simple White", …) are a white mat with a soft
+   * shadow around the box. [proto: TSD.StrokeArchive.frame = 8 →
+   * TSD.FrameArchive { frameName = 2, assetScale = 3 } (dunhamsteve proto;
+   * unlisted in the 15.3.1 extraction, fixture-verified on 10a06959)]
+   */
+  frame?: { name: string; assetScale?: number };
 }
 
 /** Decorative line ends (arrowheads etc.).

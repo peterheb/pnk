@@ -138,12 +138,26 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
     // Paragraph boundaries: newlines in the character buffer (text.md
     // §Paragraph model). Each paragraph spans [start_char, end_char) in
     // char-index space; the trailing newline is not part of the paragraph.
+    // U+0004 is Pages' section-break marker and ends a paragraph exactly
+    // like a newline: 10a06959's buffer reads "…\u{FFFC}\u{FFFC}\u{4}Stap 1"
+    // where the two anchored cover boxes belong to the section BEFORE the
+    // break (Apple's export: page 1) and "Stap 1" opens the next section on
+    // page 2. Treating the marker as text glued the anchors to the page-2
+    // paragraph. 12 corpus docs carry the marker. [inferred]
+    // U+0005 is the hard PAGE break, again ending a paragraph: b31db822
+    // stores one alone before "Executive Summary", "Introduction", each
+    // annex heading — every one a page top in Apple's export — and
+    // 155d6ba3 alternates image / U+0005 / image for one photo per page.
+    // The paragraph after the marker carries `page_break_before`.
+    // [inferred, 26 corpus docs]
     let mut para_ranges: Vec<(usize, usize)> = Vec::new();
+    let mut page_break_before: Vec<bool> = vec![false];
     {
         let mut start_char = 0usize;
         for (ci, ch) in text.chars().enumerate() {
-            if ch == '\n' {
+            if ch == '\n' || ch == '\u{4}' || ch == '\u{5}' {
                 para_ranges.push((start_char, ci));
+                page_break_before.push(ch == '\u{5}');
                 start_char = ci + 1;
             }
         }
@@ -314,6 +328,10 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
                 let consumed_anchor = !matches!(resolved, AttachmentResult::None);
                 match resolved {
                     AttachmentResult::Drawable(drawable, h_off, v_off) => {
+                        // b31db822 stores 0xffffffff (NaN) offsets on two
+                        // attachments — serde writes those as null; drop them
+                        let clean = |v: Option<f64>| v.filter(|x| x.is_finite());
+                        let (h_off, v_off) = (clean(h_off), clean(v_off));
                         let offset = if h_off.is_some() || v_off.is_some() {
                             Some(InlineOffset {
                                 h_pt: h_off,
@@ -322,10 +340,27 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
                         } else {
                             None
                         };
+                        // Inline vs "Move with Text": both arrive as a
+                        // DrawableAttachmentArchive at a U+FFFC. Corpus
+                        // survey (323 Pages docs, 2026-09-01): every
+                        // inline-with-text object stores h/v_offset 0,0 and
+                        // exterior wrap kind none (370/374); anchored ones
+                        // carry a non-zero offset from their anchor
+                        // paragraph and a wrap kind (732/734). Fixtures
+                        // 10a06959 (cover title boxes) and b31db822 (cover
+                        // image + shape) render at anchor + offset in
+                        // Apple's export. [inferred]
+                        // Sub-4pt offsets with no wrap are docx-import
+                        // residue on inline tables (0839b6d2: -3.5/-1.9 —
+                        // Apple stacks the table in the flow), not placement.
+                        let moved = |v: Option<f64>| v.map(|x| x.abs() >= 4.0).unwrap_or(false);
+                        let wraps = drawable_wraps(&drawable);
+                        let anchored = (moved(h_off) || moved(v_off) || wraps).then_some(true);
                         items.push(ParagraphItem::InlineObject {
                             kind: InlineObjectTag::InlineObject,
                             drawable,
                             offset,
+                            anchored,
                         });
                     }
                     AttachmentResult::Field {
@@ -456,7 +491,11 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
         let p_style = ctx
             .para_pool
             .intern(crate::ctx::strip_para_defaults(pstyle));
-        paragraphs.push(Paragraph { p_style, items });
+        paragraphs.push(Paragraph {
+            p_style,
+            items,
+            page_break_before: page_break_before[pi].then_some(true),
+        });
     }
 
     Some(ExtractedText {
@@ -483,6 +522,27 @@ fn valid_url(u: &str) -> bool {
 
 // Boxing the big variants is deferred (FINDINGS.md P2); allow for now.
 #[allow(clippy::large_enum_variant)]
+/// Exterior text wrap other than `none` — the mark of a "Move with Text"
+/// object (inline objects have no exterior wrap to speak of).
+fn drawable_wraps(d: &Drawable) -> bool {
+    let common = match d {
+        Drawable::Shape { common, .. }
+        | Drawable::Textbox { common, .. }
+        | Drawable::Image { common, .. }
+        | Drawable::Movie { common, .. }
+        | Drawable::Group { common, .. }
+        | Drawable::Table { common, .. }
+        | Drawable::Chart { common, .. }
+        | Drawable::ConnectionLine { common, .. } => common,
+        Drawable::Unknown { .. } => return false,
+    };
+    common
+        .text_wrap
+        .as_ref()
+        .map(|w| w.kind != TextWrapKind::None)
+        .unwrap_or(false)
+}
+
 enum AttachmentResult {
     Drawable(Drawable, Option<f64>, Option<f64>),
     Field {

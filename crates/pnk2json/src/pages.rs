@@ -350,15 +350,23 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
 /// Paragraph index containing a UTF-16 offset in a storage text buffer:
 /// paragraphs are newline-separated, so it is the newline count before the
 /// offset (docs/format/text.md §Paragraph model).
+/// Paragraph index of a body offset. Paragraphs end at newlines AND at the
+/// U+0004 section-break / U+0005 page-break markers (text.rs splits on
+/// all three); a section whose offset sits ON its break marker starts with
+/// the paragraph after it.
 fn para_index_at(text: &str, utf16_off: u64) -> u32 {
+    let is_break = |c: char| c == '\n' || c == '\u{4}' || c == '\u{5}';
     let mut acc = 0u64;
     let mut para = 0u32;
     for ch in text.chars() {
         if acc >= utf16_off {
+            if ch == '\u{4}' || ch == '\u{5}' {
+                para += 1;
+            }
             break;
         }
         acc += ch.len_utf16() as u64;
-        if ch == '\n' {
+        if is_break(ch) {
             para += 1;
         }
     }
@@ -420,17 +428,18 @@ fn convert_page_template(ctx: &mut Ctx, tid: u64, index: usize) -> (PageTemplate
         .filter(|s| !s.chars().any(|c| (c as u32) < 0x20 || c == '\u{FFFD}'));
 
     // On the PageMasterArchive layout fields 1/2 are header/footer STORAGE
-    // refs, not drawables — leave drawables/placeholders empty there.
+    // refs and field 3 is `master_drawables` (page furniture such as a
+    // rotated "DRAFT" watermark box — fixture b31db822, a Pages 5.x doc
+    // that 15.3.1 still renders with the watermark on every page)
+    // [proto: .scratch/iwork/proto/TPArchives.proto → TP.PageMasterArchive].
+    // PageTemplateArchive keeps its drawables in field 2.
     let is_master = ctx.loaded.record(tid).map(|r| r.type_id) == Some(10143);
 
-    let drawables: Vec<Drawable> = if is_master {
-        Vec::new()
-    } else {
-        m.references(2)
-            .into_iter()
-            .map(|d| crate::drawables::convert_drawable(ctx, d))
-            .collect()
-    };
+    let drawables: Vec<Drawable> = m
+        .references(if is_master { 3 } else { 2 })
+        .into_iter()
+        .map(|d| crate::drawables::convert_drawable(ctx, d))
+        .collect();
 
     let mut placeholders = Vec::new();
     for pair in m.msgs(3) {

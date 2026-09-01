@@ -308,6 +308,7 @@ fn json_escapes_zs_cf_code_points() {
                         items: vec![ParagraphItem::Plain(
                             "a\u{00a0}b\u{200b}c\u{200d}d\u{202f}e\u{3000}f".into(),
                         )],
+                        page_break_before: None,
                     }],
                 },
                 vertical_alignment: None,

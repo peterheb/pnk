@@ -158,6 +158,21 @@ pub struct Stroke {
     pub dash: Option<Vec<f64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dash_phase: Option<f64>,
+    /// Picture frame drawn INSTEAD of the plain stroke (a white mat with a
+    /// soft shadow for the common presets). [proto: TSD.StrokeArchive.frame
+    /// = 8 → TSD.FrameArchive { frameName = 2, assetScale = 3 }, older
+    /// dunhamsteve proto; field 8 is unlisted in the 15.3.1 extraction but
+    /// 10a06959 stores "Formal Shadow" there and Pages draws the mat]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frame: Option<StrokeFrame>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct StrokeFrame {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub asset_scale: Option<f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -634,6 +649,9 @@ pub struct Paragraph {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub p_style: Option<u32>,
     pub items: Vec<ParagraphItem>,
+    /// A hard page break (U+0005 in the text buffer) precedes this paragraph.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_break_before: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -660,6 +678,11 @@ pub enum ParagraphItem {
         drawable: Drawable,
         #[serde(skip_serializing_if = "Option::is_none")]
         offset: Option<InlineOffset>,
+        /// "Move with Text" placement: the drawable floats on the page at
+        /// anchor-paragraph + `offset` and body text wraps around it, rather
+        /// than sitting in the line like a glyph. See text.rs for the rule.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        anchored: Option<bool>,
     },
     Field {
         #[serde(rename = "type")]

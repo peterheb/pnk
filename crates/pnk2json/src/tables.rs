@@ -444,6 +444,7 @@ fn sidecar_borders(ctx: &mut Ctx, m: &Msg) -> HashMap<(u32, u32), CellBorders> {
                     miter_limit: None,
                     dash: None,
                     dash_phase: None,
+                    frame: None,
                 });
                 let origin = run.varint(1).unwrap_or(0) as u32;
                 let length = run.varint(2).unwrap_or(1).max(1) as u32;

@@ -187,6 +187,12 @@ export interface Paragraph {
   pStyle?: number;
   /** Content items in visual order. */
   items: ParagraphItem[];
+  /**
+   * A hard page break precedes this paragraph (U+0005 in the storage's
+   * character buffer; the marker itself never prints). Distinct from the
+   * paragraph STYLE's pageBreakBefore. [inferred: b31db822 / 155d6ba3]
+   */
+  pageBreakBefore?: boolean;
 }
 
 /**
@@ -219,6 +225,15 @@ export interface InlineObjectRun {
   drawable: Drawable;
   /** Anchor offsets in points. [proto: TSWP.DrawableAttachmentArchive h/v_offset] */
   offset?: { hPt?: number; vPt?: number };
+  /**
+   * "Move with Text" placement: the drawable floats on the page at
+   * (text-area left + offset.hPt, anchor paragraph top + offset.vPt) and
+   * body text wraps around it per `common.textWrap`; absent/false = inline
+   * with text, sitting in the line like a glyph. Converter rule: non-zero
+   * offset or an exterior wrap kind other than none [inferred, corpus
+   * survey 2026-09-01: 370/374 zero-offset objects wrap none].
+   */
+  anchored?: boolean;
 }
 
 /**
