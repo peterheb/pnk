@@ -243,6 +243,28 @@ const { chromium } = require(process.env.PW_MODULE);
     }
   }
 
+  // Pages mode: word-processing pagination and layout canvases both render
+  // as .pages-page frames. Screenshot each frame so composites pair 1:1
+  // with Apple's per-page rasters (the proportional slice of one tall
+  // screenshot drifts by a fraction of a page per page).
+  const pageFrames = page.locator("#pages-view .pages-page");
+  const pageCount = await pageFrames.count();
+  if (pageCount > 0) {
+    // the sticky top bar would print over any frame scrolled beneath it
+    // (CSSOM, not a style tag: the viewer's CSP allows no inline styles)
+    await page.evaluate(() => {
+      document.querySelectorAll("#topnav, header").forEach((h) => { h.style.visibility = "hidden"; });
+    });
+    const shotDir = shotPath.replace(/\/[^/]+$/, "/");
+    fs.mkdirSync(shotDir, { recursive: true });
+    for (let i = 0; i < pageCount; i++) {
+      const frame = pageFrames.nth(i);
+      await frame.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(100);
+      await frame.screenshot({ path: `${shotDir}page-${i + 1}.png` });
+    }
+  }
+
   await page.screenshot({ path: shotPath, fullPage: true });
 
   const bboxes = await page.evaluate(() => {
@@ -356,6 +378,12 @@ def composite_rows(shot: Path, work: Path, log) -> list[Path]:
                          key=lambda p: int(p.stem.split("-")[-1]))
     if slide_shots:
         return composite_deck(apple_pages, slide_shots, out_dir, log)
+    # Pages mode: per-page frame screenshots pair 1:1 too, at a taller
+    # canvas so body text stays legible.
+    page_shots = sorted((work / "ours").glob("page-*.png"),
+                        key=lambda p: int(p.stem.split("-")[-1]))
+    if page_shots:
+        return composite_deck(apple_pages, page_shots, out_dir, log, canvas_h=1100)
 
     ours = Image.open(shot)
     ap = Image.open(apple_pages[0])
@@ -380,14 +408,13 @@ def composite_rows(shot: Path, work: Path, log) -> list[Path]:
     return written
 
 
-def composite_deck(apple_pages, slide_shots, out_dir: Path, log) -> list[Path]:
+def composite_deck(apple_pages, slide_shots, out_dir: Path, log, canvas_h: int = 480) -> list[Path]:
     """Apple page-N | our slide-N, each scaled to a common height."""
     from PIL import Image
 
     written = []
     n = max(len(apple_pages), len(slide_shots))
     for i in range(n):
-        canvas_h = 480
         a_img = o_img = None
         if i < len(apple_pages):
             a_img = Image.open(apple_pages[i]).convert("RGB")
@@ -405,6 +432,13 @@ def composite_deck(apple_pages, slide_shots, out_dir: Path, log) -> list[Path]:
         written.append(out)
     log(f"wrote {len(written)} per-slide deck composites")
     return written
+
+
+def _unguard_pil() -> None:
+    """A 65-page word-processing render is a ~320 Mpx PNG: over Pillow's
+    decompression-bomb guard, but it is our own screenshot."""
+    from PIL import Image
+    Image.MAX_IMAGE_PIXELS = None
 
 
 def row_diff_bands(apple_page: Path, shot: Path, band: int = 40) -> list[tuple[int, int]]:
@@ -698,12 +732,17 @@ def write_summary(work: Path, fixture: Path, mode: str, n_pages: int,
 
 def run_one(app: str, fixture: Path, work: Path, args, log) -> bool:
     work.mkdir(parents=True, exist_ok=True)
+    _unguard_pil()
 
     # Apple side
     pdf = preview = None
     mode = "fallback-preview"
+    prior_pdf = work / "apple" / "export.pdf"
     if args.skip_apple:
         log("skipping Apple side (--skip-apple)")
+    elif args.reuse_apple and prior_pdf.exists() and prior_pdf.stat().st_size > 0:
+        pdf, mode = prior_pdf, f"{app}-export (reused)"
+        log(f"reusing Apple export {prior_pdf}")
     else:
         try:
             pdf, mode = export_via_app(APP_NAMES[app], fixture, work, log)
@@ -771,6 +810,8 @@ def main() -> int:
     ap.add_argument("--dpi", type=int, default=150)
     ap.add_argument("--base-url", default="http://127.0.0.1:8123")
     ap.add_argument("--skip-apple", action="store_true", help="use embedded preview fallback")
+    ap.add_argument("--reuse-apple", action="store_true",
+                    help="reuse <out>/apple/export.pdf from a previous run (iterate on our side only)")
     args = ap.parse_args()
 
     def log(msg: str) -> None:
