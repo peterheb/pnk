@@ -4,9 +4,11 @@
 
 ## Claude-session conventions (established 2026-08-29/30)
 
-- **Git**: commit small + educational, then `git push origin main` after EVERY
-  commit — the public history is the hackathon paper trail. Never branch,
-  rebase, force-push, stash, or `git add -A`; stage files by explicit path.
+- **Git** (PR workflow since v0.2, 2026-09-02): branch per piece of work,
+  commit small + educational on the branch, `git push -u origin <branch>`,
+  then `gh pr create` into `main`. Never rebase, force-push, stash, or
+  `git add -A`; stage files by explicit path. The hackathon-era
+  "commit straight to main" rule in AGENTS.md is historical.
 - **Build**: `cargo build --release -p pnk2json` (native converter the harness
   uses) and `bash scripts/build_viewer.sh` (wasm + viewer dist). TS-only
   changes need only build_viewer.sh.

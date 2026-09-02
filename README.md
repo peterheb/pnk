@@ -72,6 +72,9 @@ at [`docs/format/INDEX.md`](docs/format/INDEX.md).
   2,480 ok, 8 controlled encrypted rejects, 0 defects, linear timing.
 - `scripts/visual_diff.py` — side-by-side composites of our render vs PDF
   exported from the real apps (driven by AppleScript), judged per page.
+- `scripts/judge.py` — vision-LLM fidelity scoring of those pairs on a 0–10
+  rubric (`scripts/judge_prompt.md`), with controls and a judge bake-off
+  report; see `docs/JUDGE.md`.
 - Golden fixtures (`fixtures/golden/`) hand-built in the real apps from
   one-feature-per-item checklists; converter output is byte-pinned in
   `cargo test`.
