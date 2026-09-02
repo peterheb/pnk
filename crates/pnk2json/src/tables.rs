@@ -1162,6 +1162,10 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
         cell_styles: std::mem::take(&mut cell_pool.items),
         merges,
         style,
+        // The table's NAME has its own style network slot: shape style
+        // (table_name_shape_style = 36) for the box, table_name_style
+        // (30) for the text. Both resolve like any other cell/text style.
+        name_style: section_style(ctx, &m, 36, 30),
     }
 }
 
@@ -1191,6 +1195,7 @@ fn empty_table() -> TableModel {
         cell_styles: Vec::new(),
         merges: Vec::new(),
         style: None,
+        name_style: None,
     }
 }
 
