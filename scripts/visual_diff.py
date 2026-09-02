@@ -101,6 +101,23 @@ def export_via_app(app_name: str, fixture: Path, work: Path, log) -> tuple[Path 
         # -g: open without bringing the app to the foreground — exports are
         # driven by Apple events and need no focus, and stealing the user's
         # focus mid-keystroke was the harness's worst side effect.
+        # Launch the app FIRST when it is not running: a cold launch plus a
+        # document open can exceed the poll window and the harness then
+        # silently fell back to the QuickLook preview (agent K, Keynote).
+        try:
+            running = _osascript(f'tell application "{app_name}" to running', timeout=20) == "true"
+        except Exception:
+            running = False
+        if not running:
+            subprocess.run(["open", "-g", "-a", app_name], check=False, timeout=30)
+            for _ in range(30):
+                try:
+                    if _osascript(f'tell application "{app_name}" to running', timeout=20) == "true":
+                        break
+                except Exception:
+                    pass
+                time.sleep(1)
+            log(f"launched {app_name}")
         subprocess.run(["open", "-g", "-a", app_name, str(copy_path)], check=True, timeout=30)
         deadline = time.time() + OPEN_TIMEOUT_S
         while time.time() < deadline:
