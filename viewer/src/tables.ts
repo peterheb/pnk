@@ -22,6 +22,15 @@ import type { ViewerCtx } from "./ctx";
 // separators follow the CLDR region when one is present (Apple renders
 // "5,48" for en_EE documents — the region, not the language, decides);
 // language-only locales fall back to the language's usual convention.
+//
+// DELIBERATE divergence from Numbers' PDF export: the app formats numbers
+// in the MACHINE's locale, not the document's. maison-martos carries
+// meta.locale = fr_FR and Numbers on an en_US Mac exports "€310,000" and
+// "€1,722.22" (pymupdf over its export) where the document's own locale
+// gives "€310.000" / "€1.722,22". A viewer has no machine locale worth
+// speaking of — the same file would render differently for every reader —
+// so we follow the DOCUMENT locale and stay consistent. Diffs against an
+// Apple export from a differently-localised Mac are expected here.
 const COMMA_DECIMAL_LANG = /^(de|fr|it|es|pt|nl|da|fi|nb|sv|el|pl|ru|tr)$/i;
 const COMMA_DECIMAL_REGION = /^(ee|de|fr|it|es|pt|nl|dk|fi|no|gr|pl|ru|tr|br)$/i;
 let decimalComma = false;
