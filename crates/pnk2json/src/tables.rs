@@ -115,17 +115,32 @@ fn strip_map_with_ctx(
             .get(2)
             .map(|v| matches!(v, iwadump::proto::Value::Fixed32(_)))
             .unwrap_or(false);
-        if is_v4_header {
-            if let Some(idx) = bucket.varint(1) {
-                out.push((idx as u32, ordinal));
-                ordinal += 1;
+        // Only headers with cells own a storage buffer (Header.numberOfCells
+        // = 4): mtd.tax's template lists its empty 8pt spacer rows in the
+        // buckets with numberOfCells 0 and no TileRowInfo, and counting
+        // them shifted every later section two rows up, under the wrong
+        // merges and heights; simplicityhub's template (80 corpus files,
+        // 160 tables) has one such spacer row and every row below it sat
+        // one too high. numbers-parser's row_storage_map counts every
+        // header; the cell count is the missing filter. Cross-checked
+        // against TileRowInfo.tile_row_index, which agrees on every table
+        // where it is in range. [inferred]
+        let mut push = |h: &Msg, filter_empty: bool, out: &mut Vec<(u32, usize)>| {
+            let Some(idx) = h.varint(1) else { return };
+            if filter_empty && h.varint(4) == Some(0) {
+                return;
             }
+            out.push((idx as u32, ordinal));
+            ordinal += 1;
+        };
+        if is_v4_header {
+            // v4 buckets carry no numberOfCells (field 4 is not a count
+            // there — cdrky's pre-BNC sheet lost its first six rows when
+            // filtered); every header owns a buffer
+            push(&bucket, false, &mut out);
         } else {
             for h in bucket.msgs(2) {
-                if let Some(idx) = h.varint(1) {
-                    out.push((idx as u32, ordinal));
-                    ordinal += 1;
-                }
+                push(&h, true, &mut out);
             }
         }
     }
@@ -1121,6 +1136,16 @@ fn convert_tile(
         // cell_offsets = 7; pre-BNC tiles (storage_version 4, seen in
         // Numbers 11.x-era documents) keep the data in the *_pre_bnc fields
         // 3/4 with the same offset mechanics but a different cell layout.
+        // Row identity: the k-th rowInfo across all tiles is storage-buffer
+        // ordinal k, mapped to its model row through the header buckets
+        // (docs/format/tables.md §Header buckets, headers with cells only —
+        // see strip_map_with_ctx). `tile_row_index` is a STORAGE row that
+        // can exceed the model's row count once rows were deleted (0bcd7455:
+        // one-row tables whose only rowInfo carries index 5), so it is only
+        // the fallback when the map has no entry. Every rowInfo consumes an
+        // ordinal, buffer or not.
+        let ordinal = *buffer_ordinal;
+        *buffer_ordinal += 1;
         let buffer = ri.bytes(6).or_else(|| ri.bytes(3)).map(|b| b.to_vec());
         let Some(buffer) = buffer else {
             *saw_pre_bnc = true;
@@ -1131,16 +1156,13 @@ fn convert_tile(
         }
         let is_pre_bnc = ri.bytes(6).is_none() && ri.bytes(3).is_some();
 
-        // The k-th rowInfo across all tiles is storage-buffer ordinal k
-        // (docs/format/tables.md §Tiles); fall back to tile arithmetic.
-        let model_row: u32 = match ord_to_row.get(*buffer_ordinal).copied().flatten() {
+        let model_row: u32 = match ord_to_row.get(ordinal).copied().flatten() {
             Some(r) => r,
             None => {
                 let tri = ri.varint(1).unwrap_or(0) as usize;
                 (tileid * tile_size + tri) as u32
             }
         };
-        *buffer_ordinal += 1;
 
         let offsets_raw = ri
             .bytes(7)
