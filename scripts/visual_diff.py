@@ -250,11 +250,6 @@ const { chromium } = require(process.env.PW_MODULE);
   const pageFrames = page.locator("#pages-view .pages-page");
   const pageCount = await pageFrames.count();
   if (pageCount > 0) {
-    // the sticky top bar would print over any frame scrolled beneath it
-    // (CSSOM, not a style tag: the viewer's CSP allows no inline styles)
-    await page.evaluate(() => {
-      document.querySelectorAll("#topnav, header").forEach((h) => { h.style.visibility = "hidden"; });
-    });
     const shotDir = shotPath.replace(/\/[^/]+$/, "/");
     fs.mkdirSync(shotDir, { recursive: true });
     for (let i = 0; i < pageCount; i++) {
@@ -263,6 +258,32 @@ const { chromium } = require(process.env.PW_MODULE);
       await page.waitForTimeout(100);
       await frame.screenshot({ path: `${shotDir}page-${i + 1}.png` });
     }
+  }
+
+  // the sticky top bar would print over anything scrolled beneath it
+  // (CSSOM, not a style tag: the viewer's CSP allows no inline styles)
+  await page.evaluate(() => {
+    document.querySelectorAll("#topnav, header").forEach((h) => { h.style.visibility = "hidden"; });
+  });
+
+  // Numbers mode: sheets sit behind tabs, one visible at a time. Activate
+  // each tab and screenshot its canvas as sheet-N.png; composites pair
+  // them with Apple's pages in order (Numbers exports one sheet per page
+  // when the sheet fits, so the pairing holds for typical documents).
+  const sheetTabs = page.locator("#numbers-view .sheet-tab");
+  const sheetCount = await sheetTabs.count();
+  if (sheetCount > 0) {
+    const shotDir = shotPath.replace(/\/[^/]+$/, "/");
+    fs.mkdirSync(shotDir, { recursive: true });
+    for (let i = 0; i < sheetCount; i++) {
+      await sheetTabs.nth(i).click();
+      const canvas = page.locator(`#numbers-view .sheet-area[data-sheet-index="${i}"] .sheet-canvas`).first();
+      await canvas.waitFor({ state: "visible", timeout: 10000 });
+      await page.waitForTimeout(400);
+      await canvas.screenshot({ path: `${shotDir}sheet-${i + 1}.png` });
+    }
+    await sheetTabs.nth(0).click();
+    await page.waitForTimeout(300);
   }
 
   await page.screenshot({ path: shotPath, fullPage: true });
@@ -384,6 +405,10 @@ def composite_rows(shot: Path, work: Path, log) -> list[Path]:
                         key=lambda p: int(p.stem.split("-")[-1]))
     if page_shots:
         return composite_deck(apple_pages, page_shots, out_dir, log, canvas_h=1100)
+    sheet_shots = sorted((work / "ours").glob("sheet-*.png"),
+                         key=lambda p: int(p.stem.split("-")[-1]))
+    if sheet_shots:
+        return composite_deck(apple_pages, sheet_shots, out_dir, log, canvas_h=900)
 
     ours = Image.open(shot)
     ap = Image.open(apple_pages[0])
