@@ -66,28 +66,36 @@
       {
         "fontName": "HelveticaNeue",
         "fontSizePt": 11.0,
+        "bold": false,
+        "italic": false,
         "fontColor": "#000000"
       },
       {
         "fontName": "HelveticaNeue",
         "fontSizePt": 11.0,
         "bold": true,
+        "italic": false,
         "fontColor": "#000000"
       },
       {
         "fontName": "HelveticaNeue",
         "fontSizePt": 11.0,
+        "bold": false,
         "italic": true,
         "fontColor": "#000000"
       },
       {
         "fontName": "HelveticaNeue",
         "fontSizePt": 11.0,
+        "bold": false,
+        "italic": false,
         "fontColor": "#1db100"
       },
       {
         "fontName": "HelveticaNeue",
         "fontSizePt": 20.0,
+        "bold": false,
+        "italic": false,
         "fontColor": "#000000"
       }
     ]

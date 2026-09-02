@@ -117,12 +117,14 @@ pub fn strip_char_defaults(mut s: CharStyle) -> CharStyle {
     if s.font_size_pt == Some(12.0) {
         s.font_size_pt = None;
     }
-    if s.bold == Some(false) {
-        s.bold = None;
-    }
-    if s.italic == Some(false) {
-        s.italic = None;
-    }
+    // bold / italic stay tri-state: an EXPLICIT false is information. Pages
+    // honours a weight-suffixed face name ("HelveticaNeue-Light") when the
+    // archive carries no bold field (10a06959: Light 47pt, Thin 10pt drawn as
+    // stored), while Numbers draws "HelveticaNeue-Bold" REGULAR when the
+    // field is present and false (maison-martos, every suffixed style).
+    // Collapsing both to absent made the two indistinguishable downstream
+    // (agent P, 2026-09-02; 65 of 323 Pages docs style runs with a
+    // suffixed name and no flag).
     if s.underline == Some(UnderlineStyle::None) {
         s.underline = None;
     }

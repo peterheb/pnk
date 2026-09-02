@@ -64,6 +64,8 @@
       {
         "fontName": "HelveticaNeue",
         "fontSizePt": 11.0,
+        "bold": false,
+        "italic": false,
         "fontColor": "#000000"
       },
       {
@@ -76,6 +78,7 @@
       {
         "fontName": "HelveticaNeue",
         "fontSizePt": 11.0,
+        "bold": false,
         "italic": true,
         "fontColor": "#000000"
       },
@@ -83,26 +86,35 @@
         "fontName": "HelveticaNeue",
         "fontSizePt": 11.0,
         "bold": true,
+        "italic": false,
         "fontColor": "#000000"
       },
       {
         "fontName": "HelveticaNeue-Medium",
+        "bold": false,
+        "italic": false,
         "fontColor": "#000000"
       },
       {
         "fontName": "HelveticaNeue",
         "fontSizePt": 7.0,
+        "bold": false,
+        "italic": false,
         "fontColor": "#000000"
       },
       {
         "fontName": "HelveticaNeue",
         "fontSizePt": 7.0,
+        "bold": false,
+        "italic": false,
         "underline": "single",
         "fontColor": "#000000"
       },
       {
         "fontName": "ComicSansMS",
         "fontSizePt": 72.0,
+        "bold": false,
+        "italic": false,
         "fontColor": "#000000"
       }
     ]
