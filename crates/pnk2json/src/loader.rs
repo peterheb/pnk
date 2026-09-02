@@ -276,14 +276,41 @@ fn apply_patches(
             }
         };
         if replace_one {
-            set_fields(
-                base,
-                vec![Field {
-                    number: paths[0][0] as u32,
-                    wire: iwadump::proto::WIRE_LEN,
-                    value: Value::Bytes(message.payload.clone()),
-                }],
-            );
+            let n = paths[0][0] as u32;
+            // A patch aimed at an EMBEDDED MESSAGE merges into it: the RIPE 85
+            // deck patches its pie charts' TSCH unity extension (10000) with
+            // a 2-byte `{ chart_type: 5 }`, and Keynote keeps the grid,
+            // styles and axes already stored there — replacing the whole
+            // field left a type and no data. Sub-fields named by the payload
+            // replace their counterparts; everything else stays. Scalars
+            // and fields the base lacks are set outright as before.
+            let base_sub = match base.fields.iter().find(|f| f.number == n).map(|f| &f.value) {
+                Some(Value::Bytes(b)) => Msg::parse(b),
+                Some(Value::Group(fields)) => Some(Msg { fields: fields.clone() }),
+                _ => None,
+            };
+            let payload_msg = if message.payload.is_empty() { None } else { Msg::parse(&message.payload) };
+            match (base_sub, payload_msg) {
+                (Some(mut sub), Some(patch)) => {
+                    set_fields(&mut sub, patch.fields);
+                    set_fields(
+                        base,
+                        vec![Field {
+                            number: n,
+                            wire: iwadump::proto::WIRE_LEN,
+                            value: Value::Group(sub.fields),
+                        }],
+                    );
+                }
+                _ => set_fields(
+                    base,
+                    vec![Field {
+                        number: n,
+                        wire: iwadump::proto::WIRE_LEN,
+                        value: Value::Bytes(message.payload.clone()),
+                    }],
+                ),
+            }
         } else if let Some(partial) = partial {
             set_fields(base, partial.fields);
         }

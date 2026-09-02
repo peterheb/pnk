@@ -1355,6 +1355,12 @@ pub struct ChartModel {
     /// Major gridline count on the value axis. [proto: field 5]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value_axis_major_gridlines: Option<u32>,
+    /// Pie/donut hole as a fraction of the radius, when stored. A "pie" with
+    /// a hole IS Keynote's ring (RIPE 85's two-ring composition is two pie
+    /// charts with inner radii). [proto: Generated ChartNonStyleArchive
+    /// tschchartinfodefaultinnerradius = 27]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inner_radius: Option<f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

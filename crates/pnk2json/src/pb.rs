@@ -85,7 +85,35 @@ impl Msg {
     }
 
     /// A nested message (LEN bytes re-walked as fields, or an inline group).
+    ///
+    /// Protobuf MERGE semantics: when a singular embedded-message field
+    /// occurs more than once, the occurrences concatenate (scalars inside
+    /// then resolve last-wins on read). Keynote writes the TSCH unity
+    /// extension (field 10000) of some charts in two pieces — the RIPE 85
+    /// deck's pies carry `{ chart_type }` in one and the whole data grid in
+    /// the other — and last-wins left them with a type and no data.
     pub fn msg(&self, n: u32) -> Option<Msg> {
+        let occurrences = self.all(n);
+        if occurrences.len() > 1 {
+            let mut merged = Vec::new();
+            let mut any = false;
+            for v in occurrences {
+                match v {
+                    Value::Bytes(b) => {
+                        if let Some(m) = Msg::parse(b) {
+                            merged.extend(m.fields);
+                            any = true;
+                        }
+                    }
+                    Value::Group(fields) => {
+                        merged.extend(fields.clone());
+                        any = true;
+                    }
+                    _ => {}
+                }
+            }
+            return any.then_some(Msg { fields: merged });
+        }
         match self.get(n)? {
             Value::Bytes(b) => Msg::parse(b),
             Value::Group(fields) => Some(Msg {

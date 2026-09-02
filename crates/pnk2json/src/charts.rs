@@ -117,12 +117,13 @@ pub fn convert_chart(ctx: &mut Ctx, ca: &Msg) -> ChartModel {
     // its "default" slots: showlegend = 20, showtitle = 21, title = 23
     // (fixture-verified: burndown's "User Stories" sits at 23 with 21 = 1;
     // the 34/35/46 numbers belong to ChartGenericPropertyMapArchive).
-    let (mut title, mut legend_visible) = (None, None);
+    let (mut title, mut legend_visible, mut inner_radius) = (None, None, None);
     if let Some(ns) = ext(ctx, ca.reference(10)) {
         if ns.boolean(21) != Some(false) {
             title = ns.string(23).filter(|t| !t.trim().is_empty());
         }
         legend_visible = ns.boolean(20);
+        inner_radius = ns.f32v(27).map(|v| v as f64).filter(|v| *v > 0.0 && *v < 1.0);
     }
     let axis_title = |ctx: &Ctx, ids: Vec<u64>, show: u32, field: u32| -> Option<String> {
         ids.into_iter()
@@ -159,6 +160,7 @@ pub fn convert_chart(ctx: &mut Ctx, ca: &Msg) -> ChartModel {
         value_axis_min,
         value_axis_max,
         value_axis_major_gridlines,
+        inner_radius,
     }
 }
 

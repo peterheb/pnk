@@ -667,6 +667,8 @@ export interface ChartModel {
   valueAxisMax?: number;
   /** Major gridline count on the value axis. [proto: field 5] */
   valueAxisMajorGridlines?: number;
+  /** Pie/donut hole as a fraction of the radius, when stored (a pie with a hole is a ring). [proto: non-style innerradius 27] */
+  innerRadius?: number;
 }
 
 export interface ChartSeries {

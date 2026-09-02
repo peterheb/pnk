@@ -468,6 +468,27 @@ fn common_from_shape(ctx: &mut Ctx, shape: &Msg) -> DrawableCommon {
     let (style, extras) = drawable_style(ctx, shape.reference(2), false);
     common.style = style;
     merge_extras(&mut common, extras);
+    // Mirroring lives in TSD.GeometryArchive.flags (super(1).geometry(1)
+    // field 3), not in the PathSourceArchive flip booleans, which every
+    // shape in the corpus stores as false. Corpus survey (120 decks,
+    // 31,343 shapes): values 0/1/3 everywhere, 7 on 349 shapes and 11 on
+    // two — bit 4 is the horizontal flip (greenberg's curved arrow at 180°
+    // carries 7 and Keynote draws it as the vertical mirror of its twin
+    // at 3), bit 8 the vertical one. Bits 1/2 are something else and are
+    // set on most shapes. [inferred]
+    let flags = shape
+        .msg(1)
+        .and_then(|d| d.msg(1))
+        .and_then(|g| g.varint(3))
+        .unwrap_or(0);
+    let h = (flags & 4 != 0).then_some(true);
+    let v = (flags & 8 != 0).then_some(true);
+    if h.is_some() || v.is_some() {
+        common.flipped = Some(Flips {
+            horizontal: h,
+            vertical: v,
+        });
+    }
     common
 }
 
@@ -1078,6 +1099,7 @@ fn chart_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
                 value_axis_min: None,
                 value_axis_max: None,
                 value_axis_major_gridlines: None,
+                inner_radius: None,
             }
         });
     Drawable::Chart { common, chart }
