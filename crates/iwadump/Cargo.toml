@@ -1,6 +1,6 @@
 [package]
 name = "iwadump"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "iWork '13+ file structure inspector: ZIP container -> snappy blocks -> TSP archives"
 license = "MIT OR Apache-2.0"

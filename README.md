@@ -5,9 +5,7 @@ files entirely in your browser. The file is parsed from raw bytes by Rust
 compiled to WebAssembly, emitted as a typed JSON model, and rendered by a
 vanilla-TS viewer. No account, no upload, no backend.
 
-Live at **[pnk.vu](https://pnk.vu)**. Built solo for
-[Hackyard Yard #1](https://hackyard.tech/yards/yard-1) ("no accounts",
-48 hours, 2026-08-28 → 30).
+Live at **[pnk.vu](https://pnk.vu)**. Version 0.2.
 
 ## Features
 
@@ -20,7 +18,8 @@ Live at **[pnk.vu](https://pnk.vu)**. Built solo for
   formats.
 - **Pages**: paginated word-processing with margins, headers/footers,
   footnotes, drop caps, lists; page-layout canvases with template underlays.
-- Syntax-colored JSON model view (`json` in the nav) with download.
+- Source views in the nav: plain text, markdown, and the syntax-colored JSON
+  model, each downloadable.
 - Encrypted and pre-2013 legacy files are refused with a clear error card;
   no password prompt, nothing inspected server-side.
 - Zero network requests after load — asserted in the test gate.
@@ -70,7 +69,7 @@ at [`docs/format/INDEX.md`](docs/format/INDEX.md).
 ## Verification
 
 - `scripts/conformance.py` — 1,248-file Common Crawl corpus × JSON + markdown:
-  2,488 ok, 8 controlled encrypted rejects, 0 defects, linear timing.
+  2,480 ok, 8 controlled encrypted rejects, 0 defects, linear timing.
 - `scripts/visual_diff.py` — side-by-side composites of our render vs PDF
   exported from the real apps (driven by AppleScript), judged per page.
 - Golden fixtures (`fixtures/golden/`) hand-built in the real apps from
