@@ -487,6 +487,55 @@ fn sidecar_borders(ctx: &mut Ctx, m: &Msg) -> HashMap<(u32, u32), CellBorders> {
     out
 }
 
+/// The evaluated conditional highlight for one cell.
+///
+/// Numbers records WHICH rule fired, so a conditional format needs no
+/// formula evaluation: the cell carries a key into the table's
+/// `conditionalstyletable` (DataStore f18) and the 0-based index of the
+/// matched rule. The keyed record (type 6010) is a rule SET whose repeated
+/// f2 entries each carry a cell style (f2) and a text style (f3) — the
+/// stock "Red Fill" / "Green Fill" presets in cdrky's budget resolve to
+/// #efbaa7 and #afe489. Returns the rule's cell style with its text style
+/// folded in. [inferred, fixture-verified: e138671a9f2b set 38257]
+fn conditional_style(
+    ctx: &mut Ctx,
+    cond_table: &DataList,
+    set_key: i32,
+    rule_index: u32,
+) -> Option<TableCellStyle> {
+    let set_ref = cond_table.entries.get(&set_key)?.reference?;
+    let set = ctx.loaded.msg(set_ref).cloned()?;
+    let rule = set.msgs(2).into_iter().nth(rule_index as usize)?;
+    let mut s = rule
+        .reference(2)
+        .and_then(|cid| styles::resolve_cell_style(ctx, cid))
+        .unwrap_or_default();
+    if let Some(tid) = rule.reference(3) {
+        let text = strip_cell_text_defaults(styles::resolve_char_style(ctx, tid));
+        if text != CharStyle::default() {
+            s.text = Some(text);
+        }
+    }
+    (s != TableCellStyle::default()).then_some(s)
+}
+
+/// Overlay a conditional highlight on a cell's own style: the highlight
+/// wins where it speaks (fill, text look) and the base style keeps the
+/// rest (borders, padding, alignment).
+fn overlay_conditional(base: Option<TableCellStyle>, cond: TableCellStyle) -> TableCellStyle {
+    let Some(mut s) = base else { return cond };
+    if cond.fill.is_some() {
+        s.fill = cond.fill;
+    }
+    if cond.text.is_some() {
+        s.text = cond.text;
+    }
+    if cond.borders.is_some() {
+        s.borders = cond.borders;
+    }
+    s
+}
+
 /// Strip defaults from a per-cell TEXT style — but keep the face selectors.
 ///
 /// A cell's text style is an OVERRIDE on top of the table's SECTION text
@@ -636,6 +685,7 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
     );
     let rich_text_table = load_data_list(ctx, store.as_ref().and_then(|s| s.reference(17)));
     let custom_format_table = load_data_list(ctx, store.as_ref().and_then(|s| s.reference(15)));
+    let cond_style_table = load_data_list(ctx, store.as_ref().and_then(|s| s.reference(18)));
 
     // Row/column maps from header buckets.
     let row_map = store
@@ -685,6 +735,7 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
                 &format_table,
                 &custom_format_table,
                 &rich_text_table,
+                &cond_style_table,
                 &mut cell_pool,
                 &mut cells,
                 &mut saw_pre_bnc,
@@ -1157,6 +1208,7 @@ fn convert_tile(
     format_table: &DataList,
     custom_format_table: &DataList,
     rich_text_table: &DataList,
+    cond_style_table: &DataList,
     cell_pool: &mut StylePool<TableCellStyle>,
     out: &mut Vec<(u32, u32, TableCell, Option<CellFormat>)>,
     saw_pre_bnc: &mut bool,
@@ -1261,6 +1313,7 @@ fn convert_tile(
                     format_table,
                     rich_text_table,
                     formula_table,
+                    cond_style_table,
                     cell_pool,
                 )
             } else {
@@ -1276,6 +1329,7 @@ fn convert_tile(
                     format_table,
                     custom_format_table,
                     rich_text_table,
+                    cond_style_table,
                     cell_pool,
                 )
             };
@@ -1299,6 +1353,7 @@ fn decode_cell(
     format_table: &DataList,
     custom_format_table: &DataList,
     rich_text_table: &DataList,
+    cond_style_table: &DataList,
     cell_pool: &mut StylePool<TableCellStyle>,
 ) -> Option<(u32, u32, TableCell, Option<CellFormat>)> {
     if buf[0] != 5 {
@@ -1348,8 +1403,8 @@ fn decode_cell(
     let rich_id = if flags & 0x10 != 0 { take_i32!() } else { None };
     let cell_style_id = if flags & 0x20 != 0 { take_i32!() } else { None };
     let text_style_id = if flags & 0x40 != 0 { take_i32!() } else { None };
-    let _cond_style = if flags & 0x80 != 0 { take_i32!() } else { None };
-    let _cond_rule = if flags & 0x100 != 0 {
+    let cond_style = if flags & 0x80 != 0 { take_i32!() } else { None };
+    let cond_rule = if flags & 0x100 != 0 {
         take_i32!()
     } else {
         None
@@ -1523,6 +1578,21 @@ fn decode_cell(
             }
         }
     }
+    if std::env::var("PNK_DEBUG_COND").is_ok() && (cond_style.is_some() || cond_rule.is_some()) {
+        eprintln!(
+            "v5cond r{row}c{col} cond_style={cond_style:?} cond_rule={cond_rule:?} set_ref={:?}",
+            cond_style.and_then(|k| cond_style_table.entries.get(&k)).and_then(|e| e.reference)
+        );
+    }
+    // Conditional highlight (same shape as the v4 path): cond_style keys
+    // the table's conditional-style table, cond_rule is the 1-based rule
+    // that fired.
+    if let Some(cond) = cond_style
+        .zip(cond_rule)
+        .and_then(|(set, rule)| conditional_style(ctx, cond_style_table, set, rule as u32))
+    {
+        style = Some(overlay_conditional(style, cond));
+    }
     let cell_style_index = style.and_then(|s| cell_pool.intern(crate::ctx::strip_cell_defaults(s)));
 
     // Formula placeholder (TSCE stays opaque; model-design §2.8).
@@ -1541,6 +1611,11 @@ fn decode_cell(
         text_format_id,
         format_table,
         custom_format_table,
+        match &value {
+            CellValue::Number { value } => Some(*value),
+            CellValue::Currency { value, .. } => Some(*value),
+            _ => None,
+        },
     );
     if malformed_format {
         ctx.warn_detail(
@@ -1665,7 +1740,39 @@ fn section_style(
 /// pattern is default_format.custom_format_string (f3 → f18). [proto:
 /// TSKArchives.proto CustomFormatArchive/CustomFormatListArchive;
 /// fixture-verified: 07_Calendar "Day Only" → "d"]
-fn custom_pattern(ctx: &Ctx, f: &Msg) -> Option<String> {
+/// Pick the branch of a TSK.CustomFormatArchive that applies to `value`.
+/// conditions (f4) = { condition_type = 1, condition_value_dbl = 4,
+/// condition_format = 3 }; benmatselby's "Plus/Minus Integer" stores
+/// type 1 @ 0 -> "'-'#,###" and type 3 @ 0 -> "'+'#,###" over a "#,###"
+/// default, and Numbers' export prints +2 / -1 — so 1 is "<" and 3 is ">".
+/// Other condition types are left alone rather than guessed at. [inferred]
+fn custom_branch(cf: &Msg, value: Option<f64>) -> Option<String> {
+    let v = value?;
+    for cond in cf.msgs(4) {
+        let bound = cond
+            .f64v(4)
+            .or_else(|| cond.f32v(2).map(|f| f as f64))
+            .unwrap_or(0.0);
+        let hit = match cond.varint(1) {
+            Some(1) => v < bound,
+            Some(3) => v > bound,
+            _ => false,
+        };
+        if hit {
+            if let Some(p) = cond.msg(3).and_then(|f| f.string(18)).filter(|s| !s.is_empty()) {
+                return Some(p);
+            }
+        }
+    }
+    None
+}
+
+fn custom_pattern(ctx: &Ctx, f: &Msg, value: Option<f64>) -> Option<String> {
+    if let Some(cf) = f.msg(42) {
+        if let Some(p) = custom_branch(&cf, value) {
+            return Some(p);
+        }
+    }
     if let Some(s) = f
         .msg(42)
         .and_then(|cf| cf.msg(3))
@@ -1687,6 +1794,9 @@ fn custom_pattern(ctx: &Ctx, f: &Msg) -> Option<String> {
         let formats = list.msgs(2);
         for (i, u) in uuids.iter().enumerate() {
             if (u.varint(1), u.varint(2)) == (Some(key.0), Some(key.1)) {
+                if let Some(p) = formats.get(i).and_then(|cf| custom_branch(cf, value)) {
+                    return Some(p);
+                }
                 if let Some(s) = formats
                     .get(i)
                     .and_then(|cf| cf.msg(3))
@@ -1712,6 +1822,7 @@ fn pick_format(
     text: Option<i32>,
     format_table: &DataList,
     custom_format_table: &DataList,
+    value: Option<f64>,
 ) -> (Option<CellFormat>, bool) {
     let found = [
         (num, CellFormatKind::Number),
@@ -1797,9 +1908,14 @@ fn pick_format(
             .or_else(|| match ft {
                 // custom formats (270-274): pattern lives behind the inline
                 // CustomFormatArchive or the document custom-format list
-                Some(270..=274) => custom_pattern(ctx, &f),
+                Some(270..=274) => custom_pattern(ctx, &f, value),
                 _ => None,
-            });
+            })
+            // uses_plus_sign (f43): a number/percent format that prints "+2"
+            // for positives (benmatselby's burndown variance columns —
+            // Numbers' export shows +2 / +3 / -1). Another display-semantic
+            // marker on the closed kind. [proto TSKArchives.proto:227]
+            .or_else(|| f.boolean(43).unwrap_or(false).then(|| "sign-plus".to_string()));
         return (
             Some(CellFormat {
                 kind,
@@ -2041,6 +2157,7 @@ fn decode_cell_v4(
     format_table: &DataList,
     rich_text_table: &DataList,
     formula_table: &DataList,
+    cond_style_table: &DataList,
     cell_pool: &mut StylePool<TableCellStyle>,
 ) -> Option<(u32, u32, TableCell, Option<CellFormat>)> {
     if std::env::var("PNK_DEBUG").is_ok() {
@@ -2085,8 +2202,8 @@ fn decode_cell_v4(
     let cell_style_id = lead!(1);
     let text_style_id = lead!(7);
     let fmt_lead = lead!(2);
-    let _f10 = lead!(10);
-    let _f11 = lead!(11);
+    let cond_rule = lead!(10);
+    let _cond_extra = lead!(11);
     let formula_key = lead!(3);
     let string_key = lead!(4);
     let _ = lead_idx;
@@ -2112,6 +2229,27 @@ fn decode_cell_v4(
             Some(i32::from_le_bytes(buf.get(o..o + 4)?.try_into().ok()?))
         })
         .collect();
+    if std::env::var("PNK_DEBUG_SLOTS").is_ok() {
+        let fills: Vec<String> = u32s
+            .iter()
+            .map(|v| {
+                let f = style_table
+                    .entries
+                    .get(&(*v as i32))
+                    .and_then(|e| e.reference)
+                    .and_then(|cid| styles::resolve_cell_style(ctx, cid))
+                    .and_then(|s| s.fill.flatten());
+                match f {
+                    Some(crate::model::Fill::Solid { color }) => color,
+                    Some(_) => "other".into(),
+                    None => "-".into(),
+                }
+            })
+            .collect();
+        eprintln!(
+            "v4slot r{row}c{col} type={cell_type} flags1={flags1:#x} u32s={u32s:?} fills={fills:?}"
+        );
+    }
     if std::env::var("PNK_DEBUG_FMT").is_ok() {
         let kinds: Vec<String> = trailing_keys
             .iter()
@@ -2145,14 +2283,19 @@ fn decode_cell_v4(
     // "$140,353.01". The LEADING bit-2 key is not the display format — it is
     // currency (257) on the very cell Numbers prints as a bare 264 — so it
     // is only a fallback for cells with no trailing keys at all. [inferred]
+    // ... and the leading key is a CONDITIONAL-style key (see below), so it
+    // only stands in as a format for records that name no conditional set.
+    let lead_is_cond = fmt_lead.is_some_and(|k| cond_style_table.entries.contains_key(&k));
     let fmt_key = trailing_keys
         .iter()
         .rev()
         .copied()
         .find(|k| format_table.entries.contains_key(k))
-        .or_else(|| fmt_lead.filter(|k| format_table.entries.contains_key(k)))
+        .or_else(|| {
+            fmt_lead.filter(|k| !lead_is_cond && format_table.entries.contains_key(k))
+        })
         .or_else(|| trailing_keys.last().copied())
-        .or(fmt_lead);
+        .or_else(|| fmt_lead.filter(|_| !lead_is_cond));
 
     // v4 formula cells cache no computed value in the record — the key in the
     // FORMULA list is all there is (budget doc e138671a: type-8 cells; text
@@ -2297,6 +2440,28 @@ fn decode_cell_v4(
             }
         }
     }
+    if std::env::var("PNK_DEBUG_COND").is_ok() && fmt_lead.is_some_and(|k| cond_style_table.entries.contains_key(&k)) {
+        eprintln!(
+            "v4cond r{row}c{col} set={fmt_lead:?} rule={cond_rule:?} extra={_cond_extra:?} rules={:?}",
+            fmt_lead
+                .and_then(|k| cond_style_table.entries.get(&k))
+                .and_then(|e| e.reference)
+                .and_then(|r| ctx.loaded.msg(r))
+                .map(|m| m.msgs(2).len())
+        );
+    }
+    // Conditional highlight: the leading bit-2 key indexes the table's
+    // conditional-style table and bit 10 carries the 0-based rule that
+    // fired (its values are 0..2 against sets of 2-3 rules; bit 11 runs to
+    // 25 and is something else). Numbers' PDF of the cdrky budget paints
+    // the FIRE ONLY call counts green over a yellow stored fill — rule 1
+    // ("Green Fill") of set 38257 — and the 2015 Assessments row red.
+    if let Some(cond) = fmt_lead
+        .zip(cond_rule)
+        .and_then(|(set, rule)| conditional_style(ctx, cond_style_table, set, rule as u32))
+    {
+        style = Some(overlay_conditional(style, cond));
+    }
     let cell_style_index = style.and_then(|s| cell_pool.intern(crate::ctx::strip_cell_defaults(s)));
     if matches!(value, CellValue::Empty) && cell_style_index.is_none() && formula.is_none() {
         return None;
@@ -2334,6 +2499,10 @@ fn decode_cell_v4(
                                 u8::from(f.boolean(40).unwrap_or(false)),
                             )),
                             _ => None,
+                        })
+                        // uses_plus_sign (f43), as in the BNC path
+                        .or_else(|| {
+                            f.boolean(43).unwrap_or(false).then(|| "sign-plus".to_string())
                         }),
                 })
             })

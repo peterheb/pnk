@@ -222,6 +222,29 @@ function toFractionText(v: number, fs: string): string {
 }
 
 /**
+ * Numeric custom-format pattern ("#,###", "'+'#,###", "0.00 'kg'"): the
+ * digit run gives decimals and grouping, everything around it is a
+ * literal (single-quoted in Apple's patterns). Returns undefined when the
+ * pattern holds no digit token, so date/unknown patterns fall through.
+ * The pattern already encodes the sign for the branch the converter
+ * picked ("'-'#,###" for negatives), so the number is rendered ABSOLUTE
+ * when the pattern carries a literal sign.
+ */
+function formatCustomNumber(v: number, pattern: string): string | undefined {
+  const m = pattern.match(/[#0][#0,]*(\.[#0]+)?/);
+  if (!m) return undefined;
+  const token = m[0];
+  const decimals = m[1] ? m[1].length - 1 : 0;
+  const grouping = token.includes(",");
+  const lit = (s: string) => s.replace(/'([^']*)'/g, "$1");
+  const prefix = lit(pattern.slice(0, m.index));
+  const suffix = lit(pattern.slice((m.index ?? 0) + token.length));
+  const signed = /[-+]/.test(prefix) || /[-+]/.test(suffix);
+  const body = formatNumber(signed ? Math.abs(v) : v, decimals, true, grouping);
+  return `${prefix}${body}${suffix}`;
+}
+
+/**
  * ICU-ish date pattern renderer (TSK.FormatStructArchive date_time_format /
  * custom format strings such as "d", "M/d/yy", "d. MMMM yyyy"). UTC getters
  * only — cell dates are wall-clock values stored as ...T00:00:00Z.
@@ -307,6 +330,14 @@ function valueToText(cell: TableCell, format: CellFormat | undefined): string {
       }
       if (fs !== undefined && fs.startsWith("fraction")) {
         return toFractionText(n, fs);
+      }
+      // "sign-plus" (uses_plus_sign): Numbers prints +2 for positives
+      if (fs === "sign-plus" && n > 0) {
+        return `+${formatNumber(n, format?.decimals, format?.decimals !== undefined, format?.grouping)}`;
+      }
+      if (format?.kind === "custom" && fs !== undefined) {
+        const custom = formatCustomNumber(n, fs);
+        if (custom !== undefined) return custom;
       }
       // a number FORMAT with explicit decimals is the display contract:
       // render exactly what it says (no trailing-zero trim)
