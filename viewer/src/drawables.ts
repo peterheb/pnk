@@ -932,7 +932,10 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
   const targetTicks = g || 4;
   const rawStep = (vmax - vmin) / targetTicks;
   const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
-  const ladder = g ? [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10] : [1, 2, 2.5, 5, 10];
+  // Apple's ladder is finer than the classic 1/2/2.5/5: RIPE's waiting list
+  // lands on 3x10^2 and ENOG's TLD chart on 7.5 (0..30 in four steps over data
+  // that peaks at 28.1).
+  const ladder = g ? [1, 1.5, 2, 2.5, 3, 4, 5, 6, 7.5, 8, 10] : [1, 2, 2.5, 5, 10];
   const step = ladder.map((m) => m * mag).find((st) => (vmax - vmin) / st <= targetTicks + (g ? 1e-9 : 0.5)) ?? mag * 10;
   if (chart.valueAxisMin === undefined) vmin = Math.floor(vmin / step) * step;
   if (chart.valueAxisMax === undefined) vmax = g ? vmin + step * g : Math.ceil(vmax / step) * step;
@@ -996,7 +999,10 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
   // dns-oarc cache charts print 21 numeric labels where a per-character guess
   // showed 8, and RIPE's 343-day series still shows a dozen dates.
   const catSpan = (horizontal ? plotH : plotW) / Math.max(1, n);
-  const catW = horizontal ? base * 1.6 : Math.max(...chart.categories.map((c) => textWidth(catLabel(c), base, family))) + base * 0.15;
+  // a quarter-em of air: Apple lets adjacent category labels nearly touch
+  // (ENOG's ten TLDs fill their slots edge to edge) and only drops one when
+  // they would actually collide.
+  const catW = horizontal ? base * 1.6 : Math.max(...chart.categories.map((c) => textWidth(catLabel(c), base, family))) + base * 0.25;
   const labelEvery = Math.max(1, Math.ceil(catW / Math.max(0.001, catSpan)));
 
   const lineKinds = ["line", "area", "stacked-area", "scatter"];
