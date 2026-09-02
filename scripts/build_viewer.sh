@@ -9,7 +9,8 @@
 #   5. the static shell (index.html, styles.css) is copied to viewer/dist/
 #
 # Prerequisites: cargo, wasm-bindgen 0.2.127 on PATH; `npm install` run once
-# inside viewer/ (esbuild + playwright devDependencies).
+# inside viewer/ (esbuild + playwright devDependencies). Optional: binaryen
+# (wasm-opt) for the smallest module.
 #
 # Output layout (viewer/dist/): index.html  styles.css  main.js  wasm/*.wasm
 set -euo pipefail
@@ -23,13 +24,24 @@ if [ ! -x "$ESBUILD" ]; then
   exit 1
 fi
 
-echo "==> cargo build -p pnk2json-wasm (wasm32-unknown-unknown, release)"
-cargo build -p pnk2json-wasm --target wasm32-unknown-unknown --release
+echo "==> cargo build -p pnk2json-wasm (wasm32-unknown-unknown, profile wasm)"
+# [profile.wasm] in Cargo.toml: size-tuned (opt-level s, fat LTO, abort, strip)
+cargo build -p pnk2json-wasm --target wasm32-unknown-unknown --profile wasm
 
 echo "==> wasm-bindgen --target web -> viewer/dist/wasm/"
 mkdir -p viewer/dist/wasm viewer/src/wasm
-wasm-bindgen target/wasm32-unknown-unknown/release/pnk2json_wasm.wasm \
+wasm-bindgen target/wasm32-unknown-unknown/wasm/pnk2json_wasm.wasm \
   --target web --out-dir viewer/dist/wasm
+
+# binaryen's wasm-opt shaves a further ~16% (1.60 MB -> 1.34 MB); optional
+# so a machine without it still builds a working viewer.
+if command -v wasm-opt >/dev/null 2>&1; then
+  echo "==> wasm-opt -Oz"
+  wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int \
+    viewer/dist/wasm/pnk2json_wasm_bg.wasm -o viewer/dist/wasm/pnk2json_wasm_bg.wasm
+else
+  echo "    (wasm-opt not found — skipping; brew install binaryen for a ~16% smaller module)"
+fi
 
 echo "==> vendoring generated glue into viewer/src/wasm/"
 cp viewer/dist/wasm/pnk2json_wasm.js viewer/src/wasm/pnk2json_wasm.js

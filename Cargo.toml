@@ -1,3 +1,19 @@
 [workspace]
 resolver = "2"
 members = ["crates/iwadump", "crates/pnk2json", "crates/pnk2json-wasm"]
+
+# The browser module. Inherits release; fat LTO, one codegen unit, abort on
+# panic (no unwind tables) and strip (the 423 KB name section never shipped
+# on purpose) take pnk2json_wasm.wasm from 2.52 MB to 1.60 MB before
+# wasm-opt, and wasm-opt -Oz to 1.34 MB. opt-level "s" rather than "z":
+# z saves a further 120 KB but parses a 10 MB workbook 16% slower
+# (1.76 s -> 2.10 s), and every other fixture timed the same. The native
+# converter keeps the stock release profile — the conformance harness
+# times it.
+[profile.wasm]
+inherits = "release"
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
