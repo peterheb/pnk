@@ -19,6 +19,14 @@
   "styles": {
     "para": [
       {
+        "tabs": [
+          {
+            "positionPt": 451.0,
+            "alignment": "right"
+          }
+        ]
+      },
+      {
         "list": {
           "level": 0,
           "markerKind": "number",
@@ -165,7 +173,7 @@
         ]
       },
       {
-        "pStyle": 0,
+        "pStyle": 1,
         "items": [
           {
             "text": "One",
@@ -174,7 +182,7 @@
         ]
       },
       {
-        "pStyle": 1,
+        "pStyle": 2,
         "items": [
           {
             "text": "Two",
@@ -183,7 +191,7 @@
         ]
       },
       {
-        "pStyle": 1,
+        "pStyle": 2,
         "items": [
           {
             "text": "Three",
@@ -192,7 +200,7 @@
         ]
       },
       {
-        "pStyle": 2,
+        "pStyle": 3,
         "items": [
           {
             "text": "Bullet Level 1",
@@ -201,7 +209,7 @@
         ]
       },
       {
-        "pStyle": 3,
+        "pStyle": 4,
         "items": [
           {
             "text": "Bullet Level 2",
@@ -229,6 +237,7 @@
         {
           "paragraphs": [
             {
+              "pStyle": 0,
               "items": []
             }
           ]
@@ -236,6 +245,7 @@
         {
           "paragraphs": [
             {
+              "pStyle": 0,
               "items": []
             }
           ]
@@ -243,6 +253,7 @@
         {
           "paragraphs": [
             {
+              "pStyle": 0,
               "items": []
             }
           ]
@@ -252,6 +263,7 @@
         {
           "paragraphs": [
             {
+              "pStyle": 0,
               "items": []
             }
           ]
@@ -259,6 +271,7 @@
         {
           "paragraphs": [
             {
+              "pStyle": 0,
               "items": []
             }
           ]
@@ -266,6 +279,7 @@
         {
           "paragraphs": [
             {
+              "pStyle": 0,
               "items": []
             }
           ]
@@ -281,6 +295,7 @@
         {
           "paragraphs": [
             {
+              "pStyle": 0,
               "items": []
             }
           ]
@@ -288,6 +303,7 @@
         {
           "paragraphs": [
             {
+              "pStyle": 0,
               "items": []
             }
           ]
@@ -295,6 +311,7 @@
         {
           "paragraphs": [
             {
+              "pStyle": 0,
               "items": []
             }
           ]
@@ -304,6 +321,7 @@
         {
           "paragraphs": [
             {
+              "pStyle": 0,
               "items": []
             }
           ]
@@ -311,6 +329,7 @@
         {
           "paragraphs": [
             {
+              "pStyle": 0,
               "items": []
             }
           ]
@@ -318,6 +337,7 @@
         {
           "paragraphs": [
             {
+              "pStyle": 0,
               "items": []
             }
           ]
@@ -333,6 +353,7 @@
         {
           "paragraphs": [
             {
+              "pStyle": 0,
               "items": []
             }
           ]
@@ -340,6 +361,7 @@
         {
           "paragraphs": [
             {
+              "pStyle": 0,
               "items": []
             }
           ]
@@ -347,6 +369,7 @@
         {
           "paragraphs": [
             {
+              "pStyle": 0,
               "items": []
             }
           ]
@@ -356,6 +379,7 @@
         {
           "paragraphs": [
             {
+              "pStyle": 0,
               "items": []
             }
           ]
@@ -363,6 +387,7 @@
         {
           "paragraphs": [
             {
+              "pStyle": 0,
               "items": []
             }
           ]
@@ -370,6 +395,7 @@
         {
           "paragraphs": [
             {
+              "pStyle": 0,
               "items": []
             }
           ]

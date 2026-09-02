@@ -263,10 +263,16 @@ pub fn para_style_from(ctx: &mut Ctx, msgs: &[Msg]) -> ParaStyle {
             }
         }
     }
+    // tabs (25, null 24) → TSWP.TabsArchive { tabs = 1 } → TabArchive
+    // { position = 1, alignment = 2, leader = 3 }. The stops sit one level
+    // below the property: reading position off the TabsArchive itself
+    // dropped every stop in the corpus (b31db822's contents page stores
+    // right stops at 177/205pt on each entry).
     if let Some(m) = take(msgs, 25, Some(24)) {
         let tabs: Vec<TabStop> = m
             .msgs(25)
             .into_iter()
+            .flat_map(|archive| archive.msgs(1))
             .filter_map(|t| {
                 Some(TabStop {
                     position_pt: t.f32v(1)? as f64,
