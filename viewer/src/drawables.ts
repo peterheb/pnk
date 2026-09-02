@@ -507,6 +507,14 @@ function textLayer(d: Drawable & { text?: unknown; common?: DrawableCommon }, do
   // both fixes active would double-shrink — keep exactly one.)
   const inner = el("div", "drawable-text-inner");
   inner.appendChild(renderStyledText(d.text as never, doc, ctx));
+  // Keynote applies a paragraph's space-before only BETWEEN paragraphs
+  // (and space-after likewise): the Dyalog deck's 59pt bullets start
+  // 3.7pt under the box top in the export, then step 116pt apart.
+  const paras = inner.querySelector(".styled-text")?.children;
+  if (paras && paras.length) {
+    (paras[0] as HTMLElement).style.marginTop = "0";
+    (paras[paras.length - 1] as HTMLElement).style.marginBottom = "0";
+  }
   layer.appendChild(inner);
   return layer;
 }
