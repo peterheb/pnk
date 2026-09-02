@@ -198,7 +198,7 @@ fn header_styles(
             .and_then(|cid| styles::resolve_cell_style(ctx, cid))
             .unwrap_or_default();
         if let Some(tid) = t {
-            let text = crate::ctx::strip_char_defaults(styles::resolve_char_style(ctx, tid));
+            let text = strip_cell_text_defaults(styles::resolve_char_style(ctx, tid));
             let para = crate::ctx::strip_para_defaults(styles::resolve_para_style(ctx, tid));
             if text != CharStyle::default() && s.text.is_none() {
                 s.text = Some(text);
@@ -484,6 +484,25 @@ fn sidecar_borders(ctx: &mut Ctx, m: &Msg) -> HashMap<(u32, u32), CellBorders> {
             }
         }
     }
+    out
+}
+
+/// Strip defaults from a per-cell TEXT style — but keep the face selectors.
+///
+/// A cell's text style is an OVERRIDE on top of the table's SECTION text
+/// style, so the document-wide "12pt and not-bold are the defaults, omit
+/// them" rule erases real overrides here: maison-martos' body cells set
+/// font_size 12 over a 10pt bodyTextStyle and bold=false over a bold one
+/// (records 5558/5559: char_properties { font_size = 12.0 }, parent 3506).
+/// Stripped, every body cell rendered 10pt bold where Numbers' own PDF
+/// prints HelveticaNeue 12. Size and bold pick the face and must survive;
+/// the rest (italic/underline/caps/baseline "none") are inert here and
+/// stay stripped so the pooled styles do not grow a false key each.
+fn strip_cell_text_defaults(s: CharStyle) -> CharStyle {
+    let (size, bold) = (s.font_size_pt, s.bold);
+    let mut out = crate::ctx::strip_char_defaults(s);
+    out.font_size_pt = size;
+    out.bold = bold;
     out
 }
 
@@ -1492,7 +1511,7 @@ fn decode_cell(
         // The per-cell TEXT style carries char props AND paragraph props —
         // alignment lives in the latter (lafs title centers via the text
         // style). A text style with no cell style still counts.
-        let text = crate::ctx::strip_char_defaults(styles::resolve_char_style(ctx, tref));
+        let text = strip_cell_text_defaults(styles::resolve_char_style(ctx, tref));
         let para = crate::ctx::strip_para_defaults(styles::resolve_para_style(ctx, tref));
         if text != CharStyle::default() || para != ParaStyle::default() {
             let s = style.get_or_insert_with(TableCellStyle::default);
@@ -1949,7 +1968,7 @@ fn decode_cell_v3(
         .and_then(|tid| style_table.entries.get(&tid))
         .and_then(|e| e.reference)
     {
-        let text = crate::ctx::strip_char_defaults(styles::resolve_char_style(ctx, tref));
+        let text = strip_cell_text_defaults(styles::resolve_char_style(ctx, tref));
         let para = crate::ctx::strip_para_defaults(styles::resolve_para_style(ctx, tref));
         if text != CharStyle::default() || para != ParaStyle::default() {
             let s = style.get_or_insert_with(TableCellStyle::default);
@@ -2238,7 +2257,7 @@ fn decode_cell_v4(
         // The per-cell TEXT style carries char props AND paragraph props —
         // alignment lives in the latter (lafs title centers via the text
         // style). A text style with no cell style still counts.
-        let text = crate::ctx::strip_char_defaults(styles::resolve_char_style(ctx, tref));
+        let text = strip_cell_text_defaults(styles::resolve_char_style(ctx, tref));
         let para = crate::ctx::strip_para_defaults(styles::resolve_para_style(ctx, tref));
         if text != CharStyle::default() || para != ParaStyle::default() {
             let s = style.get_or_insert_with(TableCellStyle::default);
