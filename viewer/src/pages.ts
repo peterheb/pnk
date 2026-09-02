@@ -124,11 +124,20 @@ function anchorFloat(anchors: Anchor[], hdoc: HydratedDoc, ctx: ViewerCtx, conte
       width = side === "left" ? ux1 : contentW - ux0;
     }
     width = Math.max(0, Math.min(contentW, width));
+    // A wrap column too narrow to hold a line is not used: Apple puts the
+    // text BELOW the object instead. 6d4f8527 page 1 leaves a 93pt gutter
+    // beside a 310pt image in a 482pt column and flows nothing into it —
+    // every following paragraph starts under the image. A quarter of the
+    // text column is the cut-off used here. [inferred, one fixture]
+    if (contentW - width < contentW * 0.25) width = contentW;
     insetTop = Math.max(0, uy0);
     height = Math.max(0, uy1);
   }
   fl.style.cssFloat = side;
   fl.style.width = `${width.toFixed(2)}px`;
+  // Geometry is relative to the ANCHOR PARAGRAPH's top; the float sits after
+  // that paragraph and fixAnchorDrift pins its border box back up there.
+  fl.dataset.objTop = insetTop.toFixed(2);
   fl.style.height = `${height.toFixed(2)}px`;
   if (height > 0 && insetTop > 0) fl.style.shapeOutside = `inset(${insetTop.toFixed(2)}px 0 0 0)`;
   const floatLeft = side === "left" ? 0 : contentW - width;
@@ -141,15 +150,44 @@ function anchorFloat(anchors: Anchor[], hdoc: HydratedDoc, ctx: ViewerCtx, conte
   return fl;
 }
 
-/** Re-pin every anchor float to its paragraph's top (see paginatedBody). */
+/**
+ * Post-layout pass over the anchor floats: re-pin each to its paragraph's top
+ * and exempt that paragraph from its own object's wrap.
+ *
+ * Apple does not wrap the anchor paragraph around its own "Move with Text"
+ * object. 6d4f8527 (Ljusets brytning) proves it twice on page 1: the
+ * paragraph "Rita en ljusstråle och placera en parallelltrapets…" runs the
+ * full column width in Apple's export even though its object starts 17.3pt
+ * down — inside the paragraph's own two lines — and the numbered item above
+ * it does the same with a 41.3pt offset. We squeezed both into an 80pt
+ * gutter. [inferred; 38 of 323 corpus .pages docs carry a text-bearing
+ * wrapping anchor]
+ *
+ * The float therefore FOLLOWS its paragraph: a CSS float never reflows what
+ * precedes it. Its border box is pinned back up to the paragraph's top with a
+ * negative margin so the drawables paint at their anchor-relative offsets,
+ * which leaves the MARGIN box at the paragraph's bottom — and since
+ * shape-outside insets the margin box and is clipped to it, the exclusion can
+ * begin no higher than the paragraph's end. The exemption falls out of that.
+ */
 function fixAnchorDrift(root: HTMLElement): void {
   root.querySelectorAll<HTMLElement>(".pages-anchor").forEach((fl) => {
-    const p = fl.nextElementSibling as HTMLElement | null;
+    const p = fl.previousElementSibling as HTMLElement | null;
     if (!p) return;
+    const objTop = parseFloat(fl.dataset.objTop ?? "0") || 0;
     const drift = fl.offsetTop - p.offsetTop;
-    if (Math.abs(drift) < 0.5) return;
-    const current = parseFloat(fl.style.marginTop || "0") || 0;
-    fl.style.marginTop = `${(current - drift).toFixed(2)}px`;
+    if (Math.abs(drift) >= 0.5) {
+      // Pin the BORDER box back to the paragraph's top so the drawables paint
+      // at their anchor-relative offsets (and so a later float does not stack
+      // below an earlier one). The pin is a negative margin, which leaves the
+      // MARGIN box at the paragraph's bottom — and shape-outside insets the
+      // margin box and is clipped to it, so the exclusion can never start
+      // above the paragraph's end. That clipping IS the exemption.
+      const current = parseFloat(fl.style.marginTop || "0") || 0;
+      fl.style.marginTop = `${(current - drift).toFixed(2)}px`;
+    }
+    const inset = Math.max(0, objTop - p.offsetHeight);
+    fl.style.shapeOutside = inset > 0 ? `inset(${inset.toFixed(2)}px 0 0 0)` : "";
   });
 }
 
@@ -550,11 +588,13 @@ function paginatedBody(
       !!p.pageBreakBefore || !!paraStyleOf(hdoc, p.pStyle)?.pageBreakBefore || !!fullBleed[i - 1],
     );
   });
-  /** A paragraph into a container, its anchor float first. */
+  /** A paragraph into a container, its anchor float AFTER it: a CSS float only
+   *  shortens the line boxes of content that FOLLOWS it, which is exactly the
+   *  exemption Apple gives the anchor paragraph (see fixAnchorDrift). */
   const place = (container: HTMLElement, k: number, el: HTMLElement) => {
+    container.appendChild(el);
     const fl = anchorEls.get(k);
     if (fl) container.appendChild(fl);
-    container.appendChild(el);
   };
 
   // per-paragraph column spec from the sections' body ranges; a section
