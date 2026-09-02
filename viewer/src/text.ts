@@ -580,7 +580,10 @@ export function layoutTabs(root: HTMLElement): void {
       range.setStartAfter(gap);
       const next = gaps[gi + 1];
       if (next) range.setEndBefore(next);
-      const segW = range.getBoundingClientRect().width / scale;
+      // width of the segment's LAST line: a segment that wraps reports a
+      // bounding box spanning both lines, which would collapse a right or
+      // center stop; Pages aligns the wrapped text's final line to the stop
+      const segW = lastLineWidth(range) / scale;
       const stop = stops.find((st) => st.pos > x + 0.5);
       const pos = stop ? stop.pos : (Math.floor(x / dflt) + 1) * dflt;
       let width: number;
@@ -600,6 +603,15 @@ export function layoutTabs(root: HTMLElement): void {
       if (stop?.leader) gap.dataset.leader = stop.leader;
     });
   }
+}
+
+/** Width of the last line box a range covers (all rects sharing its top). */
+function lastLineWidth(range: Range): number {
+  const rects = Array.from(range.getClientRects()).filter((r) => r.width > 0 || r.height > 0);
+  if (rects.length === 0) return range.getBoundingClientRect().width;
+  const last = rects[rects.length - 1];
+  const onLine = rects.filter((r) => Math.abs(r.top - last.top) < r.height / 2 + 0.5);
+  return Math.max(...onLine.map((r) => r.right)) - Math.min(...onLine.map((r) => r.left));
 }
 
 /** Width from the segment start to its first decimal separator. */
