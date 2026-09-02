@@ -691,6 +691,13 @@ export interface ChartModel {
    * style 23/29/152/153, inherited along the TSS parent chain).
    */
   textSizes?: { titlePt?: number; legendPt?: number; axisPt?: number; labelPt?: number; fontName?: string };
+  /**
+   * Axis furniture visibility; absent = Keynote's defaults (value gridlines
+   * and labels, category baseline and labels). [proto: Generated
+   * ChartAxisStyleArchive showaxis 24/25, showmajorgridlines 27/28;
+   * ChartAxisNonStyleArchive showlabels 9/10/11]
+   */
+  axes?: { valueGridlines: boolean; categoryGridlines: boolean; valueAxisLine: boolean; categoryAxisLine: boolean; valueLabels: boolean; categoryLabels: boolean };
 }
 
 export interface ChartNumberFormat {

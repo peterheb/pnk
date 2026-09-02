@@ -1388,6 +1388,23 @@ pub struct ChartModel {
     /// chain). RIPE 85: 32pt axis labels, 38pt legend, 50pt ring labels.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text_sizes: Option<ChartTextSizes>,
+    /// Axis furniture visibility; absent = Keynote's defaults (value
+    /// gridlines + labels, category baseline + labels). [proto: Generated
+    /// ChartAxisStyleArchive showaxis 24/25, showmajorgridlines 27/28;
+    /// ChartAxisNonStyleArchive showlabels 9/10/11]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub axes: Option<ChartAxes>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ChartAxes {
+    pub value_gridlines: bool,
+    pub category_gridlines: bool,
+    pub value_axis_line: bool,
+    pub category_axis_line: bool,
+    pub value_labels: bool,
+    pub category_labels: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
