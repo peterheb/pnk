@@ -170,6 +170,21 @@ function renderableImageFill(
   return { url, objectFit };
 }
 
+/** Relative luminance below 0.35 for a solid fill, or for the average of a
+ *  gradient's stops. */
+function fillIsDark(fill: Fill): boolean {
+  const lum = (hex: string): number => {
+    const v = parseInt(hex.replace("#", "").slice(0, 6), 16);
+    const c = [(v >> 16) & 255, (v >> 8) & 255, v & 255].map((x) => x / 255);
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  };
+  if (fill.type === "solid") return lum(fill.color) < 0.35;
+  if (fill.type === "gradient" && fill.gradient.stops.length) {
+    return fill.gradient.stops.reduce((a, st) => a + lum(st.color), 0) / fill.gradient.stops.length < 0.35;
+  }
+  return false;
+}
+
 /**
  * Paint the stage background (the fill arrives master-resolved from the
  * converter, model-review §3b). A CSS solid/gradient fill paints directly;
@@ -198,6 +213,9 @@ function applyStageBackground(
   const css = slideFill && slideFill.type !== "image" ? fillToCss(slideFill) : undefined;
   if (css) {
     inner.style.background = css;
+    // Chart axes, labels and legends take currentColor: a dark backdrop
+    // (RIPE's navy gradient) needs them light like Keynote draws them.
+    if (fillIsDark(slideFill!)) inner.style.color = "#f2f2f4";
     return;
   }
   if (slideFill?.type === "image") {
@@ -371,7 +389,11 @@ export function renderKeynote(
     applyTextFit(stage);
   };
 
-  doc.slides.forEach((slide, i) => {
+  // Skipped slides are what Keynote's player and its PDF export leave out
+  // (greenberg.science: 28 slides, 25 exported pages); the deck shows the
+  // same 25, numbered as stored so captions still match the file.
+  const shown = doc.slides.map((slide, i) => ({ slide, i })).filter(({ slide }) => !slide.skipped);
+  shown.forEach(({ i }) => {
     const stage = document.createElement("div");
     stage.className = "slide-stage";
     stage.dataset.slideIndex = String(i);
@@ -380,7 +402,7 @@ export function renderKeynote(
     ph.style.aspectRatio = `${doc.slideSize.width} / ${doc.slideSize.height}`;
     stage.appendChild(ph);
     scroll.appendChild(stage);
-    stages.push(stage);
+    stages[i] = stage;
   });
 
   const io = new IntersectionObserver(
@@ -402,14 +424,14 @@ export function renderKeynote(
     }
   };
 
-  doc.slides.forEach((slide, i) => {
+  shown.forEach(({ slide, i }) => {
     const item = document.createElement("div");
     item.className = "slide-list-item";
     item.dataset.slideIndex = String(i);
     item.appendChild(buildCanvas(slide, doc, hdoc, ctx, THUMB_WIDTH, i + 1));
     const label = document.createElement("span");
     label.className = "label";
-    label.textContent = `${i + 1}${slide.name ? ` · ${slide.name}` : ""}${slide.skipped ? " (skipped)" : ""}`;
+    label.textContent = `${i + 1}${slide.name ? ` · ${slide.name}` : ""}`;
     item.appendChild(label);
     item.addEventListener("click", () => {
       buildStage(i);
@@ -422,7 +444,7 @@ export function renderKeynote(
   view.appendChild(list);
   view.appendChild(scroll);
   mount.appendChild(view);
-  setActive(doc.slides.findIndex((s) => !s.skipped) < 0 ? 0 : doc.slides.findIndex((s) => !s.skipped));
+  setActive(shown[0]?.i ?? 0);
   // Thumbnails were built detached; measure their shrink boxes now that the
   // whole view is attached.
   applyTextFit(list);

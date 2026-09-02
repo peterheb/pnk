@@ -604,17 +604,41 @@ export function applyTextFit(root: HTMLElement): void {
     // Width counts too: an unbreakable word wider than the box (b31db822's
     // DRAFT watermark, 247pt Trebuchet in a 412pt box — Pages shrinks it to
     // 141pt) overflows sideways, which a height-only check never sees.
+    // Measured as the widest LINE from the text nodes' client rects, not
+    // scrollWidth: centred text that overflows spills both ways and
+    // scrollWidth reports box + twice the spill (greenberg's 400pt
+    // "powerful" shrank to 0.7 where Keynote draws it at full size).
     const boxW = layer.clientWidth;
+    const widest = widestLine(inner);
+    const sW = boxW > 0 && widest > boxW + 0.5 ? boxW / widest : 1;
+    const layoutAt = (scale: number) => {
+      inner.style.width = `${(100 / scale).toFixed(3)}%`;
+      inner.style.transform = `scale(${scale.toFixed(4)})`;
+      inner.style.transformOrigin = origin;
+    };
+    const fits = (scale: number) => inner.offsetHeight * scale <= boxH + 0.5 && scale <= sW + 1e-6;
     for (let i = 0; i < 3; i++) {
       const contentH = inner.offsetHeight;
-      const contentW = inner.scrollWidth;
-      if (contentH * s <= boxH + 0.5 && (boxW <= 0 || contentW * s <= boxW + 0.5)) break;
-      let need = Math.min(s, boxH / contentH);
-      if (boxW > 0 && contentW > 0) need = Math.min(need, boxW / contentW);
+      if (fits(s)) break;
+      const need = Math.min(s, boxH / contentH, sW);
       s = Math.max(need, minScale);
-      inner.style.width = `${(100 / s).toFixed(3)}%`;
-      inner.style.transform = `scale(${s.toFixed(4)})`;
-      inner.style.transformOrigin = origin;
+      layoutAt(s);
+    }
+    // Wrapping is discrete: a line a few percent wider than the box (Chrome
+    // sets Helvetica Neue Medium ~2.5% wider than Keynote — greenberg's
+    // 228pt "i'm interested in") wraps, the block doubles in height and the
+    // first pass lands at 0.7. Laid out a little wider it does not wrap at
+    // all, so bisect back up toward 1 for the largest scale that still fits.
+    if (s < 1 && s > minScale) {
+      let lo = s;
+      let hi = Math.min(1, sW);
+      for (let i = 0; i < 6 && hi - lo > 0.01; i++) {
+        const mid = (lo + hi) / 2;
+        layoutAt(mid);
+        if (fits(mid)) lo = mid; else hi = mid;
+      }
+      s = lo;
+      layoutAt(s);
     }
   }
 }
@@ -637,15 +661,21 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
   const NS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(NS, "svg") as SVGSVGElement;
   svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  svg.style.overflow = "visible"; // slice labels sit outside the rim
   svg.setAttribute("font-family", '"Helvetica Neue", Helvetica, Arial, sans-serif');
   const colors = chart.seriesColors ?? ["#4a90d9", "#e0762e", "#7bb662", "#b0578d", "#5b6abf"];
+  // Furniture scales with the chart (Keynote's 1920-wide slides set 24pt
+  // legends where a 160pt Numbers chart sets 9pt) and takes currentColor,
+  // so a dark slide backdrop gets light labels.
+  const base = Math.max(9, Math.min(30, Math.min(w, h) / 22));
   const text = (x: number, y: number, str: string, opts: { size?: number; anchor?: string; weight?: string; fill?: string; rotate?: number } = {}) => {
     const t = document.createElementNS(NS, "text");
     t.setAttribute("x", x.toFixed(1));
     t.setAttribute("y", y.toFixed(1));
-    t.setAttribute("font-size", String(opts.size ?? 9));
+    t.setAttribute("font-size", String(opts.size ?? base));
     t.setAttribute("text-anchor", opts.anchor ?? "middle");
-    t.setAttribute("fill", opts.fill ?? "#3c3c43");
+    t.setAttribute("fill", opts.fill ?? "currentColor");
+    if (!opts.fill) t.setAttribute("opacity", "0.85");
     if (opts.weight) t.setAttribute("font-weight", opts.weight);
     if (opts.rotate) t.setAttribute("transform", `rotate(${opts.rotate} ${x.toFixed(1)} ${y.toFixed(1)})`);
     t.textContent = str;
@@ -665,38 +695,57 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
   // centred under the plot. Fixture-verified on benmatselby's burndown deck.
   const pieLike = chart.type === "pie" || chart.type === "donut";
   const names = chart.series.map((s, i) => s.name ?? `Series ${i + 1}`);
-  const showLegend = chart.legendVisible !== false && (chart.series.length > 1 || pieLike || chart.series[0]?.name !== undefined);
+  const pieBySeries = pieLike && chart.categories.length === 1 && chart.series.length > 1;
+  const showLegend = chart.legendVisible === true || (chart.legendVisible !== false && !pieBySeries && (chart.series.length > 1 || pieLike || chart.series[0]?.name !== undefined));
   let top = 6;
   if (chart.title) {
-    text(w / 2, top + 10, chart.title, { size: 11, weight: "600", fill: "#1d1d1f" });
-    top += 20;
+    text(w / 2, top + base * 1.1, chart.title, { size: base * 1.25, weight: "600" });
+    top += base * 2.1;
   }
   let bottom = h - 6;
   if (showLegend) {
-    const items = pieLike ? chart.categories : names;
-    const itemW = Math.min(110, Math.max(50, (w - 20) / Math.max(1, items.length)));
-    const rowW = itemW * items.length;
-    const y = bottom - 4;
+    const items = pieLike ? (pieBySeries ? names : chart.categories) : names;
+    const glyph = base * 0.55;
+    const widths = items.map((name) => name.length * glyph + base * 2.2);
+    const rowW = Math.min(w - 10, widths.reduce((a, b) => a + b, 0));
+    const shrink = rowW / widths.reduce((a, b) => a + b, 0);
+    const y = bottom - base * 0.4;
+    let x = w / 2 - rowW / 2;
     items.forEach((name, i) => {
-      const x = w / 2 - rowW / 2 + i * itemW;
+      const itemW = widths[i] * shrink;
       const sw = document.createElementNS(NS, "rect");
-      sw.setAttribute("x", (x + 2).toFixed(1)); sw.setAttribute("y", (y - 7).toFixed(1));
-      sw.setAttribute("width", "8"); sw.setAttribute("height", "8"); sw.setAttribute("rx", "1.5");
+      sw.setAttribute("x", (x + 2).toFixed(1)); sw.setAttribute("y", (y - base * 0.8).toFixed(1));
+      sw.setAttribute("width", (base * 0.9).toFixed(1)); sw.setAttribute("height", (base * 0.9).toFixed(1)); sw.setAttribute("rx", "1.5");
       sw.setAttribute("fill", colors[i % colors.length]);
       svg.appendChild(sw);
-      const label = text(x + 14, y, name, { anchor: "start", size: 8.5 });
-      label.setAttribute("textLength", "");
-      if (name.length * 4.8 > itemW - 16) label.textContent = name.slice(0, Math.max(3, Math.floor((itemW - 16) / 4.8) - 1)) + "…";
+      const label = text(x + base * 1.4, y, name, { anchor: "start", size: base * 0.95 });
+      const maxChars = Math.floor((itemW - base * 1.6) / glyph);
+      if (name.length > maxChars) label.textContent = name.slice(0, Math.max(3, maxChars - 1)) + "…";
+      x += itemW;
     });
-    bottom -= 18;
+    bottom -= base * 2;
   }
   if (pieLike) {
-    // one series, wedges by category
-    const vals = chart.series[0].values.map((v) => (typeof v === "number" && v > 0 ? v : 0));
+    // Wedges: one series across the categories, or — Keynote's usual pie
+    // layout, one row with a column per slice — one value per series, the
+    // series names being the slice labels (RIPE 85: "Allocations 264 /
+    // PI assignments 162" is a "Region 1" row with two columns).
+    const bySeries = chart.categories.length === 1 && chart.series.length > 1;
+    const vals = bySeries
+      ? chart.series.map((s) => (typeof s.values[0] === "number" && s.values[0] > 0 ? s.values[0] : 0))
+      : chart.series[0].values.map((v) => (typeof v === "number" && v > 0 ? v : 0));
+    const labels = bySeries ? names : chart.categories;
     const total = vals.reduce((a, b) => a + b, 0) || 1;
-    const cx = w / 2, cy = (top + bottom) / 2, r = Math.min(w, bottom - top) / 2 - 6;
+    const cx = w / 2, cy = (top + bottom) / 2, r = Math.min(w, bottom - top) / 2 - base * 2.5;
     let a0 = -Math.PI / 2;
     vals.forEach((v, i) => {
+      // slice label outside the rim like Keynote's default "name / value"
+      if (v / total > 0.03) {
+        const mid = a0 + (v / total) * Math.PI;
+        const lx = cx + (r + base * 0.8) * Math.cos(mid), ly = cy + (r + base * 0.8) * Math.sin(mid);
+        const anchor = Math.cos(mid) < -0.2 ? "end" : Math.cos(mid) > 0.2 ? "start" : "middle";
+        text(lx, ly, `${labels[i] ?? ""} ${v.toLocaleString("en-US")}`.trim(), { anchor, size: base * 0.9 });
+      }
       const a1 = a0 + (v / total) * Math.PI * 2;
       const p = document.createElementNS(NS, "path");
       const large = a1 - a0 > Math.PI ? 1 : 0;
@@ -707,21 +756,29 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
       svg.appendChild(p);
       a0 = a1;
     });
-    if (chart.type === "donut") {
+    // a hole cut with a mask (not a painted disc) keeps the slide's
+    // background visible through the ring
+    const holeFrac = chart.innerRadius ?? (chart.type === "donut" ? 0.5 : 0);
+    if (holeFrac > 0) {
+      const defs = document.createElementNS(NS, "defs");
+      const mask = document.createElementNS(NS, "mask");
+      const id = `ring-${Math.random().toString(36).slice(2, 8)}`;
+      mask.setAttribute("id", id);
+      const full = document.createElementNS(NS, "rect");
+      full.setAttribute("x", "0"); full.setAttribute("y", "0"); full.setAttribute("width", String(w)); full.setAttribute("height", String(h)); full.setAttribute("fill", "#fff");
       const hole = document.createElementNS(NS, "circle");
-      hole.setAttribute("cx", String(cx)); hole.setAttribute("cy", String(cy)); hole.setAttribute("r", (r * 0.5).toFixed(1));
-      hole.setAttribute("fill", "#fff");
-      svg.appendChild(hole);
+      hole.setAttribute("cx", String(cx)); hole.setAttribute("cy", String(cy)); hole.setAttribute("r", (r * holeFrac).toFixed(1)); hole.setAttribute("fill", "#000");
+      mask.appendChild(full); mask.appendChild(hole); defs.appendChild(mask); svg.insertBefore(defs, svg.firstChild);
+      for (const el of Array.from(svg.querySelectorAll("path"))) el.setAttribute("mask", `url(#${id})`);
     }
     return svg;
   }
 
   const horizontal = chart.type === "bar" || chart.type === "stacked-bar";
   const stacked = chart.type.startsWith("stacked");
-  if (chart.valueAxisTitle) {
-    if (horizontal) bottom -= 14; else { /* rotated at the left */ }
-  }
-  if (chart.categoryAxisTitle) bottom -= 14;
+  const n = chart.categories.length;
+  if (chart.valueAxisTitle && horizontal) bottom -= base * 1.5;
+  if (chart.categoryAxisTitle) bottom -= base * 1.5;
   // value range + nice ticks
   const allVals: number[] = [];
   if (stacked) {
@@ -747,42 +804,61 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
   const ticks: number[] = [];
   for (let v = vmin; v <= vmax + step / 1000; v += step) ticks.push(Math.round(v * 1e6) / 1e6);
   const fmtTick = (v: number) => (Math.abs(v) >= 1000 ? v.toLocaleString("en-US") : String(v));
-  const tickLabelW = Math.max(...ticks.map((t) => fmtTick(t).length)) * 5.2 + 8;
-  const left = horizontal ? Math.min(w * 0.3, Math.max(...chart.categories.map((c) => c.length)) * 5 + 10) : tickLabelW + (chart.valueAxisTitle ? 14 : 0);
-  const right = w - 8;
-  const plotTop = top + 4;
-  const plotBottom = bottom - 14; // category labels
+  const tickLabelW = Math.max(...ticks.map((t) => fmtTick(t).length)) * base * 0.58 + base;
+  const left = horizontal ? Math.min(w * 0.3, Math.max(...chart.categories.map((c) => c.length)) * base * 0.55 + base) : tickLabelW + (chart.valueAxisTitle ? base * 1.5 : 0);
+  const right = w - base;
+  const plotTop = top + base * 0.5;
+  const plotBottom = bottom - base * 1.5; // category labels
   const plotW = right - left, plotH = plotBottom - plotTop;
   if (plotW <= 10 || plotH <= 10) return svg;
   const vy = (v: number) => plotBottom - ((v - vmin) / (vmax - vmin)) * plotH;
   const vx = (v: number) => left + ((v - vmin) / (vmax - vmin)) * plotW;
 
   // gridlines + value labels
+  const gridColor = "currentColor";
+  const gridLine = (x1: number, y1: number, x2: number, y2: number, strong: boolean) => {
+    const l = document.createElementNS(NS, "line");
+    l.setAttribute("x1", x1.toFixed(1)); l.setAttribute("y1", y1.toFixed(1));
+    l.setAttribute("x2", x2.toFixed(1)); l.setAttribute("y2", y2.toFixed(1));
+    l.setAttribute("stroke", gridColor); l.setAttribute("stroke-width", "1");
+    l.setAttribute("opacity", strong ? "0.6" : "0.18");
+    svg.appendChild(l);
+  };
   for (const t of ticks) {
     if (horizontal) {
-      line(vx(t), plotTop, vx(t), plotBottom, "#e4e4e8");
-      text(vx(t), plotBottom + 11, fmtTick(t));
+      gridLine(vx(t), plotTop, vx(t), plotBottom, false);
+      text(vx(t), plotBottom + base * 1.2, fmtTick(t));
     } else {
-      line(left, vy(t), right, vy(t), "#e4e4e8");
-      text(left - 4, vy(t) + 3, fmtTick(t), { anchor: "end" });
+      gridLine(left, vy(t), right, vy(t), false);
+      text(left - base * 0.4, vy(t) + base * 0.35, fmtTick(t), { anchor: "end" });
     }
   }
   // axes
-  if (horizontal) line(left, plotTop, left, plotBottom, "#9a9aa0");
-  else line(left, vy(Math.max(vmin, Math.min(0, vmax))), right, vy(Math.max(vmin, Math.min(0, vmax))), "#9a9aa0");
+  if (horizontal) gridLine(left, plotTop, left, plotBottom, true);
+  else gridLine(left, vy(Math.max(vmin, Math.min(0, vmax))), right, vy(Math.max(vmin, Math.min(0, vmax))), true);
   if (chart.valueAxisTitle) {
-    if (horizontal) text((left + right) / 2, bottom - 2, chart.valueAxisTitle, { size: 9 });
-    else text(10, (plotTop + plotBottom) / 2, chart.valueAxisTitle, { size: 9, rotate: -90 });
+    if (horizontal) text((left + right) / 2, bottom - 2, chart.valueAxisTitle);
+    else text(base, (plotTop + plotBottom) / 2, chart.valueAxisTitle, { rotate: -90 });
   }
-  if (chart.categoryAxisTitle) text(horizontal ? 10 : (left + right) / 2, horizontal ? (plotTop + plotBottom) / 2 : h - (showLegend ? 24 : 6), chart.categoryAxisTitle, { size: 9, rotate: horizontal ? -90 : 0 });
+  if (chart.categoryAxisTitle) text(horizontal ? base : (left + right) / 2, horizontal ? (plotTop + plotBottom) / 2 : h - (showLegend ? base * 2.6 : base * 0.6), chart.categoryAxisTitle, { rotate: horizontal ? -90 : 0 });
+  // category labels: at most ~one per 5 glyph widths of plot; a 343-day
+  // series (RIPE's waiting list) shows a dozen dates, not all of them.
+  // Date categories (ISO strings from date cells) read as "Jun 2022" like
+  // Keynote's default date axis format.
+  const labelEvery = Math.max(1, Math.ceil(n * (base * 5) / Math.max(1, horizontal ? plotH : plotW)));
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const catLabel = (c: string): string => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(c);
+    return m ? `${MONTHS[Math.max(0, Math.min(11, +m[2] - 1))]} ${m[1]}` : c;
+  };
 
-  const n = chart.categories.length;
   const lineKinds = ["line", "area", "stacked-area", "scatter"];
   if (lineKinds.includes(chart.type)) {
     // points spread edge to edge like Apple's line charts (first category
     // at the axis origin, last at the right edge)
     const px = (i: number) => (n === 1 ? left + plotW / 2 : left + (i / (n - 1)) * plotW);
-    chart.categories.forEach((c, i) => text(px(i), plotBottom + 11, c));
+    chart.categories.forEach((c, i) => { if (i % labelEvery === 0) text(px(i), plotBottom + base * 1.2, catLabel(c)); });
+    const markers = n <= 40; // Keynote drops point markers on dense series
     const running: number[] = new Array(n).fill(0);
     chart.series.forEach((s, si) => {
       const color = colors[si % colors.length];
@@ -806,14 +882,14 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
         pl.setAttribute("points", pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" "));
         pl.setAttribute("fill", "none");
         pl.setAttribute("stroke", color);
-        pl.setAttribute("stroke-width", "2");
+        pl.setAttribute("stroke-width", (base * 0.22).toFixed(1));
         pl.setAttribute("stroke-linejoin", "round");
         svg.appendChild(pl);
       }
-      for (const [x, y] of pts) {
+      if (markers) for (const [x, y] of pts) {
         const dot = document.createElementNS(NS, "circle");
-        dot.setAttribute("cx", x.toFixed(1)); dot.setAttribute("cy", y.toFixed(1)); dot.setAttribute("r", "2.5");
-        dot.setAttribute("fill", "#fff"); dot.setAttribute("stroke", color); dot.setAttribute("stroke-width", "1.5");
+        dot.setAttribute("cx", x.toFixed(1)); dot.setAttribute("cy", y.toFixed(1)); dot.setAttribute("r", (base * 0.28).toFixed(1));
+        dot.setAttribute("fill", "#fff"); dot.setAttribute("stroke", color); dot.setAttribute("stroke-width", (base * 0.17).toFixed(1));
         svg.appendChild(dot);
       }
     });
@@ -824,8 +900,9 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
   const groupInner = groupSpan * 0.7;
   const barW = stacked ? groupInner : groupInner / chart.series.length;
   chart.categories.forEach((c, i) => {
-    if (horizontal) text(left - 4, plotTop + (i + 0.5) * groupSpan + 3, c, { anchor: "end" });
-    else text(left + (i + 0.5) * groupSpan, plotBottom + 11, c);
+    if (i % labelEvery !== 0) return;
+    if (horizontal) text(left - base * 0.4, plotTop + (i + 0.5) * groupSpan + base * 0.35, catLabel(c), { anchor: "end" });
+    else text(left + (i + 0.5) * groupSpan, plotBottom + base * 1.2, catLabel(c));
   });
   const stackPos: number[] = new Array(n).fill(0);
   const stackNeg: number[] = new Array(n).fill(0);
@@ -907,7 +984,12 @@ export function applyCommonGeometry(div: HTMLElement, c: DrawableCommon): void {
     s.width = `${c.size.width}px`;
     s.height = `${c.size.height}px`;
   }
-  if (c.angleDeg) s.transform = `rotate(${-c.angleDeg}deg)`;
+  // rotation applies to the already-mirrored shape (CSS composes right to
+  // left, so the scale comes last in the list)
+  const flip = c.flipped
+    ? ` scale(${c.flipped.horizontal ? -1 : 1}, ${c.flipped.vertical ? -1 : 1})`
+    : "";
+  if (c.angleDeg || flip) s.transform = `${c.angleDeg ? `rotate(${-c.angleDeg}deg)` : ""}${flip}`.trim();
   if (c.opacity !== undefined) s.opacity = String(c.opacity);
   if (c.shadow && c.shadow.kind === "drop") {
     // Angle convention fixture-verified on G2's pentagon (angle 45, offset 5
@@ -933,6 +1015,26 @@ export function applyCommonGeometry(div: HTMLElement, c: DrawableCommon): void {
       `below 0px linear-gradient(transparent 45%, rgba(0,0,0,${c.reflection.opacity}))`,
     );
   }
+}
+
+/** Widest laid-out line inside `root`, in layout px (rects divided by the
+ *  root's own CSS scale so a transformed ancestor does not distort it). */
+function widestLine(root: HTMLElement): number {
+  const own = root.getBoundingClientRect();
+  const scale = root.offsetWidth > 0 ? own.width / root.offsetWidth : 1;
+  if (!(scale > 0)) return 0;
+  let widest = 0;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const range = document.createRange();
+  let node: Node | null = walker.nextNode();
+  while (node) {
+    if ((node.textContent ?? "").trim()) {
+      range.selectNodeContents(node);
+      for (const r of Array.from(range.getClientRects())) widest = Math.max(widest, r.width / scale);
+    }
+    node = walker.nextNode();
+  }
+  return widest;
 }
 
 function hexRgb(hex: string): [number, number, number] {

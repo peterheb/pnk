@@ -223,23 +223,33 @@ const { chromium } = require(process.env.PW_MODULE);
   await page.waitForSelector("#pages-view, #numbers-view, #keynote-view", { timeout: 30000 });
   // tables/images settle after first paint
   await page.waitForTimeout(1500);
+  // the sticky top bar would print over anything scrolled beneath it
+  // (CSSOM, not a style tag: the viewer's CSP allows no inline styles)
+  await page.evaluate(() => {
+    document.querySelectorAll("#topnav, header").forEach((h) => { h.style.visibility = "hidden"; });
+  });
 
   // Deck mode (.key): the viewer shows all slides in one continuous scroll,
   // lazily rendered. Click each thumbnail (forces render + scrolls there) and
   // screenshot that slide's CANVAS FRAME only, one PNG per slide, so
   // composites align 1:1 with Apple's per-page rasters (no caption/notes).
+  // Skipped slides are absent from the list (as from Keynote's export), so
+  // the k-th list item is paired with Apple's page k while its stage keeps
+  // the stored slide index.
   let slideCount = 0;
   const items = page.locator(".slide-list-item");
   if ((await items.count()) > 0) {
     slideCount = await items.count();
     const shotDir = shotPath.replace(/\/[^/]+$/, "/");
     fs.mkdirSync(shotDir, { recursive: true });
-    for (let i = 0; i < slideCount; i++) {
-      await items.nth(i).click();
-      const frame = page.locator(`.slide-stage[data-slide-index="${i}"] .canvas-frame`).first();
+    for (let k = 0; k < slideCount; k++) {
+      const item = items.nth(k);
+      const idx = await item.getAttribute("data-slide-index");
+      await item.click();
+      const frame = page.locator(`.slide-stage[data-slide-index="${idx}"] .canvas-frame`).first();
       await frame.waitFor({ state: "visible", timeout: 10000 });
       await page.waitForTimeout(250);
-      await frame.screenshot({ path: `${shotDir}slide-${i + 1}.png` });
+      await frame.screenshot({ path: `${shotDir}slide-${k + 1}.png` });
     }
   }
 
@@ -259,12 +269,6 @@ const { chromium } = require(process.env.PW_MODULE);
       await frame.screenshot({ path: `${shotDir}page-${i + 1}.png` });
     }
   }
-
-  // the sticky top bar would print over anything scrolled beneath it
-  // (CSSOM, not a style tag: the viewer's CSP allows no inline styles)
-  await page.evaluate(() => {
-    document.querySelectorAll("#topnav, header").forEach((h) => { h.style.visibility = "hidden"; });
-  });
 
   // Numbers mode: sheets sit behind tabs, one visible at a time. Activate
   // each tab and screenshot its canvas as sheet-N.png; composites pair
