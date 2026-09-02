@@ -695,6 +695,25 @@ function currencySymbol(code: string): string {
   return map[code] ?? code + " ";
 }
 
+/**
+ * Text width in points for chart furniture. Chart labels are laid out by hand
+ * (svg has no flow), and guessing "0.55 em per character" both ellipsized
+ * legends Apple fits whole and thinned category rows Apple prints in full.
+ * One shared 2d context measures the real string in the real face.
+ */
+let measureCtx: CanvasRenderingContext2D | null | undefined;
+const measureCache = new Map<string, number>();
+function textWidth(str: string, size: number, family: string): number {
+  const key = `${size}|${family}|${str}`;
+  const hit = measureCache.get(key);
+  if (hit !== undefined) return hit;
+  if (measureCtx === undefined) measureCtx = document.createElement("canvas").getContext("2d");
+  // headless/oddball contexts fall back to the old estimate
+  const w = measureCtx ? ((measureCtx.font = `${size}px ${family}`), measureCtx.measureText(str).width) : str.length * size * 0.55;
+  if (measureCache.size < 4000) measureCache.set(key, w);
+  return w;
+}
+
 function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null {
   const numeric = chart.series.every((s) => s.values.every((v) => v === null || typeof v === "number"));
   if (!numeric || chart.series.length === 0 || chart.categories.length === 0) return null;
@@ -707,7 +726,8 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
   // paragraph styles name outright (32pt axes, 38pt legend, 50pt ring labels).
   const ts = chart.textSizes;
   const face = ts?.fontName ? `"${ts.fontName.replace(/MT$|-.*$/, "")}", ` : "";
-  svg.setAttribute("font-family", `${face}"Helvetica Neue", Helvetica, Arial, sans-serif`);
+  const family = `${face}"Helvetica Neue", Helvetica, Arial, sans-serif`;
+  svg.setAttribute("font-family", family);
   const colors = chart.seriesColors ?? ["#4a90d9", "#e0762e", "#7bb662", "#b0578d", "#5b6abf"];
   // Furniture scales with the chart (Keynote's 1920-wide slides set 24pt
   // legends where a 160pt Numbers chart sets 9pt) and takes currentColor,
@@ -761,8 +781,7 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
   let bottom = h;
   if (showLegend) {
     const items = pieLike ? (pieBySeries ? names : chart.categories) : names;
-    const glyph = legendSize * 0.55;
-    const widths = items.map((name) => name.length * glyph + legendSize * 2.2);
+    const widths = items.map((name) => textWidth(name, legendSize, family) + legendSize * 2.0);
     // The stored legend frame is relative to the chart frame's CENTRE, and it
     // routinely sits OUTSIDE the frame: RIPE 85's waiting-list chart stores
     // (-809.5, -368.0) in a 1663x574 frame, putting the legend row 81pt ABOVE
@@ -780,14 +799,24 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
     let x = boxX + boxW / 2 - rowW / 2;
     items.forEach((name, i) => {
       const itemW = widths[i] * shrink;
+      // Apple keys a line chart's legend with a short stroke, an area/bar/pie
+      // chart's with a filled square (dns-oarc's cache-hit charts, RIPE 85's
+      // waiting list).
+      const dash = chart.type === "line" || chart.type === "scatter";
       const sw = document.createElementNS(NS, "rect");
-      sw.setAttribute("x", (x + 2).toFixed(1)); sw.setAttribute("y", (y - legendSize * 0.8).toFixed(1));
-      sw.setAttribute("width", (legendSize * 0.9).toFixed(1)); sw.setAttribute("height", (legendSize * 0.9).toFixed(1)); sw.setAttribute("rx", "1.5");
+      sw.setAttribute("x", (x + 2).toFixed(1));
+      sw.setAttribute("y", (y - (dash ? legendSize * 0.45 : legendSize * 0.8)).toFixed(1));
+      sw.setAttribute("width", (legendSize * (dash ? 1.1 : 0.9)).toFixed(1));
+      sw.setAttribute("height", (legendSize * (dash ? 0.18 : 0.9)).toFixed(1)); sw.setAttribute("rx", "1.5");
       sw.setAttribute("fill", colors[i % colors.length]);
       svg.appendChild(sw);
       const label = text(x + legendSize * 1.4, y, name, { anchor: "start", size: legendSize });
-      const maxChars = Math.floor((itemW - legendSize * 1.6) / glyph);
-      if (name.length > maxChars) label.textContent = name.slice(0, Math.max(3, maxChars - 1)) + "…";
+      const room = itemW - legendSize * 1.6;
+      if (textWidth(name, legendSize, family) > room) {
+        let cut = name;
+        while (cut.length > 3 && textWidth(cut + "…", legendSize, family) > room) cut = cut.slice(0, -1);
+        label.textContent = cut + "…";
+      }
       x += itemW;
     });
     // only a legend drawn over the plot costs the plot its bottom strip
@@ -958,12 +987,17 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
   // series (RIPE's waiting list) shows a dozen dates, not all of them.
   // Date categories (ISO strings from date cells) read as "Jun 2022" like
   // Keynote's default date axis format.
-  const labelEvery = Math.max(1, Math.ceil(n * (base * 5) / Math.max(1, horizontal ? plotH : plotW)));
   const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const catLabel = (c: string): string => {
     const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(c);
     return m ? `${MONTHS[Math.max(0, Math.min(11, +m[2] - 1))]} ${m[1]}` : c;
   };
+  // Thin the category row by what the widest label actually MEASURES: the
+  // dns-oarc cache charts print 21 numeric labels where a per-character guess
+  // showed 8, and RIPE's 343-day series still shows a dozen dates.
+  const catSpan = (horizontal ? plotH : plotW) / Math.max(1, n);
+  const catW = horizontal ? base * 1.6 : Math.max(...chart.categories.map((c) => textWidth(catLabel(c), base, family))) + base * 0.15;
+  const labelEvery = Math.max(1, Math.ceil(catW / Math.max(0.001, catSpan)));
 
   const lineKinds = ["line", "area", "stacked-area", "scatter"];
   if (lineKinds.includes(chart.type)) {
