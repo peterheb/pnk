@@ -12,6 +12,7 @@ import type {
   TableModel,
   TableMerge,
 } from "../../model/src/shared";
+import { fillToCss } from "./drawables";
 import { applyCharStyle, renderStyledText } from "./text";
 import type { HydratedDoc } from "./hydrate";
 import { cellStyleOf } from "./hydrate";
@@ -366,6 +367,7 @@ function applyCellStyle(td: HTMLTableCellElement, style: TableCellStyle | undefi
   if (style?.fill) {
     if (style.fill.type === "solid") {
       s.backgroundColor = style.fill.color;
+      s.backgroundImage = "";
     } else if (style.fill.type === "image") {
       // Cell image fills (LED price-list v3 doc: product photos live in the
       // cell style). technique maps onto background-size; without bytes the
@@ -383,6 +385,13 @@ function applyCellStyle(td: HTMLTableCellElement, style: TableCellStyle | undefi
       } else {
         s.backgroundColor = style.fill.tint ?? "#e8e8ee";
       }
+    } else if (style.fill.type === "gradient") {
+      // Numbers' highlight colours from the colour well's second row are
+      // GRADIENT cell fills, not solid ones (maison-martos marks its
+      // EYZAHUT row with a #fae232->#fffb00 vertical gradient and its
+      // Charols rows with a cyan one). Painting them as the neutral
+      // fallback lost every highlight in the sheet.
+      s.backgroundImage = fillToCss(style.fill) ?? "";
     } else {
       s.backgroundColor = "#e8e8ee";
     }
@@ -408,7 +417,28 @@ function applyCellStyle(td: HTMLTableCellElement, style: TableCellStyle | undefi
     if (b.bottom) s.borderBottom = css(b.bottom);
     if (b.left) s.borderLeft = css(b.left);
   }
-  if (style?.text) applyCharStyle(td, style.text);
+  if (style?.text) {
+    applyCharStyle(td, style.text);
+    // A cell's text style OVERRIDES the section's, so an explicit
+    // bold/italic false has to undo it — applyCharStyle only ever turns
+    // them on. The PostScript family name has to give way too: Numbers
+    // stores "HelveticaNeue-Bold" as the face name on styles whose bold
+    // flag is false and draws them regular (maison-martos' body cells;
+    // Apple's export uses the HelveticaNeue face there), but naming that
+    // family in CSS picks the bold cut on macOS.
+    const WEIGHT_SUFFIX = /[-\s](Bold|Black|Heavy|Semibold|Demibold|Medium)(MT|PS)?$/i;
+    if (style.text.bold === false) {
+      s.fontWeight = "400";
+      const name = style.text.fontName;
+      if (name && WEIGHT_SUFFIX.test(name)) {
+        // Prepend the de-suffixed family rather than rewriting the string:
+        // Chrome serializes font-family without quotes when the name is a
+        // valid CSS identifier, so a quoted search-and-replace never matched.
+        s.fontFamily = `"${name.replace(WEIGHT_SUFFIX, "")}", ${s.fontFamily}`;
+      }
+    }
+    if (style.text.italic === false) s.fontStyle = "normal";
+  }
   if (style?.paragraph?.horizontalAlignment && style.paragraph.horizontalAlignment !== "auto") {
     td.style.textAlign = style.paragraph.horizontalAlignment;
   }
@@ -419,8 +449,25 @@ function applyCellStyle(td: HTMLTableCellElement, style: TableCellStyle | undefi
   if (footer) td.classList.add("cell-footer");
 }
 
+/**
+ * Drawn width of a table: the sum of its visible column widths (a stored 0
+ * means the table's default width). Returns 0 when a width is unknown, in
+ * which case the renderer falls back to the auto table layout.
+ */
+export function tableDrawnWidth(model: TableModel): number {
+  let total = 0;
+  for (let c = 0; c < model.columnCount; c++) {
+    const info = model.columns?.[c];
+    if (info?.hidden) continue;
+    const w = info?.sizePt || model.defaultColumnWidthPt;
+    if (!w) return 0;
+    total += w;
+  }
+  return total;
+}
+
 /** One TableModel as a real table; hidden rows/columns are skipped. */
-export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedDoc, frameWidth?: number): HTMLTableElement {
+export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedDoc, _frameWidth?: number): HTMLTableElement {
   const table = document.createElement("table");
   table.className = "sheet-table";
   if (model.name) {
@@ -464,19 +511,15 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedD
   // column collapses toward min-content (lafs_playlist wrapped 3-6 lines
   // per cell inside its drawable box).
   if (allWidthsKnown && totalW > 0) {
-    // The drawable FRAME is authoritative: Numbers keeps the per-column
-    // sizes proportional but a table resized by its handle stores a
-    // narrower frame (maison-martos: columns sum 1105pt in a 686pt frame,
-    // cdrky 437 in 372, burndown 998 in 900 — Apple's export draws every
-    // column at frame/sum of its stored width).
-    const scale = frameWidth && frameWidth > 0 && Math.abs(frameWidth - totalW) > 1 ? frameWidth / totalW : 1;
-    if (scale !== 1) {
-      for (const col of Array.from(cg.children) as HTMLElement[]) {
-        const w = parseFloat(col.style.width);
-        if (w) col.style.width = `${(w * scale).toFixed(2)}px`;
-      }
-      totalW = frameWidth!;
-    }
+    // The stored column widths — NOT the drawable frame — are the table's
+    // drawn width. The TableInfo frame is a cache that goes stale: three
+    // tables in cdrky's budget and three in maison-martos share the same
+    // 494x233 "new table" default while their columns sum to 1202, 717,
+    // 282, ... Measured in Apple's own PDF export (pymupdf, widest grid
+    // stroke run): burndown 61.1..1060.2 = 999pt for a 998.1pt column sum
+    // (frame 899.7); maison 72..1177 = 1105 for 1104.7 (frame 686);
+    // 72..790 = 718 for 717.0 (frame 494). A table wider than the page is
+    // clipped at the margin, not scaled.
     table.style.tableLayout = "fixed";
     table.style.width = `${totalW}px`;
     table.classList.add("exact-cols"); // lifts the base min-width guard
@@ -538,7 +581,10 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedD
       // parent chain, not the table's section default or banding: 0839b6d2
       // (docx import) stores fill-less cell styles over a blue-banded table
       // style and Pages paints white cells.
-      if (style && style.fill === null) td.style.backgroundColor = "";
+      if (style && style.fill === null) {
+        td.style.backgroundColor = "";
+        td.style.backgroundImage = "";
+      }
       applyCellStyle(td, style, header, footer, ctx);
       if (norm) {
         const format = norm.fmt !== undefined ? formats[norm.fmt] : undefined;

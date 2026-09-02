@@ -2,16 +2,25 @@
 // tables, charts, images and shapes in absolute point coordinates.
 
 import type { NumbersDocument, Sheet } from "../../model/src/numbers";
+import type { TableModel } from "../../model/src/shared";
 import type { ViewerCtx } from "./ctx";
 import { applyTextFit, renderCanvasDrawable } from "./drawables";
 import type { HydratedDoc } from "./hydrate";
+import { tableDrawnWidth } from "./tables";
 
 function drawableExtent(
-  d: { type: string; common?: { position?: { x: number; y: number }; size?: { width: number; height: number } }; children?: unknown[] },
+  d: { type: string; table?: TableModel; common?: { position?: { x: number; y: number }; size?: { width: number; height: number } }; children?: unknown[] },
   cur: { x: number; y: number },
 ): void {
   if (d.common?.position && d.common.size) {
-    cur.x = Math.max(cur.x, d.common.position.x + d.common.size.width);
+    // A table draws at the sum of its column widths; its stored frame is a
+    // stale cache (see tables.ts). Take the wider of the two so the canvas
+    // never cuts a table off (cdrky's County Tax Rates: 1202pt of columns
+    // in a 494pt frame).
+    const w = d.type === "table" && d.table
+      ? Math.max(d.common.size.width, tableDrawnWidth(d.table))
+      : d.common.size.width;
+    cur.x = Math.max(cur.x, d.common.position.x + w);
     cur.y = Math.max(cur.y, d.common.position.y + d.common.size.height);
   }
   if (d.type === "group") {
