@@ -2,7 +2,7 @@
 // file picker, and dispatch to the per-app renderers. No network calls after
 // the static assets load — the file is parsed in-process and never uploaded.
 
-import init, { convert, media_bytes } from "./wasm/pnk2json_wasm.js";
+import init, { convert, dump_markdown, dump_text, media_bytes } from "./wasm/pnk2json_wasm.js";
 import { ViewerCtx } from "./ctx";
 import { hydrate } from "./hydrate";
 import { mapError, renderErrorCard } from "./errors";
@@ -15,23 +15,32 @@ import type { PnkDocument } from "../../model/src/shared";
 
 let ctx: ViewerCtx | null = null;
 let lastJson: { text: string; filename: string } | null = null;
-let jsonRendered = false;
+
+// Source views over the converted document: the JSON model, and the two
+// dumps the CLI offers as --text / --markdown, produced by the wasm module
+// from the same conversion the render came from. Each is built on first
+// use and cached for the document's lifetime.
+type SourceMode = "json" | "text" | "markdown";
+const SOURCE_BTN_IDS = ["text-btn", "md-btn", "json-btn"];
+let sourceMode: SourceMode | null = null;
+const sourceCache = new Map<SourceMode, string>();
 
 const $ = (id: string) => document.getElementById(id)!;
 
-function closeJsonView(): void {
-  jsonRendered = false;
+function closeSourceView(): void {
+  sourceMode = null;
+  sourceCache.clear();
   $("json-view").classList.add("hidden");
   $("json-pre").replaceChildren();
-  $("json-btn").classList.remove("active");
+  for (const id of SOURCE_BTN_IDS) $(id).classList.remove("active");
 }
 
 function showLanding(): void {
   ctx?.dispose();
   ctx = null;
-  closeJsonView();
+  closeSourceView();
   // the landing card's own CTA is the only "open" on the landing screen
-  for (const id of ["doc-filename", "app-badge", "doc-meta", "warnings-dd", "json-btn", "reset-btn"]) {
+  for (const id of ["doc-filename", "app-badge", "doc-meta", "warnings-dd", ...SOURCE_BTN_IDS, "reset-btn"]) {
     $(id).classList.add("hidden");
   }
   $("view").classList.add("hidden");
@@ -88,28 +97,45 @@ function highlightJson(pretty: string): string {
   );
 }
 
-function toggleJsonView(): void {
+const SOURCE_EXT: Record<SourceMode, string> = { json: ".json", text: ".txt", markdown: ".md" };
+const SOURCE_MIME: Record<SourceMode, string> = { json: "application/json", text: "text/plain", markdown: "text/markdown" };
+
+/** The source text for a mode, built once per document. */
+function sourceText(mode: SourceMode): string {
+  const cached = sourceCache.get(mode);
+  if (cached !== undefined) return cached;
+  let text: string;
+  if (mode === "json") text = prettyJson(JSON.parse(lastJson!.text)).s;
+  else if (mode === "text") text = dump_text();
+  else text = dump_markdown();
+  sourceCache.set(mode, text);
+  return text;
+}
+
+/** Click on a source button: switch to that mode, or back to the render
+ *  when it is the one already showing. */
+function toggleSourceView(mode: SourceMode): void {
   if (!lastJson) return;
   const panel = $("json-view");
-  const showing = !panel.classList.contains("hidden");
-  if (showing) {
+  if (sourceMode === mode) {
+    sourceMode = null;
     panel.classList.add("hidden");
     $("view").classList.remove("hidden");
-    $("json-btn").classList.remove("active");
+    for (const id of SOURCE_BTN_IDS) $(id).classList.remove("active");
     return;
   }
-  if (!jsonRendered) {
-    jsonRendered = true;
-    const pretty = prettyJson(JSON.parse(lastJson.text)).s;
-    const kb = pretty.length / 1024;
-    $("json-size").textContent = `${lastJson.filename} · ${kb >= 1024 ? (kb / 1024).toFixed(1) + " MB" : Math.ceil(kb) + " KB"} pretty-printed`;
-    const pre = $("json-pre");
-    if (pretty.length <= HIGHLIGHT_LIMIT) pre.innerHTML = highlightJson(pretty);
-    else pre.textContent = pretty;
-  }
+  sourceMode = mode;
+  const text = sourceText(mode);
+  const kb = text.length / 1024;
+  const size = kb >= 1024 ? (kb / 1024).toFixed(1) + " MB" : Math.ceil(kb) + " KB";
+  const label = mode === "json" ? "pretty-printed" : mode === "text" ? "plain text" : "markdown";
+  $("json-size").textContent = `${lastJson.filename.replace(/\.json$/, SOURCE_EXT[mode])} · ${size} ${label}`;
+  const pre = $("json-pre");
+  if (mode === "json" && text.length <= HIGHLIGHT_LIMIT) pre.innerHTML = highlightJson(text);
+  else pre.textContent = text;
   $("view").classList.add("hidden");
   panel.classList.remove("hidden");
-  $("json-btn").classList.add("active");
+  for (const id of SOURCE_BTN_IDS) $(id).classList.toggle("active", ($(id) as HTMLElement).dataset.mode === mode);
 }
 
 function renderHeader(doc: PnkDocument, filename: string): void {
@@ -121,7 +147,7 @@ function renderHeader(doc: PnkDocument, filename: string): void {
   if (doc.meta.fileFormatVersion) meta.push(`v${doc.meta.fileFormatVersion}`);
   if (doc.meta.locale) meta.push(doc.meta.locale);
   $("doc-meta").textContent = meta.join(" · ");
-  for (const id of ["doc-filename", "app-badge", "doc-meta", "json-btn", "reset-btn"]) {
+  for (const id of ["doc-filename", "app-badge", "doc-meta", ...SOURCE_BTN_IDS, "reset-btn"]) {
     $(id).classList.remove("hidden");
   }
 }
@@ -140,7 +166,7 @@ function renderDocument(doc: PnkDocument, filename: string): void {
     }
   }
 
-  closeJsonView();
+  closeSourceView();
   renderHeader(doc, filename);
   setTableLocale(doc.meta.locale);
   renderWarnings(doc.warnings);
@@ -157,8 +183,8 @@ function renderDocument(doc: PnkDocument, filename: string): void {
 
 function showError(err: unknown, filename: string): void {
   lastJson = null;
-  closeJsonView();
-  $("json-btn").classList.add("hidden");
+  closeSourceView();
+  for (const id of SOURCE_BTN_IDS) $(id).classList.add("hidden");
   $("warnings-dd").classList.add("hidden");
   $("drop-zone").classList.add("hidden");
   $("doc-filename").textContent = filename;
@@ -245,15 +271,21 @@ function wireEvents(): void {
     e.preventDefault();
     showLanding();
   });
-  // json = toggle the pretty-printed model view; download lives in its toolbar
-  $("json-btn").addEventListener("click", toggleJsonView);
-  // Download the converted JSON model (blob URL — still no network, no upload)
+  // text / md / json = toggle a source view; download lives in its toolbar
+  for (const id of SOURCE_BTN_IDS) {
+    const btn = $(id);
+    btn.addEventListener("click", () => toggleSourceView(btn.dataset.mode as SourceMode));
+  }
+  // Download the showing source (blob URL — still no network, no upload);
+  // the JSON download keeps the compact model the converter emitted
   $("json-dl-btn").addEventListener("click", () => {
     if (!lastJson) return;
-    const url = URL.createObjectURL(new Blob([lastJson.text], { type: "application/json" }));
+    const mode = sourceMode ?? "json";
+    const body = mode === "json" ? lastJson.text : sourceText(mode);
+    const url = URL.createObjectURL(new Blob([body], { type: SOURCE_MIME[mode] }));
     const a = document.createElement("a");
     a.href = url;
-    a.download = lastJson.filename;
+    a.download = lastJson.filename.replace(/\.json$/, SOURCE_EXT[mode]);
     a.click();
     URL.revokeObjectURL(url);
   });

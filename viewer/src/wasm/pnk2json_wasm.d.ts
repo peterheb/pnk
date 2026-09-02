@@ -14,6 +14,17 @@ export function convert_markdown(bytes: Uint8Array): string;
 export function convert_pretty(bytes: Uint8Array): string;
 
 /**
+ * Markdown dump of the last converted document (`pnk2json --markdown`).
+ */
+export function dump_markdown(): string;
+
+/**
+ * Plain-text dump of the last converted document (the `pnk2json --text`
+ * fallback view). Errors when no document has been converted.
+ */
+export function dump_text(): string;
+
+/**
  * Raw bytes of the media asset with the given DataInfo id (decimal string),
  * from the last successfully converted document. `None` when the asset has
  * no DataInfo entry or its `Data/` bytes are absent (remote/unmaterialized).
@@ -24,16 +35,16 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
-    readonly convert: (a: number, b: number) => [number, number, number, number];
-    readonly convert_markdown: (a: number, b: number) => [number, number, number, number];
-    readonly convert_pretty: (a: number, b: number) => [number, number, number, number];
-    readonly media_bytes: (a: number, b: number) => [number, number];
-    readonly __wbindgen_externrefs: WebAssembly.Table;
-    readonly __wbindgen_malloc: (a: number, b: number) => number;
-    readonly __externref_table_dealloc: (a: number) => void;
-    readonly __wbindgen_free: (a: number, b: number, c: number) => void;
-    readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
-    readonly __wbindgen_start: () => void;
+    readonly convert: (a: number, b: number, c: number) => void;
+    readonly convert_markdown: (a: number, b: number, c: number) => void;
+    readonly convert_pretty: (a: number, b: number, c: number) => void;
+    readonly dump_markdown: (a: number) => void;
+    readonly dump_text: (a: number) => void;
+    readonly media_bytes: (a: number, b: number, c: number) => void;
+    readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
+    readonly __wbindgen_export: (a: number, b: number) => number;
+    readonly __wbindgen_export2: (a: number, b: number, c: number) => void;
+    readonly __wbindgen_export3: (a: number, b: number, c: number, d: number) => number;
 }
 
 export type SyncInitInput = BufferSource | WebAssembly.Module;

@@ -17,6 +17,10 @@ thread_local! {
     /// The context of the most recent successful conversion, kept so
     /// `media_bytes` can resolve Data/ assets without re-parsing.
     static LAST_CTX: RefCell<Option<pnk2json::ctx::Ctx>> = const { RefCell::new(None) };
+    /// The converted model of that document, kept so the text / markdown
+    /// dumps (`dump_text`, `dump_markdown`) come from the same conversion
+    /// the viewer rendered — no second parse, no drift between views.
+    static LAST_DOC: RefCell<Option<pnk2json::model::PnkDocument>> = const { RefCell::new(None) };
     /// Per-asset transcode cache (TIFF -> PNG), cleared on each new convert.
     /// Lazy: an asset is transcoded the first time the viewer asks for it,
     /// so decks full of big TIFFs only pay for the ones actually shown.
@@ -32,6 +36,7 @@ fn clear_transcode_cache() {
 /// not leave the prior document's media queryable via `media_bytes`.
 fn clear_document_state() {
     LAST_CTX.with(|slot| *slot.borrow_mut() = None);
+    LAST_DOC.with(|slot| *slot.borrow_mut() = None);
     clear_transcode_cache();
 }
 
@@ -97,7 +102,32 @@ pub fn convert(bytes: &[u8]) -> Result<String, JsError> {
         pnk2json::ctx::Ctx::from_bytes(bytes).map_err(|e| JsError::new(&e.to_string()))?;
     let doc = pnk2json::convert_ctx(&mut ctx).map_err(|e| JsError::new(&e.to_string()))?;
     LAST_CTX.with(|slot| *slot.borrow_mut() = Some(ctx));
-    Ok(pnk2json::to_json_compact(&doc))
+    let json = pnk2json::to_json_compact(&doc);
+    LAST_DOC.with(|slot| *slot.borrow_mut() = Some(doc));
+    Ok(json)
+}
+
+/// Plain-text dump of the last converted document (the `pnk2json --text`
+/// fallback view). Errors when no document has been converted.
+#[wasm_bindgen]
+pub fn dump_text() -> Result<String, JsError> {
+    LAST_DOC.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .map(pnk2json::dumptext::to_text)
+            .ok_or_else(|| JsError::new("no document converted"))
+    })
+}
+
+/// Markdown dump of the last converted document (`pnk2json --markdown`).
+#[wasm_bindgen]
+pub fn dump_markdown() -> Result<String, JsError> {
+    LAST_DOC.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .map(pnk2json::dumptext::to_markdown)
+            .ok_or_else(|| JsError::new("no document converted"))
+    })
 }
 
 /// Pretty-printed JSON (debug/inspection use; ~3x larger than compact).

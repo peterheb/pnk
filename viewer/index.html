@@ -22,7 +22,9 @@
       <summary title="Decode warnings"><span class="warn-mark">▲</span> <span id="warnings-count">0</span></summary>
       <div id="warnings-list"></div>
     </details>
-    <button id="json-btn" type="button" class="hidden" title="Download the converted JSON model">json</button>
+    <button id="text-btn" type="button" class="hidden source-btn" data-mode="text" title="Plain-text dump of the document">text</button>
+    <button id="md-btn" type="button" class="hidden source-btn" data-mode="markdown" title="Markdown dump of the document">md</button>
+    <button id="json-btn" type="button" class="hidden source-btn" data-mode="json" title="The converted JSON model">json</button>
     <button id="reset-btn" type="button" class="hidden" title="Open a file">open…</button>
   </nav>
 
@@ -49,7 +51,7 @@
       <div id="json-toolbar">
         <span id="json-size" class="muted"></span>
         <span class="spacer"></span>
-        <button id="json-dl-btn" type="button" title="Save the JSON model to a file">download</button>
+        <button id="json-dl-btn" type="button" title="Save this view to a file">download</button>
       </div>
       <pre id="json-pre"></pre>
     </div>
