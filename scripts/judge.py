@@ -448,7 +448,7 @@ def cmd_report(args) -> int:
         lines.append(f"| {j} | " + " | ".join(row) + " |")
     # agreement
     lines += ["", "## Agreement between judges (real pairs both scored)", "",
-              "| a | b | n | Spearman ρ | mean |a-b| | within 1 |", "|---|---|---:|---:|---:|---:|"]
+              "| a | b | n | Spearman ρ | mean abs diff | within 1 |", "|---|---|---:|---:|---:|---:|"]
     for i, a in enumerate(judges):
         for b in judges[i + 1:]:
             keys = sorted(set(by_judge[a]) & set(by_judge[b]))
