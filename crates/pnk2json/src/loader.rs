@@ -38,6 +38,9 @@ pub struct Loaded {
     /// Patches that could NOT be applied (multi-segment path, bad base…) —
     /// the affected object may show pre-edit content; surfaced as a warning.
     pub patches_dropped: u64,
+    /// Backward-compat diffs (MessageInfo.diff_merge_version present) left
+    /// unapplied on purpose — see apply_patches.
+    pub patches_superseded: u64,
 }
 
 impl Loaded {
@@ -90,6 +93,7 @@ pub fn load(streams: &[StreamView], registry: &Registry, app: App) -> Loaded {
     let mut undecodable_bytes = HashMap::new();
     let mut patches_applied = 0u64;
     let mut patches_dropped = 0u64;
+    let mut patches_superseded = 0u64;
 
     for stream in streams {
         for archive in &stream.archives {
@@ -99,7 +103,7 @@ pub fn load(streams: &[StreamView], registry: &Registry, app: App) -> Loaded {
             // dropping patches silently returned plausible pre-edit state
             // (FINDINGS.md H-6).
             let mut patched = if archive.should_merge {
-                apply_patches(archive, &mut patches_applied, &mut patches_dropped)
+                apply_patches(archive, &mut patches_applied, &mut patches_dropped, &mut patches_superseded)
             } else {
                 HashMap::new()
             };
@@ -164,6 +168,7 @@ pub fn load(streams: &[StreamView], registry: &Registry, app: App) -> Loaded {
         undecodable_bytes,
         patches_applied,
         patches_dropped,
+        patches_superseded,
     }
 }
 
@@ -191,10 +196,27 @@ fn apply_patches(
     archive: &iwadump::envelope::ArchiveInfo,
     applied: &mut u64,
     dropped: &mut u64,
+    superseded: &mut u64,
 ) -> HashMap<usize, Msg> {
     let mut merged: HashMap<usize, Msg> = HashMap::new();
     for message in &archive.messages {
         if message.type_id != 0 {
+            continue;
+        }
+        // A diff that names a `diff_merge_version` (MessageInfo 8) is a
+        // backward-compatibility DOWNGRADE for an older reader generation,
+        // not a user edit: the base message already holds the modern
+        // representation. Corpus survey (agent K, 2026-09-02, 960 docs):
+        // every type-0 diff carries field 8 with a 0xFFFFFFFF sentinel;
+        // RIPE 85's ring charts are stored as type 25 with a diff to pie
+        // type 5, and Keynote 15.3.1 draws rings; a KN.BuildArchive diff
+        // rewrites "apple:bc-appear" to the pre-build-chooser spelling
+        // "apple:appear". A maximal-version reader (we decode the newest
+        // protos) must not merge these. Diffs WITHOUT field 8 keep the
+        // merge path below. This supersedes FINDINGS.md H-6's premise,
+        // which was a code review, not a ground-truth comparison. [inferred]
+        if message.patch.iter().any(|(n, _)| *n == 8) {
+            *superseded += 1;
             continue;
         }
         // base_message_index = MessageInfo field 7 (proto default 0).

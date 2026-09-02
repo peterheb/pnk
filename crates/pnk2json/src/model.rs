@@ -479,6 +479,11 @@ pub struct ListFormat {
     pub marker_scale: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub marker_baseline_offset_pt: Option<f64>,
+    /// Marker-origin-to-text-column distance as a multiple of the paragraph
+    /// font size (the level's TSWP.ListStyleArchive text_indents = 12;
+    /// Dyalog deck: 1.0417 x 48pt = 50pt, 0.75 x 24pt = 18pt). [inferred]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text_indent_em: Option<f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1361,6 +1366,49 @@ pub struct ChartModel {
     /// tschchartinfodefaultinnerradius = 27]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub inner_radius: Option<f64>,
+    /// Pie/donut slice labels (series non-style, series 0; Keynote edits all
+    /// series together). [proto: TSCH.Generated.ChartSeriesNonStyleArchive
+    /// pieshowserieslabels 31, pieshowvaluelabels 44, pienumberformat 99,
+    /// pielabelexplosion 147; ChartNonStyleArchive piecalloutlinetype 111]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pie_labels: Option<PieLabels>,
+    /// Value-axis tick number format. [proto: ChartAxisNonStyleArchive
+    /// defaultnumberformat 42 / numberformattype 3]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value_axis_format: Option<ChartNumberFormat>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ChartNumberFormat {
+    pub kind: ChartNumberKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub decimals: Option<u32>,
+    pub thousands_separator: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub currency_code: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum ChartNumberKind {
+    #[default]
+    Number,
+    Percent,
+    Currency,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PieLabels {
+    pub show_series_name: bool,
+    pub show_value: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value_format: Option<ChartNumberFormat>,
+    /// Label centre as a percentage of the pie radius (> 100 = outside the rim).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub radius_pct: Option<f64>,
+    pub leader_lines: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

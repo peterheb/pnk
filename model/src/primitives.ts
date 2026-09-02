@@ -447,6 +447,12 @@ export interface ListFormat {
   start?: number;
   /** Indent of the marker relative to the paragraph's left indent, in points. */
   markerIndentPt?: number;
+  /**
+   * Marker-origin-to-text-column distance as a multiple of the paragraph
+   * font size. [proto: TSWP.ListStyleArchive text_indents = 12, per level;
+   * inferred em semantics: Dyalog deck 1.0417 x 48pt = 50pt]
+   */
+  textIndentEm?: number;
   /** Marker color from the list style's own look; absent = inherit the first
    * run's style. [proto: TSWP.ListStyleArchive font_color (21, null 20)] */
   markerColor?: HexColor;

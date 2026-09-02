@@ -669,6 +669,32 @@ export interface ChartModel {
   valueAxisMajorGridlines?: number;
   /** Pie/donut hole as a fraction of the radius, when stored (a pie with a hole is a ring). [proto: non-style innerradius 27] */
   innerRadius?: number;
+  /**
+   * Pie/donut slice labels, from series 0's non-style (Keynote edits all
+   * series together). [proto: TSCH.Generated.ChartSeriesNonStyleArchive
+   * pieshowserieslabels 31, pieshowvaluelabels 44, pienumberformat 99,
+   * pielabelexplosion 147; ChartNonStyleArchive piecalloutlinetype 111]
+   */
+  pieLabels?: PieLabels;
+  /** Value-axis tick number format. [proto: ChartAxisNonStyleArchive defaultnumberformat 42 / numberformattype 3] */
+  valueAxisFormat?: ChartNumberFormat;
+}
+
+export interface ChartNumberFormat {
+  kind: "number" | "percent" | "currency";
+  /** Absent = automatic (the 253 sentinel). */
+  decimals?: number;
+  thousandsSeparator: boolean;
+  currencyCode?: string;
+}
+
+export interface PieLabels {
+  showSeriesName: boolean;
+  showValue: boolean;
+  valueFormat?: ChartNumberFormat;
+  /** Label centre as a percentage of the pie radius (> 100 = outside the rim). */
+  radiusPct?: number;
+  leaderLines: boolean;
 }
 
 export interface ChartSeries {
