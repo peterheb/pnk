@@ -521,3 +521,10 @@ table.sheet-table.own-strokes td, table.sheet-table.own-strokes th { border: non
   .canvas-outer { margin: 10px 0; }
   #drop-card { padding: 24px 18px; }
 }
+
+/* === agent N (2026-09-02) === */
+/* A table's NAME is Apple furniture, not a caption: centred over the table
+   in the document text colour (verified against Numbers' exports of knea's
+   bod_table, coco-lo's 表1, cdrky's County Tax Rates and maison-martos'
+   market table). */
+table.sheet-table > caption.table-caption { color: #1d1d1f; }

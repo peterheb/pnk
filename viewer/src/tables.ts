@@ -510,7 +510,11 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedD
     const cap = document.createElement("caption");
     cap.className = "table-caption";
     cap.style.captionSide = "top";
-    cap.style.textAlign = "left";
+    // Numbers centres a table's name over the table and draws it in the
+    // document text colour (knea's bod_table, coco-lo's 表1, cdrky's
+    // County Tax Rates, maison's market table — every export in the
+    // campaign). Left-aligned grey read as a caption, not a table name.
+    cap.style.textAlign = "center";
     cap.textContent = model.name;
     table.appendChild(cap);
   }
