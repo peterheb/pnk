@@ -96,6 +96,12 @@
         "fontColor": "#000000"
       },
       {
+        "fontName": "HelveticaNeue-Medium",
+        "bold": false,
+        "italic": false,
+        "fontColor": "#ffffff"
+      },
+      {
         "fontName": "HelveticaNeue",
         "fontSizePt": 7.0,
         "bold": false,
@@ -245,7 +251,12 @@
             "paragraphs": [
               {
                 "pStyle": 0,
-                "items": []
+                "items": [
+                  {
+                    "text": "",
+                    "cStyle": 4
+                  }
+                ]
               }
             ]
           },
@@ -351,7 +362,12 @@
             "paragraphs": [
               {
                 "pStyle": 0,
-                "items": []
+                "items": [
+                  {
+                    "text": "",
+                    "cStyle": 5
+                  }
+                ]
               }
             ]
           },
@@ -427,7 +443,12 @@
             "paragraphs": [
               {
                 "pStyle": 0,
-                "items": []
+                "items": [
+                  {
+                    "text": "",
+                    "cStyle": 5
+                  }
+                ]
               }
             ]
           },
@@ -588,7 +609,12 @@
             "paragraphs": [
               {
                 "pStyle": 0,
-                "items": []
+                "items": [
+                  {
+                    "text": "",
+                    "cStyle": 5
+                  }
+                ]
               }
             ]
           },
@@ -671,7 +697,12 @@
             "paragraphs": [
               {
                 "pStyle": 0,
-                "items": []
+                "items": [
+                  {
+                    "text": "",
+                    "cStyle": 5
+                  }
+                ]
               }
             ]
           },
@@ -791,7 +822,12 @@
             "paragraphs": [
               {
                 "pStyle": 0,
-                "items": []
+                "items": [
+                  {
+                    "text": "",
+                    "cStyle": 5
+                  }
+                ]
               }
             ]
           },
@@ -889,7 +925,12 @@
             "paragraphs": [
               {
                 "pStyle": 0,
-                "items": []
+                "items": [
+                  {
+                    "text": "",
+                    "cStyle": 5
+                  }
+                ]
               }
             ]
           },
@@ -1053,7 +1094,12 @@
             "paragraphs": [
               {
                 "pStyle": 0,
-                "items": []
+                "items": [
+                  {
+                    "text": "",
+                    "cStyle": 5
+                  }
+                ]
               }
             ]
           },
@@ -1085,7 +1131,7 @@
                 "items": [
                   {
                     "text": "Source (CC0):",
-                    "cStyle": 5
+                    "cStyle": 6
                   }
                 ]
               },
@@ -1093,7 +1139,7 @@
                 "items": [
                   {
                     "text": "https://commons.wikimedia.org/wiki/File:Tabby_cat_with_blue_eyes-3336579.jpg",
-                    "cStyle": 6,
+                    "cStyle": 7,
                     "hyperlink": "https://commons.wikimedia.org/wiki/File:Tabby_cat_with_blue_eyes-3336579.jpg"
                   }
                 ]
@@ -1205,7 +1251,12 @@
                 "paragraphs": [
                   {
                     "pStyle": 0,
-                    "items": []
+                    "items": [
+                      {
+                        "text": "",
+                        "cStyle": 4
+                      }
+                    ]
                   }
                 ]
               },
@@ -1301,7 +1352,12 @@
               "text": {
                 "paragraphs": [
                   {
-                    "items": []
+                    "items": [
+                      {
+                        "text": "",
+                        "cStyle": 0
+                      }
+                    ]
                   }
                 ]
               },
@@ -1341,7 +1397,7 @@
                 "items": [
                   {
                     "text": "Page 2",
-                    "cStyle": 7
+                    "cStyle": 8
                   }
                 ]
               }

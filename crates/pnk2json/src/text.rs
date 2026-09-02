@@ -465,6 +465,31 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
             }
         }
 
+        // An EMPTY paragraph still occupies a line, and its height is the
+        // PARAGRAPH style's own font size — there is no run to carry it, so
+        // the boundary loop above emitted nothing at all and the viewer fell
+        // back to its 12pt default. d434501c's flyer opens with three blank
+        // centred lines that Apple gives 28pt each; at 14pt the title landed
+        // 40pt high, under its own anchored logo. One empty run carries the
+        // size (and face) through; it is not content — no list marker, no
+        // text — and is only emitted when the style actually names one.
+        if items.is_empty() {
+            let cs = crate::styles::resolve_effective_char_style(
+                ctx,
+                entry_at(&char_entries, p_start_u16).and_then(|e| e.object_id),
+                style_ref,
+            );
+            if cs.font_size_pt.is_some() || cs.font_name.is_some() {
+                let c_style = ctx.char_pool.intern(crate::ctx::strip_char_defaults(cs));
+                items.push(ParagraphItem::Text {
+                    text: String::new(),
+                    c_style,
+                    hyperlink: None,
+                    language: None,
+                });
+            }
+        }
+
         let mut pstyle = match style_ref {
             Some(sid) => resolve_para_style(ctx, sid),
             None => ParaStyle::default(),

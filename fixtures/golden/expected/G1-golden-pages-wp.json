@@ -65,6 +65,12 @@
     "char": [
       {
         "fontName": "HelveticaNeue",
+        "bold": false,
+        "italic": false,
+        "fontColor": "#000000"
+      },
+      {
+        "fontName": "HelveticaNeue",
         "fontSizePt": 11.0,
         "bold": false,
         "italic": false,
@@ -120,7 +126,7 @@
         "items": [
           {
             "text": "Plain opening paragraph.",
-            "cStyle": 0
+            "cStyle": 1
           }
         ]
       },
@@ -128,7 +134,7 @@
         "items": [
           {
             "text": "   a\tb  c\u00a0d",
-            "cStyle": 0
+            "cStyle": 1
           }
         ]
       },
@@ -136,7 +142,7 @@
         "items": [
           {
             "text": "café ﬁle 日本語テキスト مرحبا 👨\u200d👩\u200d👧 “quotes” …",
-            "cStyle": 0
+            "cStyle": 1
           }
         ]
       },
@@ -144,7 +150,7 @@
         "items": [
           {
             "text": "trailing spaces.   ",
-            "cStyle": 0
+            "cStyle": 1
           }
         ]
       },
@@ -152,35 +158,35 @@
         "items": [
           {
             "text": "normal ",
-            "cStyle": 0
-          },
-          {
-            "text": "bold",
             "cStyle": 1
           },
           {
-            "text": " normal ",
-            "cStyle": 0
-          },
-          {
-            "text": "italic",
+            "text": "bold",
             "cStyle": 2
           },
           {
             "text": " normal ",
-            "cStyle": 0
+            "cStyle": 1
           },
           {
-            "text": "green",
+            "text": "italic",
             "cStyle": 3
           },
           {
+            "text": " normal ",
+            "cStyle": 1
+          },
+          {
+            "text": "green",
+            "cStyle": 4
+          },
+          {
             "text": " ",
-            "cStyle": 0
+            "cStyle": 1
           },
           {
             "text": "large",
-            "cStyle": 4
+            "cStyle": 5
           }
         ]
       },
@@ -189,7 +195,7 @@
         "items": [
           {
             "text": "One",
-            "cStyle": 0
+            "cStyle": 1
           }
         ]
       },
@@ -198,7 +204,7 @@
         "items": [
           {
             "text": "Two",
-            "cStyle": 0
+            "cStyle": 1
           }
         ]
       },
@@ -207,7 +213,7 @@
         "items": [
           {
             "text": "Three",
-            "cStyle": 0
+            "cStyle": 1
           }
         ]
       },
@@ -216,7 +222,7 @@
         "items": [
           {
             "text": "Bullet Level 1",
-            "cStyle": 0
+            "cStyle": 1
           }
         ]
       },
@@ -225,7 +231,7 @@
         "items": [
           {
             "text": "Bullet Level 2",
-            "cStyle": 0
+            "cStyle": 1
           }
         ]
       },
@@ -233,7 +239,7 @@
         "items": [
           {
             "text": "Soft line\u2028break",
-            "cStyle": 0
+            "cStyle": 1
           }
         ]
       }
@@ -250,7 +256,12 @@
           "paragraphs": [
             {
               "pStyle": 0,
-              "items": []
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
             }
           ]
         },
@@ -258,7 +269,12 @@
           "paragraphs": [
             {
               "pStyle": 0,
-              "items": []
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
             }
           ]
         },
@@ -266,7 +282,12 @@
           "paragraphs": [
             {
               "pStyle": 0,
-              "items": []
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
             }
           ]
         }
@@ -276,7 +297,12 @@
           "paragraphs": [
             {
               "pStyle": 0,
-              "items": []
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
             }
           ]
         },
@@ -284,7 +310,12 @@
           "paragraphs": [
             {
               "pStyle": 0,
-              "items": []
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
             }
           ]
         },
@@ -292,7 +323,12 @@
           "paragraphs": [
             {
               "pStyle": 0,
-              "items": []
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
             }
           ]
         }
@@ -308,7 +344,12 @@
           "paragraphs": [
             {
               "pStyle": 0,
-              "items": []
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
             }
           ]
         },
@@ -316,7 +357,12 @@
           "paragraphs": [
             {
               "pStyle": 0,
-              "items": []
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
             }
           ]
         },
@@ -324,7 +370,12 @@
           "paragraphs": [
             {
               "pStyle": 0,
-              "items": []
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
             }
           ]
         }
@@ -334,7 +385,12 @@
           "paragraphs": [
             {
               "pStyle": 0,
-              "items": []
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
             }
           ]
         },
@@ -342,7 +398,12 @@
           "paragraphs": [
             {
               "pStyle": 0,
-              "items": []
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
             }
           ]
         },
@@ -350,7 +411,12 @@
           "paragraphs": [
             {
               "pStyle": 0,
-              "items": []
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
             }
           ]
         }
@@ -366,7 +432,12 @@
           "paragraphs": [
             {
               "pStyle": 0,
-              "items": []
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
             }
           ]
         },
@@ -374,7 +445,12 @@
           "paragraphs": [
             {
               "pStyle": 0,
-              "items": []
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
             }
           ]
         },
@@ -382,7 +458,12 @@
           "paragraphs": [
             {
               "pStyle": 0,
-              "items": []
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
             }
           ]
         }
@@ -392,7 +473,12 @@
           "paragraphs": [
             {
               "pStyle": 0,
-              "items": []
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
             }
           ]
         },
@@ -400,7 +486,12 @@
           "paragraphs": [
             {
               "pStyle": 0,
-              "items": []
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
             }
           ]
         },
@@ -408,7 +499,12 @@
           "paragraphs": [
             {
               "pStyle": 0,
-              "items": []
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
             }
           ]
         }
