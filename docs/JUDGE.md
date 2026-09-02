@@ -82,14 +82,15 @@ Security → Local Network.
 
 28 documents (12 Pages, 8 Numbers, 8 Keynote, up to 4 pages each), 87 real
 pairs plus 28 identity and 22 misaligned controls, all judged blind by
-each model. Two GLM pairs failed to parse; the GLM box slowed from 27 s to
-several minutes per pair late in the run, so a few of its pairs are still
-outstanding.
+each model. The GLM box slowed from 27 s to several minutes per pair late
+in the run and finally timed out, so 4 of its real pairs and 3 misaligned
+controls are missing and 9 of its records are failures (2 unparseable
+replies, 7 timeouts); its s/pair figure is dominated by that slowdown.
 
 | judge | model | pairs | mean | identity (expect ≥9) | misaligned (expect ≤1) | s/pair |
 |---|---|---:|---:|---:|---:|---:|
 | deepseek | deepseek-v4-flash | 87 | 7.40 | 22/28 | 7/22 | 7.8 |
-| glm | GLM-5.3-Flash-EXL3 | 83 | 6.51 | 27/27 | 17/19 | 37.2 |
+| glm | GLM-5.3-Flash-EXL3 | 83 | 6.51 | 28/28 | 17/19 | 83.6 |
 | pixel | block SSIM | 87 | 6.56 | 28/28 | 2/22 | 0.6 |
 
 Agreement on the real pairs: DeepSeek vs GLM Spearman ρ 0.70, mean gap
@@ -97,7 +98,8 @@ Agreement on the real pairs: DeepSeek vs GLM Spearman ρ 0.70, mean gap
 baseline ρ 0.49–0.64.
 
 Reading: **GLM is the judge to trust of the two.** It passes the controls
-(it notices when the candidate is a different page) and its scores track
+(it notices when the candidate is a different page and never docks an
+identical pair) and its scores track
 the known state of the viewer (Numbers weakest, Keynote strongest). DeepSeek
 without thinking is generous and often does not look: it gave 10 to a Pages
 cover whose rotated title bar we place on the wrong edge, and 8 to a Numbers
