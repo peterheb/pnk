@@ -39,7 +39,10 @@ fn main() {
             let mut v = Vec::new();
             refs_of(m, &mut v, 4);
             for t in v {
-                referrers.entry(t).or_default().push((r.id, r.type_id, r.name.clone()));
+                referrers
+                    .entry(t)
+                    .or_default()
+                    .push((r.id, r.type_id, r.name.clone()));
             }
         }
     }
@@ -47,7 +50,10 @@ fn main() {
     for r in loaded.records.values() {
         if r.type_id == 2001 {
             if let Some(m) = &r.msg {
-                if m.string(3).map(|s| s.contains(needle.as_str())).unwrap_or(false) {
+                if m.string(3)
+                    .map(|s| s.contains(needle.as_str()))
+                    .unwrap_or(false)
+                {
                     hits.push(r.id);
                 }
             }
@@ -58,9 +64,17 @@ fn main() {
         println!("storage {h}");
         let mut frontier = vec![(h, 0u32)];
         while let Some((id, d)) = frontier.pop() {
-            if d >= depth { continue; }
+            if d >= depth {
+                continue;
+            }
             for (rid, tid, name) in referrers.get(&id).cloned().unwrap_or_default() {
-                println!("{}<- {} type={} {}", "  ".repeat(d as usize + 1), rid, tid, name.unwrap_or_default());
+                println!(
+                    "{}<- {} type={} {}",
+                    "  ".repeat(d as usize + 1),
+                    rid,
+                    tid,
+                    name.unwrap_or_default()
+                );
                 frontier.push((rid, d + 1));
             }
         }

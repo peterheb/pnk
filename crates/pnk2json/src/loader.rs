@@ -103,7 +103,12 @@ pub fn load(streams: &[StreamView], registry: &Registry, app: App) -> Loaded {
             // dropping patches silently returned plausible pre-edit state
             // (FINDINGS.md H-6).
             let mut patched = if archive.should_merge {
-                apply_patches(archive, &mut patches_applied, &mut patches_dropped, &mut patches_superseded)
+                apply_patches(
+                    archive,
+                    &mut patches_applied,
+                    &mut patches_dropped,
+                    &mut patches_superseded,
+                )
             } else {
                 HashMap::new()
             };
@@ -308,10 +313,16 @@ fn apply_patches(
             // and fields the base lacks are set outright as before.
             let base_sub = match base.fields.iter().find(|f| f.number == n).map(|f| &f.value) {
                 Some(Value::Bytes(b)) => Msg::parse(b),
-                Some(Value::Group(fields)) => Some(Msg { fields: fields.clone() }),
+                Some(Value::Group(fields)) => Some(Msg {
+                    fields: fields.clone(),
+                }),
                 _ => None,
             };
-            let payload_msg = if message.payload.is_empty() { None } else { Msg::parse(&message.payload) };
+            let payload_msg = if message.payload.is_empty() {
+                None
+            } else {
+                Msg::parse(&message.payload)
+            };
             match (base_sub, payload_msg) {
                 (Some(mut sub), Some(patch)) => {
                     set_fields(&mut sub, patch.fields);

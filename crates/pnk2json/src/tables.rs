@@ -1586,7 +1586,9 @@ fn decode_cell(
     if std::env::var("PNK_DEBUG_COND").is_ok() && (cond_style.is_some() || cond_rule.is_some()) {
         eprintln!(
             "v5cond r{row}c{col} cond_style={cond_style:?} cond_rule={cond_rule:?} set_ref={:?}",
-            cond_style.and_then(|k| cond_style_table.entries.get(&k)).and_then(|e| e.reference)
+            cond_style
+                .and_then(|k| cond_style_table.entries.get(&k))
+                .and_then(|e| e.reference)
         );
     }
     // Conditional highlight (same shape as the v4 path): cond_style keys
@@ -1770,7 +1772,11 @@ fn custom_branch(cf: &Msg, value: Option<f64>) -> Option<String> {
             _ => false,
         };
         if hit {
-            if let Some(p) = cond.msg(3).and_then(|f| f.string(18)).filter(|s| !s.is_empty()) {
+            if let Some(p) = cond
+                .msg(3)
+                .and_then(|f| f.string(18))
+                .filter(|s| !s.is_empty())
+            {
                 return Some(p);
             }
         }
@@ -1854,9 +1860,7 @@ fn pick_format(
         (text, CellFormatKind::Text),
     ];
     slots.swap(0, prefer);
-    let found = slots
-    .into_iter()
-    .find_map(|(id, slot_kind)| {
+    let found = slots.into_iter().find_map(|(id, slot_kind)| {
         id.and_then(|id| format_table.entries.get(&id))
             .and_then(|e| e.format.clone())
             .map(|f| (f, slot_kind))
@@ -1939,7 +1943,11 @@ fn pick_format(
             // for positives (benmatselby's burndown variance columns —
             // Numbers' export shows +2 / +3 / -1). Another display-semantic
             // marker on the closed kind. [proto TSKArchives.proto:227]
-            .or_else(|| f.boolean(43).unwrap_or(false).then(|| "sign-plus".to_string()));
+            .or_else(|| {
+                f.boolean(43)
+                    .unwrap_or(false)
+                    .then(|| "sign-plus".to_string())
+            });
         return (
             Some(CellFormat {
                 kind,
@@ -2315,9 +2323,7 @@ fn decode_cell_v4(
         .rev()
         .copied()
         .find(|k| format_table.entries.contains_key(k))
-        .or_else(|| {
-            fmt_lead.filter(|k| !lead_is_cond && format_table.entries.contains_key(k))
-        })
+        .or_else(|| fmt_lead.filter(|k| !lead_is_cond && format_table.entries.contains_key(k)))
         .or_else(|| trailing_keys.last().copied())
         .or_else(|| fmt_lead.filter(|_| !lead_is_cond));
 
@@ -2464,7 +2470,9 @@ fn decode_cell_v4(
             }
         }
     }
-    if std::env::var("PNK_DEBUG_COND").is_ok() && fmt_lead.is_some_and(|k| cond_style_table.entries.contains_key(&k)) {
+    if std::env::var("PNK_DEBUG_COND").is_ok()
+        && fmt_lead.is_some_and(|k| cond_style_table.entries.contains_key(&k))
+    {
         eprintln!(
             "v4cond r{row}c{col} set={fmt_lead:?} rule={cond_rule:?} extra={_cond_extra:?} rules={:?}",
             fmt_lead
@@ -2526,7 +2534,9 @@ fn decode_cell_v4(
                         })
                         // uses_plus_sign (f43), as in the BNC path
                         .or_else(|| {
-                            f.boolean(43).unwrap_or(false).then(|| "sign-plus".to_string())
+                            f.boolean(43)
+                                .unwrap_or(false)
+                                .then(|| "sign-plus".to_string())
                         }),
                 })
             })
