@@ -21,7 +21,7 @@ import type {
 } from "../../model/src/shared";
 import type { ViewerCtx } from "./ctx";
 import { renderTable } from "./tables";
-import { renderStyledText } from "./text";
+import { layoutTabs, renderStyledText } from "./text";
 import { paraStyleOf, type HydratedDoc } from "./hydrate";
 
 function el(tag: string, className?: string): HTMLElement {
@@ -562,6 +562,8 @@ function applyTextFitMode(
  * displayed (measurement). Idempotent: safe to re-run.
  */
 export function applyTextFit(root: HTMLElement): void {
+  // positioned tab stops first: they change line widths and heights
+  layoutTabs(root);
   for (const box of root.querySelectorAll<HTMLElement>("[data-text-fit]")) {
     const layer = box.querySelector<HTMLElement>(":scope > .drawable-text");
     const inner = layer?.querySelector<HTMLElement>(":scope > .drawable-text-inner");
@@ -599,10 +601,17 @@ export function applyTextFit(root: HTMLElement): void {
     let s = 1;
     // Rewrapping at the compensated width changes the height, so iterate;
     // s only ever decreases, which converges without oscillation.
+    // Width counts too: an unbreakable word wider than the box (b31db822's
+    // DRAFT watermark, 247pt Trebuchet in a 412pt box — Pages shrinks it to
+    // 141pt) overflows sideways, which a height-only check never sees.
+    const boxW = layer.clientWidth;
     for (let i = 0; i < 3; i++) {
       const contentH = inner.offsetHeight;
-      if (contentH * s <= boxH + 0.5) break;
-      s = Math.max(Math.min(s, boxH / contentH), minScale);
+      const contentW = inner.scrollWidth;
+      if (contentH * s <= boxH + 0.5 && (boxW <= 0 || contentW * s <= boxW + 0.5)) break;
+      let need = Math.min(s, boxH / contentH);
+      if (boxW > 0 && contentW > 0) need = Math.min(need, boxW / contentW);
+      s = Math.max(need, minScale);
       inner.style.width = `${(100 / s).toFixed(3)}%`;
       inner.style.transform = `scale(${s.toFixed(4)})`;
       inner.style.transformOrigin = origin;

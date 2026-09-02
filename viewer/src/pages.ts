@@ -8,7 +8,7 @@ import type { ViewerCtx } from "./ctx";
 import type { Drawable, DrawableCommon, Paragraph, StyledText } from "../../model/src/shared";
 
 type TextWrap = NonNullable<DrawableCommon["textWrap"]>;
-import { newListNumberingState, renderParagraph, renderStyledText } from "./text";
+import { layoutTabs, newListNumberingState, renderParagraph, renderStyledText } from "./text";
 import { applyTextFit, fillToCss, renderCanvasDrawable } from "./drawables";
 import { paraStyleOf, type HydratedDoc } from "./hydrate";
 
@@ -476,6 +476,7 @@ function paginatedBody(
       i = j;
     }
     document.body.appendChild(meas);
+    layoutTabs(meas);
     for (const seg of segments) {
       if (!seg.spec) continue;
       seg.els.forEach((el) => {
@@ -550,6 +551,7 @@ function paginatedBody(
         const fl = anchorEls.get(k);
         const tryPlace = (b: PageBlock): boolean => {
           place(b.container!, k, el);
+          layoutTabs(el); // positioned stops change the line count
           // floats never overlap: a later full-width float lands BELOW an
           // earlier one — pin it back to its paragraph (exclusion lost lies
           // inside the earlier float's anyway)

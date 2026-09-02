@@ -453,6 +453,15 @@ table.sheet-table.own-strokes td, table.sheet-table.own-strokes th { border: non
 /* multi-column section block (PagesSection.columns): fixed height so
    column-fill:auto flows column-by-column like Pages, not balanced */
 .pages-cols { column-fill: auto; }
+/* tab gaps: sized by layoutTabs (text.ts) to the paragraph's stops; the
+   36px start-up width matches the old tab-size grid until the pass runs */
+.tab-gap { display: inline-block; width: 36px; height: 1px; vertical-align: baseline; }
+.tab-gap[data-leader="."] {
+  background: radial-gradient(circle, currentColor 0.7px, transparent 0.9px) 0 100% / 5px 2px repeat-x;
+  height: 0.3em; vertical-align: baseline;
+}
+.tab-gap[data-leader="_"] { border-bottom: 1px solid currentColor; }
+.tab-gap[data-leader="-"] { border-bottom: 1px dashed currentColor; }
 /* page-bottom footnotes (footnotePlacement absent = Apple's default):
    pinned inside the printable area with the separator rule Apple draws */
 .pages-footnote-area {

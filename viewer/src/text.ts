@@ -378,11 +378,21 @@ export function renderParagraph(
     wrap.appendChild(marker);
     wrap.appendChild(el);
     renderParagraphContent(el, p, doc, ctx, style?.dropCap);
+    tagTabs(el, style);
     return wrap;
   }
 
   renderParagraphContent(el, p, doc, ctx, style?.dropCap);
+  tagTabs(el, style);
   return el;
+}
+
+/** Record the paragraph's tab stops for layoutTabs when it contains a tab. */
+function tagTabs(el: HTMLElement, style: ParaStyle | undefined): void {
+  if (!el.querySelector(".tab-gap")) return;
+  const stops = (style?.tabs ?? []).map((t) => ({ pos: t.positionPt, align: t.alignment, leader: t.leader || undefined }));
+  el.dataset.tabs = JSON.stringify(stops);
+  if (style?.defaultTabStopPt) el.dataset.tabDefault = String(style.defaultTabStopPt);
 }
 
 /** Items of a paragraph into the given element. A dropCap (ParaStyle) carves
@@ -517,9 +527,99 @@ function appendRunText(parent: HTMLElement, text: string, styleHost: HTMLElement
   const parts = text.split(/[\u2028\u2029]/);
   parts.forEach((part, i) => {
     if (i > 0) parent.appendChild(document.createElement("br"));
-    if (part) parent.appendChild(document.createTextNode(part));
+    // A tab becomes a measurable gap element; layoutTabs sizes it to the
+    // paragraph's stops once the text is in the document (a raw \t only
+    // knows CSS tab-size, a fixed grid with no right/center/decimal stops).
+    part.split("\t").forEach((seg, j) => {
+      if (j > 0) {
+        const gap = document.createElement("span");
+        gap.className = "tab-gap";
+        parent.appendChild(gap);
+      }
+      if (seg) parent.appendChild(document.createTextNode(seg));
+    });
   });
   void styleHost;
+}
+
+interface TabStopSpec { pos: number; align: string; leader?: string }
+
+/**
+ * Positioned tab stops (TSWP.TabsArchive), resolved after layout: each
+ * .tab-gap is sized so the text after it lands on the next stop past its
+ * own x — at the stop for left, ending there for right, centred for
+ * center, with the number's separator there for decimal. Past the last
+ * explicit stop the default interval takes over. x is measured from the
+ * text area's left edge (the paragraph's box minus its indent), in layout
+ * px; canvases are CSS-scaled, so client rects are divided by the scale.
+ * Gaps are sized in order because each width moves the ones after it.
+ * b31db822's contents page: right stops at 446.5pt put the page numbers
+ * flush right on one line instead of wrapping under a 36px tab grid.
+ */
+export function layoutTabs(root: HTMLElement): void {
+  const paras = root.matches("[data-tabs]")
+    ? [root]
+    : Array.from(root.querySelectorAll<HTMLElement>("[data-tabs]"));
+  for (const p of paras) {
+    const gaps = Array.from(p.querySelectorAll<HTMLElement>(".tab-gap"));
+    if (gaps.length === 0) continue;
+    let stops: TabStopSpec[] = [];
+    try { stops = JSON.parse(p.dataset.tabs || "[]") as TabStopSpec[]; } catch { stops = []; }
+    stops.sort((a, b) => a.pos - b.pos);
+    const dflt = parseFloat(p.dataset.tabDefault || "") || 36;
+    const origin = (p.closest(".list-item") as HTMLElement | null) ?? p;
+    const oRect = origin.getBoundingClientRect();
+    if (oRect.width === 0 || origin.offsetWidth === 0) continue;
+    const scale = oRect.width / origin.offsetWidth;
+    const originX = oRect.left - (parseFloat(getComputedStyle(origin).marginLeft) || 0) * scale;
+    for (const gap of gaps) gap.style.width = "0px";
+    gaps.forEach((gap, gi) => {
+      const x = (gap.getBoundingClientRect().left - originX) / scale;
+      const range = document.createRange();
+      range.selectNodeContents(p);
+      range.setStartAfter(gap);
+      const next = gaps[gi + 1];
+      if (next) range.setEndBefore(next);
+      const segW = range.getBoundingClientRect().width / scale;
+      const stop = stops.find((st) => st.pos > x + 0.5);
+      const pos = stop ? stop.pos : (Math.floor(x / dflt) + 1) * dflt;
+      let width: number;
+      switch (stop?.align) {
+        case "right": width = pos - x - segW; break;
+        case "center": width = pos - x - segW / 2; break;
+        case "decimal": width = pos - x - decimalOffset(range, scale); break;
+        default: width = pos - x;
+      }
+      // content wider than the stop allows: Pages runs on to the next stop;
+      // a hair of space keeps the words apart either way
+      if (width < 2) {
+        const later = stops.find((st) => st.pos > x + segW + 2);
+        width = later ? Math.max(2, later.pos - x - (later.align === "right" ? segW : 0)) : 2;
+      }
+      gap.style.width = `${width.toFixed(2)}px`;
+      if (stop?.leader) gap.dataset.leader = stop.leader;
+    });
+  }
+}
+
+/** Width from the segment start to its first decimal separator. */
+function decimalOffset(range: Range, scale: number): number {
+  const walker = document.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_TEXT);
+  let node: Node | null = walker.nextNode();
+  while (node) {
+    if (range.comparePoint(node, 0) >= 0) {
+      const text = node.textContent ?? "";
+      const i = text.search(/[.,]/);
+      if (i >= 0) {
+        const r = document.createRange();
+        r.setStart(range.startContainer, range.startOffset);
+        r.setEnd(node, i);
+        return r.getBoundingClientRect().width / scale;
+      }
+    }
+    node = walker.nextNode();
+  }
+  return range.getBoundingClientRect().width / scale;
 }
 
 /** A whole text block (body, notes, cell rich text…). */
