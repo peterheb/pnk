@@ -487,6 +487,13 @@ fn sidecar_borders(ctx: &mut Ctx, m: &Msg) -> HashMap<(u32, u32), CellBorders> {
     out
 }
 
+/// Protobuf zigzag decode for a `sint32` row/column coordinate, clamped at 0
+/// (a negative index cannot address a cell).
+fn zigzag_index(raw: u64) -> u64 {
+    let n = raw as u32;
+    (((n >> 1) as i32) ^ -((n & 1) as i32)).max(0) as u64
+}
+
 /// Clamp a decoded merge range to the table bounds and push it; degenerate
 /// 1x1 "merges" are no-ops and dropped.
 fn push_merge(
@@ -709,14 +716,19 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
                 }
                 continue;
             }
-            // pre-BNC: two cell refs (AST_column f26 / AST_row f27) + colon
+            // pre-BNC: two cell refs (AST_column f26 / AST_row f27) + colon.
+            // ASTColumnCoordinateArchive.column and ASTRowCoordinateArchive.row
+            // are **sint32** — ZIGZAG on the wire, so the raw varint is twice
+            // the index (proto TSCEArchives.proto:612-619). f2 `absolute`
+            // marks the coordinate as a table index rather than an offset
+            // from the owning cell; merge ranges are always absolute.
             let refs: Vec<(u64, u64)> = nodes
                 .iter()
                 .filter(|n| n.varint(1) == Some(36))
                 .map(|n| {
                     (
-                        n.msg(27).and_then(|r| r.varint(1)).unwrap_or(0),
-                        n.msg(26).and_then(|c| c.varint(1)).unwrap_or(0),
+                        n.msg(27).and_then(|r| r.varint(1)).map_or(0, zigzag_index),
+                        n.msg(26).and_then(|c| c.varint(1)).map_or(0, zigzag_index),
                     )
                 })
                 .collect();
