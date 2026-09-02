@@ -1376,6 +1376,29 @@ pub struct ChartModel {
     /// defaultnumberformat 42 / numberformattype 3]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value_axis_format: Option<ChartNumberFormat>,
+    /// Chart furniture type sizes, resolved from ChartArchive.paragraph_styles
+    /// (20) through each sub-style's paragraph-style index slots (title:
+    /// chart style 20; legend: legend style 2; axes: axis style 6/7/8; slice
+    /// labels: series style 23/29/152/153, inherited along the TSS parent
+    /// chain). RIPE 85: 32pt axis labels, 38pt legend, 50pt ring labels.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text_sizes: Option<ChartTextSizes>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ChartTextSizes {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title_pt: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub legend_pt: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub axis_pt: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label_pt: Option<f64>,
+    /// Face used by the chart's text when it differs from the slide's.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub font_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]

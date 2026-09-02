@@ -678,6 +678,13 @@ export interface ChartModel {
   pieLabels?: PieLabels;
   /** Value-axis tick number format. [proto: ChartAxisNonStyleArchive defaultnumberformat 42 / numberformattype 3] */
   valueAxisFormat?: ChartNumberFormat;
+  /**
+   * Chart furniture type sizes, resolved from ChartArchive.paragraph_styles
+   * (20) via each sub-style's paragraph-style index (title: chart style 20;
+   * legend: legend style 2; axes: axis style 6/7/8; slice labels: series
+   * style 23/29/152/153, inherited along the TSS parent chain).
+   */
+  textSizes?: { titlePt?: number; legendPt?: number; axisPt?: number; labelPt?: number; fontName?: string };
 }
 
 export interface ChartNumberFormat {
