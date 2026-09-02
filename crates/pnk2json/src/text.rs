@@ -122,13 +122,13 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
     // usual carry-forward range semantics do not hold here].
     let dropcap_entries = entries_of(storage.msg(28));
 
-    // List membership + levels + restart flags (fixture-verified against
+    // List membership + levels + item numbers (fixture-verified against
     // G1-golden: gotchas #14):
     // - table_list_style (7): paragraph → list-style ranges (the style's
     //   label_type per level carries marker kind).
     // - table_para_data (6).first = list LEVEL (0-based) for the para.
-    // - table_para_starts (14).first = list RESTART flag (numbering restarts
-    //   at this paragraph).
+    // - table_para_starts (14).first = the list item NUMBER Apple prints for
+    //   this paragraph (0 = none, keep counting).
     let list_entries = entries_of(storage.msg(7));
     let para_data = para_table(storage.msg(6));
     let para_starts = para_table(storage.msg(14));
@@ -164,9 +164,9 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
         para_ranges.push((start_char, text.chars().count()));
     }
 
-    // Per-paragraph list info: (list style id, level, restart). An entry at
+    // Per-paragraph list info: (list style id, level, stored item number). An entry at
     // paragraph start applies from there until the next entry.
-    let mut list_by_para: Vec<Option<(u64, u32, bool)>> = vec![None; para_ranges.len()];
+    let mut list_by_para: Vec<Option<(u64, u32, u64)>> = vec![None; para_ranges.len()];
     {
         let mut cur: Option<u64> = None;
         let mut ei = 0usize;
@@ -177,14 +177,14 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
                 cur = e.object_id; // None = list membership cleared
                 ei += 1;
             }
-            // Level + restart are PER-PARAGRAPH tables, read at each
-            // paragraph start (G1: "Two"/"Three" continue the numbering
-            // started at "One" — restart=true only at the entry paragraph).
+            // Level + item number are PER-PARAGRAPH tables, read at each
+            // paragraph start (G1: "Two"/"Three" carry no number of their own
+            // and continue the counter "One" opened at 1).
             list_by_para[pi] = cur.map(|lid| {
                 (
                     lid,
                     para_level(&para_data, p_start_u16),
-                    para_restart(&para_starts, p_start_u16),
+                    para_list_number(&para_starts, p_start_u16),
                 )
             });
         }
@@ -469,14 +469,14 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
             Some(sid) => resolve_para_style(ctx, sid),
             None => ParaStyle::default(),
         };
-        // Overlay list membership/level/restart from the storage tables
+        // Overlay list membership/level/number from the storage tables
         // (gotchas #14). The theme list style carries the marker vocabulary;
         // the storage tables carry WHO is in a list, at WHAT level, and
-        // whether numbering restarts — decodable without theme resolution.
-        if let Some((lid, level, restart)) = list_by_para[pi] {
+        // which number each item prints — decodable without theme resolution.
+        if let Some((lid, level, number)) = list_by_para[pi] {
             let mut lf = resolve_list_format_minimal(ctx, lid, level);
-            if restart && lf.marker_kind == ListMarkerKind::Number {
-                lf.start = Some(1.0);
+            if number > 0 && lf.marker_kind == ListMarkerKind::Number {
+                lf.start = Some(number as f64);
             }
             pstyle.list = Some(lf);
         }
@@ -699,16 +699,22 @@ fn para_level(para_data: &[(usize, u64, u64)], utf16_off: usize) -> u32 {
     level.min(8)
 }
 
-/// List RESTART flag: the last table_para_starts entry at or before the
-/// paragraph start carries `.first` (1 = numbering restarts here).
-fn para_restart(para_starts: &[(usize, u64, u64)], utf16_off: usize) -> bool {
-    let mut restart = false;
+/// List item NUMBER for a paragraph: the last table_para_starts entry at or
+/// before the paragraph start carries `.first`, and it is the number Apple
+/// prints — not a restart flag. b31db822 stores 1 on "Are these proposals
+/// clear?", then 6 / 10 / 15 / 17 / 19 on the first question of each later
+/// section, and Apple's export prints exactly those, numbering (1) … (19)
+/// straight through the document; reading the field as a boolean restarted
+/// every group at (1). 0 = no explicit number, so numbering continues.
+/// [inferred: TSWP.ParagraphStartAttributeTable, 5 fixtures]
+fn para_list_number(para_starts: &[(usize, u64, u64)], utf16_off: usize) -> u64 {
+    let mut n = 0;
     for (idx, first, _) in para_starts {
         if *idx <= utf16_off {
-            restart = *first != 0;
+            n = *first;
         } else {
             break;
         }
     }
-    restart
+    n
 }
