@@ -29,7 +29,51 @@ import { charStyleOf, paraStyleOf, type HydratedDoc } from "./hydrate";
  */
 const FONT_FALLBACKS: [RegExp, string][] = [
   [/^bebas|^oswald|^anton|^haettenschweiler|condensed|^impact|narrow/i, '"Arial Narrow", Impact, "Helvetica Neue", sans-serif'],
+  // The Microsoft ClearType faces are the corpus's commonest missing fonts —
+  // Calibri in 36 of 323 .pages documents, Cambria in 12 — and they have
+  // metric-compatible free clones (Carlito, Caladea) that a reader may well
+  // have installed. Behind those, a face of the same CLASS and roughly the
+  // same width: Helvetica Neue for the humanist sans, Georgia for the screen
+  // serif. Falling through to the generic default turned every one of them
+  // into Helvetica, which is wider than Calibri and not a serif at all.
+  [/^calibri|^candara|^corbel|^segoeui|^tahoma|^verdana/i, 'Carlito, "Helvetica Neue", Helvetica, sans-serif'],
+  [/^cambria|^constantia|^bookantiqua|^palatino|^book/i, 'Caladea, Georgia, Palatino, "Times New Roman", serif'],
+  [/^garamond|^ebgaramond|^minion|^goudy|^caslon|^baskerville/i, '"EB Garamond", Baskerville, Palatino, "Times New Roman", serif'],
+  [/^consolas|^courier|^monaco|^menlo|^lucidaconsole|mono/i, 'Menlo, Consolas, "Courier New", monospace'],
+  // any other name that READS as a serif still gets a serif
+  [/times|serif|georgia|didot|charter|hoefler|century|rockwell|slab/i, 'Georgia, "Times New Roman", serif'],
 ];
+
+/**
+ * Weight carried by a PostScript name's suffix. iWork stores the FACE
+ * ("HelveticaNeue-Light", "AvenirNext-DemiBold") and only sometimes a
+ * separate bold flag, so the suffix is often the only weight information
+ * there is — 65 of 323 corpus .pages documents style a run with a
+ * weight-suffixed name and no bold flag, and Apple's export of 10a06959
+ * draws its HelveticaNeue-Light 47pt title in the Light cut.
+ */
+const NAME_WEIGHTS: [RegExp, number][] = [
+  [/(ultra|extra)black|ultra$/i, 900],
+  [/black|heavy/i, 900],
+  [/(ultra|extra)bold/i, 800],
+  [/(semi|demi)bold|demi$/i, 600],
+  [/bold/i, 700],
+  [/medium/i, 500],
+  [/(ultra|extra)light|thin|hairline/i, 100],
+  [/light/i, 300],
+];
+
+/** Family without its weight/style suffix: Arial-BoldMT → Arial,
+ *  TimesNewRomanPS-BoldMT → TimesNewRoman, HelveticaNeue-Light →
+ *  HelveticaNeue. macOS resolves the full PostScript name, so the stripped
+ *  family is a FALLBACK for browsers that only know families. */
+function familyOf(name: string): string {
+  const base = name.replace(
+    /(PS)?-(Bold|Semi ?Bold|Demi ?Bold|Demi|Medium|Book|Light|Thin|Hairline|Heavy|Black|Ultra\w*|Extra\w*|Roman|Regular|Normal|Condensed|Oblique|Italic)+(MT|PSMT)?$/i,
+    "",
+  );
+  return base && base !== name ? base : "";
+}
 
 export function applyCharStyle(el: HTMLElement, cs: CharStyle | undefined): void {
   if (!cs) return;
@@ -37,7 +81,14 @@ export function applyCharStyle(el: HTMLElement, cs: CharStyle | undefined): void
   if (cs.fontName) {
     const flat = cs.fontName.replace(/[\s-]+/g, "");
     const fb = FONT_FALLBACKS.find(([re]) => re.test(flat))?.[1] ?? "sans-serif";
-    s.fontFamily = `"${cs.fontName}", ${fb}`;
+    const family = familyOf(cs.fontName);
+    s.fontFamily = family
+      ? `"${cs.fontName}", "${family}", ${fb}`
+      : `"${cs.fontName}", ${fb}`;
+    // the suffix's weight, so a Light/Medium/Bold cut still reads as one when
+    // only the family resolves; an explicit bold flag still wins below
+    const w = NAME_WEIGHTS.find(([re]) => re.test(cs.fontName!))?.[1];
+    if (w) s.fontWeight = String(w);
   }
   if (cs.fontSizePt) s.fontSize = `${cs.fontSizePt}px`;
   if (cs.bold) s.fontWeight = "700";
@@ -72,28 +123,56 @@ export function applyCharStyle(el: HTMLElement, cs: CharStyle | undefined): void
  * usual `normal`. [inferred: metrics from the fonts' hhea tables]
  */
 const FONT_LINE_HEIGHTS: [RegExp, number][] = [
-  [/^helveticaneue/, 1.19],
-  [/^helvetica/, 1.15],
-  [/^arial/, 1.15],
-  [/^timesnewroman|^times/, 1.15],
-  [/^georgia/, 1.136],
-  [/^verdana|^tahoma/, 1.215],
-  [/^trebuchet/, 1.16],
-  [/^calibri/, 1.22],
-  [/^cambria/, 1.17],
+  // measured with CoreText on macOS 26.6:
+  //   (CTFontGetAscent + CTFontGetDescent + CTFontGetLeading) / size
+  // Several of the old guesses were a face's number applied to a different
+  // face — Helvetica carried Arial's 1.15 where its real leading is 1.00
+  // (zero line gap), Palatino 1.35 against a real 1.10, Hoefler Text 1.37
+  // against 1.00 — and Menlo (1.164) and Monaco (1.334) shared one entry.
+  [/^helveticaneue/, 1.193],
+  [/^helvetica/, 1.0],
+  [/^arialnarrow/, 1.1475],
+  [/^arialblack/, 1.41],
+  [/^arial/, 1.1499],
+  [/^timesnewroman/, 1.1499],
+  [/^times/, 1.0],
+  [/^georgia/, 1.1362],
+  [/^verdana/, 1.2153],
+  [/^tahoma/, 1.207],
+  [/^trebuchet/, 1.1611],
+  // Calibri / Cambria / Garamond are not installed on macOS: these are the
+  // substitutes FONT_FALLBACKS names, so the multiple scales what is drawn.
+  [/^calibri|^candara|^corbel|^segoeui/, 1.193],
+  [/^cambria|^constantia/, 1.1362],
+  [/^garamond/, 1.144],
   [/^avenir/, 1.366],
-  [/^sfpro|^sf-|^\.sf|^sfns/, 1.19],
-  [/^palatino/, 1.35],
-  [/^baskerville/, 1.14],
-  [/^gillsans/, 1.15],
-  [/^futura/, 1.32],
-  [/^couriernew/, 1.13],
-  [/^menlo|^monaco/, 1.17],
-  [/^noteworthy/, 1.46],
-  [/^optima/, 1.19],
-  [/^hoefler/, 1.37],
-  [/^didot/, 1.33],
-  [/^seravek/, 1.25],
+  [/^sfpro|^sf-|^\.sf|^sfns/, 1.193],
+  [/^palatino/, 1.10],
+  [/^baskerville/, 1.144],
+  [/^gillsans/, 1.1484],
+  [/^futura/, 1.328],
+  [/^charter/, 1.2202],
+  [/^couriernew|^courier/, 1.0],
+  [/^menlo/, 1.164],
+  [/^monaco/, 1.334],
+  [/^lucida/, 1.178],
+  [/^impact/, 1.2197],
+  [/^rockwell/, 1.2002],
+  [/^americantypewriter/, 1.154],
+  [/^copperplate/, 1.03],
+  [/^chalkboard/, 1.276],
+  [/^markerfelt/, 1.086],
+  [/^bradleyhand/, 1.249],
+  [/^snellroundhand/, 1.261],
+  [/^zapfino/, 3.378],
+  [/^noteworthy/, 1.615],
+  [/^optima/, 1.212],
+  [/^hoefler/, 1.0],
+  [/^didot/, 1.264],
+  [/^seravek/, 1.227],
+  [/^wingdings|^webdings/, 1.11],
+  [/^symbol/, 1.0],
+  [/^hirakaku|^hiragino|^hiramin|^yugothic|^osaka/, 1.5],
 ];
 
 export function naturalLineHeight(fontName: string | undefined): number {
