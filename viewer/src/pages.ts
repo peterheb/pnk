@@ -268,6 +268,173 @@ function floatingSection(
   mount.appendChild(wrap);
 }
 
+// ---------------------------------------------------------------------------
+// Breaking a block across a page boundary.
+//
+// Apple paginates by LINE, not by paragraph, and breaks a table between its
+// ROWS ([parser]: any Pages export shows it — b31db822's "Areas of Study"
+// table runs from export page 17 to page 25, and its exec-summary paragraphs
+// straddle the page-4/5 boundary). Packing whole blocks instead both inflates
+// the page count (that fixture: 81 pages against Apple's 65) and, worse,
+// silently DESTROYS content: a table taller than the printable area got its
+// own page and the overflow was clipped by the frame — 1822pt of one table,
+// about two and a half pages of rows, never rendered at all.
+// ---------------------------------------------------------------------------
+
+/** Shallow-clone the chain `outer` … `inner` (inclusive), preserving each
+ *  element's classes and inline style. Returns both ends of the copy. */
+function cloneChain(outer: HTMLElement, inner: HTMLElement): { root: HTMLElement; leaf: HTMLElement } {
+  const chain: HTMLElement[] = [];
+  for (let n: HTMLElement | null = inner; n; n = n.parentElement) {
+    chain.unshift(n);
+    if (n === outer) break;
+  }
+  let root: HTMLElement | null = null;
+  let leaf: HTMLElement | null = null;
+  for (const n of chain) {
+    const c = n.cloneNode(false) as HTMLElement;
+    if (leaf) leaf.appendChild(c);
+    else root = c;
+    leaf = c;
+  }
+  return { root: root!, leaf: leaf! };
+}
+
+/** All text nodes of `el`, in document order. */
+function textNodesOf(el: HTMLElement): Text[] {
+  const out: Text[] = [];
+  const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  for (let n = w.nextNode(); n; n = w.nextNode()) out.push(n as Text);
+  return out;
+}
+
+/** The paragraph body inside a list row (marker + <p>), else the element. */
+function splitTarget(el: HTMLElement): HTMLElement {
+  if (el.classList.contains("list-item")) {
+    const p = el.querySelector<HTMLElement>(":scope > p");
+    if (p) return p;
+  }
+  return el;
+}
+
+/**
+ * Break `el` (already laid out inside `container`) so that everything above
+ * `limitPx` stays and the rest is returned as a fresh sibling element to
+ * place on the next page — or null when there is no usable break.
+ *
+ * Tables break between rows; text breaks between lines, at the last word
+ * boundary that still fits. `minLines` lines must remain on BOTH sides, which
+ * is Pages' widow/orphan control (TSWP paragraph property widow_control(26)
+ * [proto]; on by default in every stock template [inferred]).
+ */
+function splitOverflow(
+  el: HTMLElement,
+  container: HTMLElement,
+  limitPx: number,
+  minLines = 2,
+): HTMLElement | null {
+  const base = container.getBoundingClientRect().top;
+  const table = el.querySelector<HTMLTableElement>("table");
+  if (table) {
+    const rows = Array.from(table.querySelectorAll<HTMLTableRowElement>("tr"));
+    let keep = -1;
+    for (let i = 0; i < rows.length; i++) {
+      if (rows[i].getBoundingClientRect().bottom - base <= limitPx + 0.5) keep = i;
+      else break;
+    }
+    // both halves need a row; a fragment of one giant row cannot be split
+    if (keep < 0 || keep >= rows.length - 1) return null;
+    const body = rows[keep + 1].parentElement as HTMLElement;
+    const { root, leaf } = cloneChain(el, body);
+    for (const cg of table.querySelectorAll<HTMLElement>(":scope > colgroup")) {
+      leaf.parentElement?.insertBefore(cg.cloneNode(true), leaf);
+    }
+    for (const r of rows.slice(keep + 1)) leaf.appendChild(r);
+    el.style.marginBottom = "0";
+    root.style.marginTop = "0";
+    return root;
+  }
+
+  const target = splitTarget(el);
+  const nodes = textNodesOf(target);
+  if (!nodes.length || !target.lastChild) return null;
+  const lengths = nodes.map((n) => n.data.length);
+  const total = lengths.reduce((a, b) => a + b, 0);
+  if (total < 2) return null;
+  const full = nodes.map((n) => n.data).join("");
+  const at = (i: number): [Text, number] => {
+    let rest = i;
+    for (let n = 0; n < nodes.length; n++) {
+      if (rest <= lengths[n]) return [nodes[n], rest];
+      rest -= lengths[n];
+    }
+    return [nodes[nodes.length - 1], lengths[lengths.length - 1]];
+  };
+  const probe = document.createRange();
+  /** Bottom of the last line box covering characters [0, i), page-relative. */
+  const bottomAt = (i: number): number => {
+    const [n, off] = at(i);
+    probe.setStartBefore(target.firstChild!);
+    probe.setEnd(n, off);
+    const rects = probe.getClientRects();
+    let b = -Infinity;
+    for (const r of rects) if (r.height > 0 && r.bottom > b) b = r.bottom;
+    return b === -Infinity ? -Infinity : b - base;
+  };
+  /** Distinct line boxes covering characters [0, i). */
+  const linesAt = (i: number): number => {
+    const [n, off] = at(i);
+    probe.setStartBefore(target.firstChild!);
+    probe.setEnd(n, off);
+    const tops = new Set<number>();
+    for (const r of probe.getClientRects()) if (r.height > 0) tops.add(Math.round(r.top * 4));
+    return tops.size;
+  };
+  const lineTotal = linesAt(total);
+  if (lineTotal < minLines * 2) return null;
+  // largest prefix that still ends above the page bottom
+  let lo = 0;
+  let hi = total;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (bottomAt(mid) <= limitPx + 0.5) lo = mid;
+    else hi = mid - 1;
+  }
+  if (lo <= 0 || lo >= total) return null;
+  // back up to a word boundary so no word straddles the page break
+  let cut = -1;
+  for (let i = lo; i > 0 && lo - i < 400; i--) {
+    if (/\s/.test(full[i - 1]) && !/^\s+$/.test(full.slice(i))) { cut = i; break; }
+  }
+  if (cut <= 0) return null;
+  const before = linesAt(cut);
+  if (before < minLines || lineTotal - before < minLines) return null;
+
+  const [n, off] = at(cut);
+  const cutter = document.createRange();
+  cutter.setStart(n, off);
+  cutter.setEndAfter(target.lastChild);
+  const frag = cutter.extractContents();
+  const restBody = target.cloneNode(false) as HTMLElement;
+  restBody.appendChild(frag);
+  // a continuation line is never a FIRST line: no first-line indent, no
+  // space-before, and the marker of a split list row must not repeat
+  restBody.style.textIndent = "0";
+  restBody.style.marginTop = "0";
+  target.style.marginBottom = "0";
+  if (target === el) return restBody;
+  const row = el.cloneNode(false) as HTMLElement;
+  row.style.marginTop = "0";
+  const marker = el.querySelector<HTMLElement>(":scope > .list-marker");
+  if (marker) {
+    const spacer = marker.cloneNode(false) as HTMLElement;
+    row.appendChild(spacer);
+  }
+  row.appendChild(restBody);
+  el.style.marginBottom = "0";
+  return row;
+}
+
 /** Printable-area geometry in points, from the document archive
  *  (TP.DocumentArchive page_width/height 30/31, margins 32-35 [proto]). */
 interface PageGeom {
@@ -549,29 +716,64 @@ function paginatedBody(
         }
         if (!blk) blk = currentBlock();
         const fl = anchorEls.get(k);
-        const tryPlace = (b: PageBlock): boolean => {
-          place(b.container!, k, el);
-          layoutTabs(el); // positioned stops change the line count
+        const tryPlace = (b: PageBlock, piece: HTMLElement, withFloat: boolean): boolean => {
+          if (withFloat) place(b.container!, k, piece);
+          else b.container!.appendChild(piece);
+          layoutTabs(piece); // positioned stops change the line count
           // floats never overlap: a later full-width float lands BELOW an
           // earlier one — pin it back to its paragraph (exclusion lost lies
           // inside the earlier float's anyway)
-          if (fl) fixAnchorDrift(b.container!);
-          const bottom = el.offsetTop + el.offsetHeight;
+          if (withFloat && fl) fixAnchorDrift(b.container!);
+          const bottom = piece.offsetTop + piece.offsetHeight;
           // the text must fit the printable area; an anchor float may hang
           // into the bottom margin (b31db822's cover logos do, by 27pt)
-          const fb = fl ? fl.offsetTop + fl.offsetHeight : 0;
+          const fb = withFloat && fl ? fl.offsetTop + fl.offsetHeight : 0;
           return bottom <= g.contentH + 0.5 && fb <= g.contentH + marginBelow + 0.5;
         };
-        if (!tryPlace(blk) && pageHasContent()) {
-          el.remove();
-          fl?.remove();
+        let recorded = false;
+        const record = (b: PageBlock, piece: HTMLElement) => {
+          b.els.push(piece);
+          b.paras.push(k);
+          // a split paragraph belongs, for footnote anchoring, to the page
+          // its FIRST fragment landed on
+          if (!recorded) pageOfPara[k] = pages.length - 1;
+          recorded = true;
+        };
+        // A block that does not fit is BROKEN at its last line (or table row)
+        // that does, and the remainder continues on the next page — where it
+        // may break again. An anchored paragraph is pinned to its float and
+        // stays whole.
+        let piece: HTMLElement | null = el;
+        let first = true;
+        while (piece) {
+          const b: PageBlock = blk ?? (blk = currentBlock());
+          if (tryPlace(b, piece, first)) {
+            record(b, piece);
+            break;
+          }
+          const rest: HTMLElement | null = fl
+            ? null
+            : splitOverflow(piece, b.container!, g.contentH);
+          if (rest) {
+            record(b, piece);
+            newPage();
+            blk = startBlock();
+            piece = rest;
+            first = false;
+            continue;
+          }
+          if (!pageHasContent()) {
+            record(b, piece); // oversized and unbreakable: its own page, clipped
+            break;
+          }
+          piece.remove();
+          if (first) fl?.remove();
           newPage();
           blk = startBlock();
-          tryPlace(blk); // an oversized paragraph keeps its own page, clipped
+          tryPlace(blk, piece, first);
+          record(blk, piece);
+          break;
         }
-        blk.els.push(el);
-        blk.paras.push(k);
-        pageOfPara[k] = pages.length - 1;
       });
     } else {
       const cap = g.contentH * seg.spec.count;
