@@ -633,7 +633,12 @@ pub fn resolve_cell_style(ctx: &mut Ctx, id: u64) -> Option<TableCellStyle> {
                 // not fall through to an ancestor's fill (01_Running_Log:
                 // the header style overrides the preset's blue with none;
                 // Apple renders white).
-                s.fill = crate::tsd::fill_of(ctx, &fm);
+                // Some(None) = decided empty: serializes as `fill: null`
+                // so the viewer skips the section default (0839b6d2's
+                // docx cells over a banded table style render white,
+                // while burndown's fill-less header cells keep the
+                // header row's blue).
+                s.fill = Some(crate::tsd::fill_of(ctx, &fm));
                 fill_decided = true;
             }
         }

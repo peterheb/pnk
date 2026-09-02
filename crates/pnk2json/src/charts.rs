@@ -103,6 +103,45 @@ pub fn convert_chart(ctx: &mut Ctx, ca: &Msg) -> ChartModel {
 
     let series_colors = series_colors(ctx, ca, ctype, series.len());
 
+    // Titles/axes live on the NON-style archives, in the Generated
+    // extension at field 10000 (TSCHArchives.GEN.proto): chart_non_style
+    // (ref 10) → ChartNonStyleArchive { showtitle = 35, title = 46,
+    // showlegend = 34 }; value_axis_nonstyles (14) / category_axis_nonstyles
+    // (16) → ChartAxisNonStyleArchive { showtitle 13/14, title 15/16,
+    // usermax 17, usermin 18, majorgridlines 5 }. Burndown's "User
+    // Stories" chart stores its title here; Apple draws it above the plot.
+    let ext = |ctx: &Ctx, id: Option<u64>| -> Option<Msg> {
+        id.and_then(|i| ctx.loaded.msg(i)).and_then(|m| m.msg(10000))
+    };
+    // The Generated ChartNonStyleArchive keeps the chart-level values in
+    // its "default" slots: showlegend = 20, showtitle = 21, title = 23
+    // (fixture-verified: burndown's "User Stories" sits at 23 with 21 = 1;
+    // the 34/35/46 numbers belong to ChartGenericPropertyMapArchive).
+    let (mut title, mut legend_visible) = (None, None);
+    if let Some(ns) = ext(ctx, ca.reference(10)) {
+        if ns.boolean(21) != Some(false) {
+            title = ns.string(23).filter(|t| !t.trim().is_empty());
+        }
+        legend_visible = ns.boolean(20);
+    }
+    let axis_title = |ctx: &Ctx, ids: Vec<u64>, show: u32, field: u32| -> Option<String> {
+        ids.into_iter()
+            .filter_map(|id| ext(ctx, Some(id)))
+            .find_map(|m| {
+                if m.boolean(show) == Some(false) {
+                    return None;
+                }
+                m.string(field).filter(|t| !t.trim().is_empty())
+            })
+    };
+    let value_axis_title = axis_title(ctx, ca.references(14), 14, 16);
+    let category_axis_title = axis_title(ctx, ca.references(16), 13, 15);
+    let value_ext = ca.references(14).into_iter().find_map(|id| ext(ctx, Some(id)));
+    let user_bound = |m: &Msg, f: u32| m.msg(f).and_then(|n| n.f64v(1).or_else(|| n.f32v(1).map(|v| v as f64)));
+    let value_axis_max = value_ext.as_ref().and_then(|m| user_bound(m, 17));
+    let value_axis_min = value_ext.as_ref().and_then(|m| user_bound(m, 18));
+    let value_axis_major_gridlines = value_ext.as_ref().and_then(|m| m.varint(5)).map(|v| v as u32);
+
     ChartModel {
         r#type: ctype,
         three_d,
@@ -110,10 +149,16 @@ pub fn convert_chart(ctx: &mut Ctx, ca: &Msg) -> ChartModel {
         categories,
         series,
         legend_frame,
-        legend_visible: None,
+        legend_visible,
         series_colors,
         data_binding,
         scatter_format,
+        title,
+        category_axis_title,
+        value_axis_title,
+        value_axis_min,
+        value_axis_max,
+        value_axis_major_gridlines,
     }
 }
 

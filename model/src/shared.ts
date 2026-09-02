@@ -568,7 +568,14 @@ export interface RowColInfo {
 
 /** Resolved per-cell look (TST.CellStylePropertiesArchive + text style); pooled per table. */
 export interface TableCellStyle {
-  fill?: Fill;
+  /**
+   * Cell fill. `null` = explicitly NO fill (the style's chain sets an
+   * empty cell_fill, overriding the table style's section default —
+   * 0839b6d2's docx-imported cells over a blue-banded table style);
+   * absent = unspecified, the section default (headerRowCellStyle /
+   * bodyCellStyle) shows through (burndown's header rows).
+   */
+  fill?: Fill | null;
   /** Per-side borders; undefined side = no explicit border. */
   borders?: {
     top?: Stroke;
@@ -650,6 +657,16 @@ export interface ChartModel {
   dataBinding?: TsceFormulaRef;
   /** Scatter layout. [proto: TSCH.ScatterFormat] */
   scatterFormat?: "separate-x" | "shared-x";
+  /** Chart title when shown. [proto: TSCH.Generated.ChartNonStyleArchive title 46 / showtitle 35] */
+  title?: string;
+  /** Axis titles when shown. [proto: TSCH.Generated.ChartAxisNonStyleArchive 15/16, show 13/14] */
+  categoryAxisTitle?: string;
+  valueAxisTitle?: string;
+  /** Value-axis bounds when the author pinned them. [proto: usermin 18 / usermax 17] */
+  valueAxisMin?: number;
+  valueAxisMax?: number;
+  /** Major gridline count on the value axis. [proto: field 5] */
+  valueAxisMajorGridlines?: number;
 }
 
 export interface ChartSeries {

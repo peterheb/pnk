@@ -1072,6 +1072,12 @@ fn chart_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
                 series_colors: None,
                 data_binding: None,
                 scatter_format: None,
+                title: None,
+                category_axis_title: None,
+                value_axis_title: None,
+                value_axis_min: None,
+                value_axis_max: None,
+                value_axis_major_gridlines: None,
             }
         });
     Drawable::Chart { common, chart }

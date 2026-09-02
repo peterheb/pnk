@@ -1217,8 +1217,12 @@ pub enum CellValue {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TableCellStyle {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub fill: Option<Fill>,
+    /// Tri-state: `None` = unspecified (the table style's section default
+    /// shows through), `Some(None)` = explicitly NO fill (serialized as
+    /// `null`), `Some(Some(_))` = a fill. A cell style whose chain sets an
+    /// empty cell_fill overrides the section default with none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fill: Option<Option<Fill>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub borders: Option<CellBorders>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1333,6 +1337,24 @@ pub struct ChartModel {
     pub data_binding: Option<TsceFormulaRef>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scatter_format: Option<ChartScatterFormat>,
+    /// Chart title when shown. [proto: TSCH.Generated.ChartNonStyleArchive
+    /// tschchartinfotitle = 46 / showtitle = 35, via ChartArchive.chart_non_style]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// Axis titles when shown. [proto: TSCH.Generated.ChartAxisNonStyleArchive
+    /// 15/16 with show flags 13/14]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub category_axis_title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value_axis_title: Option<String>,
+    /// Value-axis bounds when the author pinned them. [proto: usermin 18 / usermax 17]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value_axis_min: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value_axis_max: Option<f64>,
+    /// Major gridline count on the value axis. [proto: field 5]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value_axis_major_gridlines: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
