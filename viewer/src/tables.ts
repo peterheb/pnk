@@ -278,7 +278,11 @@ function formatDatePattern(d: Date, pattern: string): string {
 function valueToText(cell: TableCell, format: CellFormat | undefined): string {
   const { v } = cell;
   if (v === null || v === undefined) return "";
-  const type = cell.type ?? (typeof v === "number" ? "number" : typeof v === "boolean" ? "bool" : "text");
+  // an untyped number takes its display type from the cell FORMAT: cdrky's
+  // budget sheets store plain numbers under a USD/2-decimal format and
+  // Numbers prints "$140,353.01", not 140353.008293
+  const formatType = typeof v === "number" && format?.kind === "currency" ? "currency" : undefined;
+  const type = cell.type ?? formatType ?? (typeof v === "number" ? "number" : typeof v === "boolean" ? "bool" : "text");
   switch (type) {
     case "number": {
       const n = typeof v === "number" ? v : Number(v);
@@ -387,9 +391,18 @@ function applyCellStyle(td: HTMLTableCellElement, style: TableCellStyle | undefi
     const b = style.borders;
     // width 0 = explicit "no line" (erases the base gridline); dash
     // patterns map to dotted (short) / dashed CSS lines
+    // Hairlines: a 0.25pt stroke prints as a faint gray rule in Apple's
+    // export, but CSS rounds sub-pixel borders up to a solid 1px black
+    // (burndown's 0.25pt gridlines came out as a heavy black grid). Fade
+    // thin strokes by their width instead of widening them.
+    const faded = (color: string, widthPt: number): string => {
+      if (widthPt >= 1 || !/^#[0-9a-f]{6}$/i.test(color)) return color;
+      const v = parseInt(color.slice(1), 16);
+      return `rgba(${(v >> 16) & 255},${(v >> 8) & 255},${v & 255},${Math.max(0.25, widthPt).toFixed(2)})`;
+    };
     const css = (st: { widthPt: number; color: string; dash?: number[] }) =>
       st.widthPt <= 0 ? "none"
-        : `${Math.max(st.widthPt, 1)}px ${st.dash ? (st.dash[0] <= 1.5 ? "dotted" : "dashed") : "solid"} ${st.color}`;
+        : `${Math.max(st.widthPt, 1)}px ${st.dash ? (st.dash[0] <= 1.5 ? "dotted" : "dashed") : "solid"} ${faded(st.color, st.widthPt)}`;
     if (b.top) s.borderTop = css(b.top);
     if (b.right) s.borderRight = css(b.right);
     if (b.bottom) s.borderBottom = css(b.bottom);
@@ -407,7 +420,7 @@ function applyCellStyle(td: HTMLTableCellElement, style: TableCellStyle | undefi
 }
 
 /** One TableModel as a real table; hidden rows/columns are skipped. */
-export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedDoc): HTMLTableElement {
+export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedDoc, frameWidth?: number): HTMLTableElement {
   const table = document.createElement("table");
   table.className = "sheet-table";
   if (model.name) {
@@ -436,7 +449,9 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedD
   let allWidthsKnown = visCols.length > 0;
   for (const c of visCols) {
     const col = document.createElement("col");
-    const w = model.columns?.[c]?.sizePt ?? model.defaultColumnWidthPt;
+    // a stored 0 means "the default" (cdrky's pre-BNC sheet stores 0 for
+    // ten of twelve columns and Numbers draws them at the default width)
+    const w = model.columns?.[c]?.sizePt || model.defaultColumnWidthPt;
     if (w) {
       col.style.width = `${w}px`;
       totalW += w;
@@ -449,6 +464,19 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedD
   // column collapses toward min-content (lafs_playlist wrapped 3-6 lines
   // per cell inside its drawable box).
   if (allWidthsKnown && totalW > 0) {
+    // The drawable FRAME is authoritative: Numbers keeps the per-column
+    // sizes proportional but a table resized by its handle stores a
+    // narrower frame (maison-martos: columns sum 1105pt in a 686pt frame,
+    // cdrky 437 in 372, burndown 998 in 900 — Apple's export draws every
+    // column at frame/sum of its stored width).
+    const scale = frameWidth && frameWidth > 0 && Math.abs(frameWidth - totalW) > 1 ? frameWidth / totalW : 1;
+    if (scale !== 1) {
+      for (const col of Array.from(cg.children) as HTMLElement[]) {
+        const w = parseFloat(col.style.width);
+        if (w) col.style.width = `${(w * scale).toFixed(2)}px`;
+      }
+      totalW = frameWidth!;
+    }
     table.style.tableLayout = "fixed";
     table.style.width = `${totalW}px`;
     table.classList.add("exact-cols"); // lifts the base min-width guard
@@ -510,7 +538,7 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedD
       // parent chain, not the table's section default or banding: 0839b6d2
       // (docx import) stores fill-less cell styles over a blue-banded table
       // style and Pages paints white cells.
-      if (style) td.style.backgroundColor = "";
+      if (style && style.fill === null) td.style.backgroundColor = "";
       applyCellStyle(td, style, header, footer, ctx);
       if (norm) {
         const format = norm.fmt !== undefined ? formats[norm.fmt] : undefined;

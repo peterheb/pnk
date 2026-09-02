@@ -637,63 +637,216 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
   const NS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(NS, "svg") as SVGSVGElement;
   svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
-  const max = Math.max(...chart.series.flatMap((s) => s.values.map((v) => (typeof v === "number" ? v : 0))), 1e-9);
+  svg.setAttribute("font-family", '"Helvetica Neue", Helvetica, Arial, sans-serif');
   const colors = chart.seriesColors ?? ["#4a90d9", "#e0762e", "#7bb662", "#b0578d", "#5b6abf"];
-  const groupW = w / chart.categories.length;
+  const text = (x: number, y: number, str: string, opts: { size?: number; anchor?: string; weight?: string; fill?: string; rotate?: number } = {}) => {
+    const t = document.createElementNS(NS, "text");
+    t.setAttribute("x", x.toFixed(1));
+    t.setAttribute("y", y.toFixed(1));
+    t.setAttribute("font-size", String(opts.size ?? 9));
+    t.setAttribute("text-anchor", opts.anchor ?? "middle");
+    t.setAttribute("fill", opts.fill ?? "#3c3c43");
+    if (opts.weight) t.setAttribute("font-weight", opts.weight);
+    if (opts.rotate) t.setAttribute("transform", `rotate(${opts.rotate} ${x.toFixed(1)} ${y.toFixed(1)})`);
+    t.textContent = str;
+    svg.appendChild(t);
+    return t;
+  };
+  const line = (x1: number, y1: number, x2: number, y2: number, stroke: string, width = 1) => {
+    const l = document.createElementNS(NS, "line");
+    l.setAttribute("x1", x1.toFixed(1)); l.setAttribute("y1", y1.toFixed(1));
+    l.setAttribute("x2", x2.toFixed(1)); l.setAttribute("y2", y2.toFixed(1));
+    l.setAttribute("stroke", stroke); l.setAttribute("stroke-width", String(width));
+    svg.appendChild(l);
+  };
+
+  // --- layout: title on top, legend at the bottom, axis titles, plot box.
+  // Apple's chart furniture: 9pt labels, hairline gridlines, legend swatches
+  // centred under the plot. Fixture-verified on benmatselby's burndown deck.
+  const pieLike = chart.type === "pie" || chart.type === "donut";
+  const names = chart.series.map((s, i) => s.name ?? `Series ${i + 1}`);
+  const showLegend = chart.legendVisible !== false && (chart.series.length > 1 || pieLike || chart.series[0]?.name !== undefined);
+  let top = 6;
+  if (chart.title) {
+    text(w / 2, top + 10, chart.title, { size: 11, weight: "600", fill: "#1d1d1f" });
+    top += 20;
+  }
+  let bottom = h - 6;
+  if (showLegend) {
+    const items = pieLike ? chart.categories : names;
+    const itemW = Math.min(110, Math.max(50, (w - 20) / Math.max(1, items.length)));
+    const rowW = itemW * items.length;
+    const y = bottom - 4;
+    items.forEach((name, i) => {
+      const x = w / 2 - rowW / 2 + i * itemW;
+      const sw = document.createElementNS(NS, "rect");
+      sw.setAttribute("x", (x + 2).toFixed(1)); sw.setAttribute("y", (y - 7).toFixed(1));
+      sw.setAttribute("width", "8"); sw.setAttribute("height", "8"); sw.setAttribute("rx", "1.5");
+      sw.setAttribute("fill", colors[i % colors.length]);
+      svg.appendChild(sw);
+      const label = text(x + 14, y, name, { anchor: "start", size: 8.5 });
+      label.setAttribute("textLength", "");
+      if (name.length * 4.8 > itemW - 16) label.textContent = name.slice(0, Math.max(3, Math.floor((itemW - 16) / 4.8) - 1)) + "…";
+    });
+    bottom -= 18;
+  }
+  if (pieLike) {
+    // one series, wedges by category
+    const vals = chart.series[0].values.map((v) => (typeof v === "number" && v > 0 ? v : 0));
+    const total = vals.reduce((a, b) => a + b, 0) || 1;
+    const cx = w / 2, cy = (top + bottom) / 2, r = Math.min(w, bottom - top) / 2 - 6;
+    let a0 = -Math.PI / 2;
+    vals.forEach((v, i) => {
+      const a1 = a0 + (v / total) * Math.PI * 2;
+      const p = document.createElementNS(NS, "path");
+      const large = a1 - a0 > Math.PI ? 1 : 0;
+      const [x0, y0, x1, y1] = [cx + r * Math.cos(a0), cy + r * Math.sin(a0), cx + r * Math.cos(a1), cy + r * Math.sin(a1)];
+      p.setAttribute("d", `M${cx},${cy} L${x0.toFixed(1)},${y0.toFixed(1)} A${r},${r} 0 ${large} 1 ${x1.toFixed(1)},${y1.toFixed(1)} Z`);
+      p.setAttribute("fill", colors[i % colors.length]);
+      p.setAttribute("stroke", "#fff");
+      svg.appendChild(p);
+      a0 = a1;
+    });
+    if (chart.type === "donut") {
+      const hole = document.createElementNS(NS, "circle");
+      hole.setAttribute("cx", String(cx)); hole.setAttribute("cy", String(cy)); hole.setAttribute("r", (r * 0.5).toFixed(1));
+      hole.setAttribute("fill", "#fff");
+      svg.appendChild(hole);
+    }
+    return svg;
+  }
+
+  const horizontal = chart.type === "bar" || chart.type === "stacked-bar";
+  const stacked = chart.type.startsWith("stacked");
+  if (chart.valueAxisTitle) {
+    if (horizontal) bottom -= 14; else { /* rotated at the left */ }
+  }
+  if (chart.categoryAxisTitle) bottom -= 14;
+  // value range + nice ticks
+  const allVals: number[] = [];
+  if (stacked) {
+    chart.categories.forEach((_, vi) => {
+      let pos = 0, neg = 0;
+      for (const s of chart.series) { const v = s.values[vi]; if (typeof v === "number") { if (v >= 0) pos += v; else neg += v; } }
+      allVals.push(pos, neg);
+    });
+  } else {
+    for (const s of chart.series) for (const v of s.values) if (typeof v === "number") allVals.push(v);
+  }
+  let vmin = Math.min(0, ...allVals);
+  let vmax = Math.max(0, ...allVals);
+  if (chart.valueAxisMin !== undefined) vmin = chart.valueAxisMin;
+  if (chart.valueAxisMax !== undefined) vmax = chart.valueAxisMax;
+  if (vmax === vmin) vmax = vmin + 1;
+  const targetTicks = chart.valueAxisMajorGridlines && chart.valueAxisMajorGridlines > 1 ? chart.valueAxisMajorGridlines : 4;
+  const rawStep = (vmax - vmin) / targetTicks;
+  const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((st) => (vmax - vmin) / st <= targetTicks + 0.5) ?? mag * 10;
+  if (chart.valueAxisMin === undefined) vmin = Math.floor(vmin / step) * step;
+  if (chart.valueAxisMax === undefined) vmax = Math.ceil(vmax / step) * step;
+  const ticks: number[] = [];
+  for (let v = vmin; v <= vmax + step / 1000; v += step) ticks.push(Math.round(v * 1e6) / 1e6);
+  const fmtTick = (v: number) => (Math.abs(v) >= 1000 ? v.toLocaleString("en-US") : String(v));
+  const tickLabelW = Math.max(...ticks.map((t) => fmtTick(t).length)) * 5.2 + 8;
+  const left = horizontal ? Math.min(w * 0.3, Math.max(...chart.categories.map((c) => c.length)) * 5 + 10) : tickLabelW + (chart.valueAxisTitle ? 14 : 0);
+  const right = w - 8;
+  const plotTop = top + 4;
+  const plotBottom = bottom - 14; // category labels
+  const plotW = right - left, plotH = plotBottom - plotTop;
+  if (plotW <= 10 || plotH <= 10) return svg;
+  const vy = (v: number) => plotBottom - ((v - vmin) / (vmax - vmin)) * plotH;
+  const vx = (v: number) => left + ((v - vmin) / (vmax - vmin)) * plotW;
+
+  // gridlines + value labels
+  for (const t of ticks) {
+    if (horizontal) {
+      line(vx(t), plotTop, vx(t), plotBottom, "#e4e4e8");
+      text(vx(t), plotBottom + 11, fmtTick(t));
+    } else {
+      line(left, vy(t), right, vy(t), "#e4e4e8");
+      text(left - 4, vy(t) + 3, fmtTick(t), { anchor: "end" });
+    }
+  }
+  // axes
+  if (horizontal) line(left, plotTop, left, plotBottom, "#9a9aa0");
+  else line(left, vy(Math.max(vmin, Math.min(0, vmax))), right, vy(Math.max(vmin, Math.min(0, vmax))), "#9a9aa0");
+  if (chart.valueAxisTitle) {
+    if (horizontal) text((left + right) / 2, bottom - 2, chart.valueAxisTitle, { size: 9 });
+    else text(10, (plotTop + plotBottom) / 2, chart.valueAxisTitle, { size: 9, rotate: -90 });
+  }
+  if (chart.categoryAxisTitle) text(horizontal ? 10 : (left + right) / 2, horizontal ? (plotTop + plotBottom) / 2 : h - (showLegend ? 24 : 6), chart.categoryAxisTitle, { size: 9, rotate: horizontal ? -90 : 0 });
+
+  const n = chart.categories.length;
   const lineKinds = ["line", "area", "stacked-area", "scatter"];
   if (lineKinds.includes(chart.type)) {
-    // Line family: one polyline per series through the category centers,
-    // 0-based y like Apple's default axis (Running Log pace chart), with
-    // small circle markers; area variants also fill down to the baseline.
+    // points spread edge to edge like Apple's line charts (first category
+    // at the axis origin, last at the right edge)
+    const px = (i: number) => (n === 1 ? left + plotW / 2 : left + (i / (n - 1)) * plotW);
+    chart.categories.forEach((c, i) => text(px(i), plotBottom + 11, c));
+    const running: number[] = new Array(n).fill(0);
     chart.series.forEach((s, si) => {
       const color = colors[si % colors.length];
       const pts: [number, number][] = [];
       s.values.forEach((v, vi) => {
         if (typeof v !== "number") return;
-        pts.push([(vi + 0.5) * groupW, h - 4 - (v / max) * (h - 12)]);
+        const base = stacked ? running[vi] : 0;
+        if (stacked) running[vi] += v;
+        pts.push([px(vi), vy(base + v)]);
       });
       if (!pts.length) return;
       if (chart.type.endsWith("area")) {
         const area = document.createElementNS(NS, "path");
-        area.setAttribute("d", `M${pts[0][0]},${h} L` + pts.map(([x, y]) => `${x},${y}`).join(" L") + ` L${pts[pts.length - 1][0]},${h} Z`);
+        area.setAttribute("d", `M${pts[0][0]},${vy(0)} L` + pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" L") + ` L${pts[pts.length - 1][0]},${vy(0)} Z`);
         area.setAttribute("fill", color);
-        area.setAttribute("opacity", "0.25");
+        area.setAttribute("opacity", "0.35");
         svg.appendChild(area);
       }
       if (chart.type !== "scatter") {
-        const line = document.createElementNS(NS, "polyline");
-        line.setAttribute("points", pts.map(([x, y]) => `${x},${y}`).join(" "));
-        line.setAttribute("fill", "none");
-        line.setAttribute("stroke", color);
-        line.setAttribute("stroke-width", "2.5");
-        line.setAttribute("stroke-linejoin", "round");
-        svg.appendChild(line);
+        const pl = document.createElementNS(NS, "polyline");
+        pl.setAttribute("points", pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" "));
+        pl.setAttribute("fill", "none");
+        pl.setAttribute("stroke", color);
+        pl.setAttribute("stroke-width", "2");
+        pl.setAttribute("stroke-linejoin", "round");
+        svg.appendChild(pl);
       }
       for (const [x, y] of pts) {
         const dot = document.createElementNS(NS, "circle");
-        dot.setAttribute("cx", String(x));
-        dot.setAttribute("cy", String(y));
-        dot.setAttribute("r", "3");
-        dot.setAttribute("fill", "#fff");
-        dot.setAttribute("stroke", color);
-        dot.setAttribute("stroke-width", "2");
+        dot.setAttribute("cx", x.toFixed(1)); dot.setAttribute("cy", y.toFixed(1)); dot.setAttribute("r", "2.5");
+        dot.setAttribute("fill", "#fff"); dot.setAttribute("stroke", color); dot.setAttribute("stroke-width", "1.5");
         svg.appendChild(dot);
       }
     });
     return svg;
   }
-  const barW = (groupW * 0.7) / chart.series.length;
+  // column / bar family, grouped or stacked
+  const groupSpan = horizontal ? plotH / n : plotW / n;
+  const groupInner = groupSpan * 0.7;
+  const barW = stacked ? groupInner : groupInner / chart.series.length;
+  chart.categories.forEach((c, i) => {
+    if (horizontal) text(left - 4, plotTop + (i + 0.5) * groupSpan + 3, c, { anchor: "end" });
+    else text(left + (i + 0.5) * groupSpan, plotBottom + 11, c);
+  });
+  const stackPos: number[] = new Array(n).fill(0);
+  const stackNeg: number[] = new Array(n).fill(0);
   chart.series.forEach((s, si) => {
     s.values.forEach((v, vi) => {
       if (typeof v !== "number") return;
-      const bar = document.createElementNS(NS, "rect");
-      const bh = (v / max) * (h - 8);
-      bar.setAttribute("x", String(vi * groupW + groupW * 0.15 + si * barW));
-      bar.setAttribute("y", String(h - bh));
-      bar.setAttribute("width", String(barW));
-      bar.setAttribute("height", String(bh));
-      bar.setAttribute("fill", colors[si % colors.length]);
-      svg.appendChild(bar);
+      let base = 0;
+      if (stacked) { base = v >= 0 ? stackPos[vi] : stackNeg[vi]; if (v >= 0) stackPos[vi] += v; else stackNeg[vi] += v; }
+      const rect = document.createElementNS(NS, "rect");
+      const off = stacked ? 0 : si * barW;
+      if (horizontal) {
+        const x0 = vx(Math.min(base, base + v)), x1 = vx(Math.max(base, base + v));
+        rect.setAttribute("x", x0.toFixed(1)); rect.setAttribute("y", (plotTop + vi * groupSpan + (groupSpan - groupInner) / 2 + off).toFixed(1));
+        rect.setAttribute("width", Math.max(0.5, x1 - x0).toFixed(1)); rect.setAttribute("height", barW.toFixed(1));
+      } else {
+        const y0 = vy(Math.max(base, base + v)), y1 = vy(Math.min(base, base + v));
+        rect.setAttribute("x", (left + vi * groupSpan + (groupSpan - groupInner) / 2 + off).toFixed(1)); rect.setAttribute("y", y0.toFixed(1));
+        rect.setAttribute("width", barW.toFixed(1)); rect.setAttribute("height", Math.max(0.5, y1 - y0).toFixed(1));
+      }
+      rect.setAttribute("fill", colors[si % colors.length]);
+      svg.appendChild(rect);
     });
   });
   return svg;
@@ -933,7 +1086,7 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
     div.appendChild(shapeSvg({ path: d.path }, w, h, c.style));
   } else if (d.type === "table") {
     const wrap = el("div", "canvas-table-wrap");
-    wrap.appendChild(renderTable(d.table, ctx, doc));
+    wrap.appendChild(renderTable(d.table, ctx, doc, d.common?.size?.width));
     div.appendChild(wrap);
   } else if (d.type === "chart") {
     const svg = chartSvg(d.chart, w, h);
@@ -977,7 +1130,7 @@ export function renderFlowDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerCtx
   }
   if (d.type === "table") {
     const wrap = el("div", "flow-table");
-    wrap.appendChild(renderTable(d.table, ctx, doc));
+    wrap.appendChild(renderTable(d.table, ctx, doc, d.common?.size?.width));
     return wrap;
   }
   if (d.type === "group") {
