@@ -82,13 +82,26 @@ export function applyCharStyle(el: HTMLElement, cs: CharStyle | undefined): void
     const flat = cs.fontName.replace(/[\s-]+/g, "");
     const fb = FONT_FALLBACKS.find(([re]) => re.test(flat))?.[1] ?? "sans-serif";
     const family = familyOf(cs.fontName);
-    s.fontFamily = family
-      ? `"${cs.fontName}", "${family}", ${fb}`
-      : `"${cs.fontName}", ${fb}`;
+    const w = NAME_WEIGHTS.find(([re]) => re.test(cs.fontName!))?.[1];
+    // An EXPLICIT `bold: false` over a bold-named face is Apple's way of
+    // saying "regular": maison-martos stores font_name HelveticaNeue-Bold on
+    // styles whose bold field is present and false, and Numbers draws them
+    // regular (agent N). An ABSENT flag means the opposite — the stored face
+    // stands, and Apple's export of 10a06959 draws that document's
+    // HelveticaNeue-Light 47pt title in the Light cut. Only a bold-or-heavier
+    // suffix is demoted: the same fixture keeps HelveticaNeue-Medium where
+    // the bold field is present and false, so `false` contradicts "bold", not
+    // "not the regular weight".
+    const demote = cs.bold === false && !!family && !!w && w >= 600;
+    s.fontFamily = demote
+      ? `"${family}", ${fb}`
+      : family
+        ? `"${cs.fontName}", "${family}", ${fb}`
+        : `"${cs.fontName}", ${fb}`;
     // the suffix's weight, so a Light/Medium/Bold cut still reads as one when
     // only the family resolves; an explicit bold flag still wins below
-    const w = NAME_WEIGHTS.find(([re]) => re.test(cs.fontName!))?.[1];
-    if (w) s.fontWeight = String(w);
+    if (demote) s.fontWeight = "400";
+    else if (w) s.fontWeight = String(w);
   }
   if (cs.fontSizePt) s.fontSize = `${cs.fontSizePt}px`;
   if (cs.bold) s.fontWeight = "700";
