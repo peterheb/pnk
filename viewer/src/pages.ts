@@ -217,7 +217,15 @@ function hfRow(
   const row = document.createElement("div");
   row.className = `pages-hf ${cssClass}`;
   const aligns = ["left", "center", "right"] as const;
+  // EMPTY storages take no column. The three flex columns are thirds, so a
+  // footer whose text lives in one storage was laid out in a third of the
+  // text width — 6a8fc180's "Version No …………  Date …………" wrapped onto four
+  // lines where Apple runs it across the page on its two tab stops. Pages
+  // overlays the three regions on the full width and aligns them
+  // left/centre/right; giving the only non-empty one the whole row is the
+  // same thing whenever the others are blank, which is the usual case.
   cols.slice(0, 3).forEach((t, i) => {
+    if (!hasText(t)) return;
     const col = document.createElement("div");
     col.className = "pages-hf-col";
     col.style.textAlign = aligns[i] ?? "left";
@@ -1028,6 +1036,12 @@ export function renderPages(doc: PagesDocument, hdoc: HydratedDoc, ctx: ViewerCt
     mount.appendChild(view);
     // page containers lay the floats out afresh: re-pin them once attached
     fixAnchorDrift(view);
+    // Positioned tab stops outside the body flow — headers, footers, table
+    // cells, shape text — were never laid out: layoutTabs only ever ran over
+    // the pagination's measurement container. It resets every gap before
+    // measuring, so a second pass over the mounted view is a no-op for the
+    // paragraphs it already handled.
+    layoutTabs(view);
     applyTextFit(view);
     return;
   }
@@ -1054,6 +1068,7 @@ export function renderPages(doc: PagesDocument, hdoc: HydratedDoc, ctx: ViewerCt
   }
   mount.appendChild(view);
   // measurement pass (attached): bounded shrink absorbs font-metric drift
+  layoutTabs(view);
   applyTextFit(view);
 }
 
