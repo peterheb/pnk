@@ -969,18 +969,31 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
     l.setAttribute("opacity", strong ? "0.6" : "0.18");
     svg.appendChild(l);
   };
+  // Furniture the file asks for. matija.pretnar.info uses bare column charts
+  // as illustrations — value axis off, gridlines off, tick labels off — and
+  // we were drawing a stray "0" and a rule Keynote does not draw.
+  const ax = chart.axes;
+  const showValueGrid = ax ? ax.valueGridlines : true;
+  const showValueLabels = ax ? ax.valueLabels : true;
+  const showCatLabels = ax ? ax.categoryLabels : true;
   for (const t of ticks) {
     if (horizontal) {
-      gridLine(vx(t), plotTop, vx(t), plotBottom, false);
-      text(vx(t), plotBottom + base * 1.1, fmtTick(t));
+      if (showValueGrid) gridLine(vx(t), plotTop, vx(t), plotBottom, false);
+      if (showValueLabels) text(vx(t), plotBottom + base * 1.1, fmtTick(t));
     } else {
-      gridLine(left, vy(t), right, vy(t), false);
-      text(left - base * 0.4, vy(t) + base * 0.35, fmtTick(t), { anchor: "end" });
+      if (showValueGrid) gridLine(left, vy(t), right, vy(t), false);
+      if (showValueLabels) text(left - base * 0.4, vy(t) + base * 0.35, fmtTick(t), { anchor: "end" });
     }
   }
-  // axes
-  if (horizontal) gridLine(left, plotTop, left, plotBottom, true);
-  else gridLine(left, vy(Math.max(vmin, Math.min(0, vmax))), right, vy(Math.max(vmin, Math.min(0, vmax))), true);
+  // the "strong" rule along a bar chart's baseline is the CATEGORY axis
+  if (!ax || ax.categoryAxisLine) {
+    if (horizontal) gridLine(left, plotTop, left, plotBottom, true);
+    else gridLine(left, vy(Math.max(vmin, Math.min(0, vmax))), right, vy(Math.max(vmin, Math.min(0, vmax))), true);
+  }
+  if (ax?.valueAxisLine) {
+    if (horizontal) gridLine(left, plotBottom, right, plotBottom, true);
+    else gridLine(left, plotTop, left, plotBottom, true);
+  }
   if (chart.valueAxisTitle) {
     if (horizontal) text((left + right) / 2, bottom - 2, chart.valueAxisTitle);
     else text(base, (plotTop + plotBottom) / 2, chart.valueAxisTitle, { rotate: -90 });
@@ -1010,7 +1023,7 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
     // points spread edge to edge like Apple's line charts (first category
     // at the axis origin, last at the right edge)
     const px = (i: number) => (n === 1 ? left + plotW / 2 : left + (i / (n - 1)) * plotW);
-    chart.categories.forEach((c, i) => { if (i % labelEvery === 0) text(px(i), plotBottom + base * 1.1, catLabel(c)); });
+    if (showCatLabels) chart.categories.forEach((c, i) => { if (i % labelEvery === 0) text(px(i), plotBottom + base * 1.1, catLabel(c)); });
     const markers = n <= 40; // Keynote drops point markers on dense series
     const running: number[] = new Array(n).fill(0);
     chart.series.forEach((s, si) => {
@@ -1052,7 +1065,7 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
   const groupSpan = horizontal ? plotH / n : plotW / n;
   const groupInner = groupSpan * 0.7;
   const barW = stacked ? groupInner : groupInner / chart.series.length;
-  chart.categories.forEach((c, i) => {
+  if (showCatLabels) chart.categories.forEach((c, i) => {
     if (i % labelEvery !== 0) return;
     if (horizontal) text(left - base * 0.4, plotTop + (i + 0.5) * groupSpan + base * 0.35, catLabel(c), { anchor: "end" });
     else text(left + (i + 0.5) * groupSpan, plotBottom + base * 1.1, catLabel(c));

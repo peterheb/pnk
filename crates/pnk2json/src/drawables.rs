@@ -132,6 +132,15 @@ fn drawable_common(_ctx: &mut Ctx, m: &Msg) -> Result<DrawableCommon, ()> {
         }
     }
     if let Some(w) = m.msg(3) {
+        // TSD.ExteriorTextWrapArchive: field 1 is the wrap TYPE, field 2 the
+        // direction. P's survey of 323 Pages documents found direction = 2 on
+        // all but six files while `type` carries every variation ((5,2) 2501
+        // objects, (4,2) 963, (1,2) 155, (2,2) 49), so `type` is the field to
+        // read. The 0/1/2 assignment is fixture-verified; 3 = left, 4 = right,
+        // 5 = largest is [inferred] — otorp strips the enum names, and no
+        // Keynote fixture in the corpus flows text around a drawable at all,
+        // so K has no export that can tell left from right. A Pages fixture
+        // with a visibly left-wrapped figure would settle it.
         let kind = match w.varint(1).unwrap_or(0) {
             0 => TextWrapKind::None,
             1 => TextWrapKind::Around,
@@ -1066,6 +1075,7 @@ fn empty_table() -> TableModel {
         cell_styles: Vec::new(),
         merges: Vec::new(),
         style: None,
+        name_style: None,
     }
 }
 
@@ -1103,6 +1113,7 @@ fn chart_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
                 pie_labels: None,
                 value_axis_format: None,
                 text_sizes: None,
+                axes: None,
             }
         });
     Drawable::Chart { common, chart }

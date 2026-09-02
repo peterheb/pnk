@@ -29,6 +29,15 @@ fn chart_type(v: u64) -> (ChartType, bool) {
         17 => (ChartType::StackedColumn, true),
         18 => (ChartType::StackedBar, true),
         19 => (ChartType::StackedArea, true),
+        // multi-data variants (20/21/23/24) are the same families with
+        // several datasets stored side by side and one shown at a time
+        // (ChartArchive.multidataset_index = 21). Mapping them onto the base
+        // family matters beyond the shape: the per-series colour slot is
+        // chosen BY family, so a multi-data column chart that fell through to
+        // "other" looked only at defaultfill and rendered in our fallback
+        // palette (matija.pretnar.info's 63 illustration charts).
+        20 => (ChartType::Column, false),
+        21 => (ChartType::Bar, false),
         22 => (ChartType::Bubble, false),
         23 => (ChartType::Scatter, false),
         24 => (ChartType::Bubble, false),
@@ -289,6 +298,35 @@ pub fn convert_chart(ctx: &mut Ctx, ca: &Msg) -> ChartModel {
                 font_name,
             });
 
+    // Axis furniture visibility. The show flags live on the axis STYLE
+    // archives (category_axis_styles 15 / value_axis_styles 13, Generated ext
+    // 10000): showaxis 24/25, showmajorgridlines 27/28; the label switches sit
+    // on the NON-styles (16/14): categoryshowlabels 9, defaultshowlabels 10,
+    // valueshowlabels 11. dbeef's slide-4 line chart stores cat-axis 1,
+    // val-gridlines 1, val-axis 0, cat-gridlines 0 and Apple draws exactly
+    // that; matija's illustration columns store val-axis 0, val-gridlines 0,
+    // val-labels 0 and Apple draws bare bars. Absent = shown, except the value
+    // axis LINE, which Keynote leaves off by default.
+    let cat_style = ca.references(15).first().and_then(|r| ext(ctx, Some(*r)));
+    let cat_non = ca.references(16).first().and_then(|r| ext(ctx, Some(*r)));
+    let on =
+        |m: &Option<Msg>, f: u32, dflt: bool| m.as_ref().and_then(|m| m.boolean(f)).unwrap_or(dflt);
+    let axes = (value_axis_style.is_some()
+        || cat_style.is_some()
+        || value_ext.is_some()
+        || cat_non.is_some())
+    .then(|| ChartAxes {
+        value_gridlines: on(&value_axis_style, 28, true),
+        category_gridlines: on(&cat_style, 27, false),
+        value_axis_line: on(&value_axis_style, 25, false),
+        category_axis_line: on(&cat_style, 24, true),
+        value_labels: on(&value_ext, 11, true),
+        category_labels: cat_non
+            .as_ref()
+            .and_then(|m| m.boolean(9).or_else(|| m.boolean(10)))
+            .unwrap_or(true),
+    });
+
     ChartModel {
         r#type: ctype,
         three_d,
@@ -310,6 +348,7 @@ pub fn convert_chart(ctx: &mut Ctx, ca: &Msg) -> ChartModel {
         pie_labels,
         value_axis_format,
         text_sizes,
+        axes,
     }
 }
 
