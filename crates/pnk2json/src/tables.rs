@@ -1616,6 +1616,12 @@ fn decode_cell(
             CellValue::Currency { value, .. } => Some(*value),
             _ => None,
         },
+        match &value {
+            CellValue::Duration { .. } => Some(CellFormatKind::Duration),
+            CellValue::Date { .. } => Some(CellFormatKind::Date),
+            CellValue::Currency { .. } => Some(CellFormatKind::Currency),
+            _ => None,
+        },
     );
     if malformed_format {
         ctx.warn_detail(
@@ -1823,14 +1829,27 @@ fn pick_format(
     format_table: &DataList,
     custom_format_table: &DataList,
     value: Option<f64>,
+    value_kind: Option<CellFormatKind>,
 ) -> (Option<CellFormat>, bool) {
-    let found = [
+    // The slot matching the cell's OWN type wins: likvi's time-tracking
+    // sheet gives its Pause column both a date format (HH:mm, from the
+    // Start/Ende columns) and a duration one, and a fixed num-currency-
+    // date-duration order printed "1:00:00" where Numbers prints "1h".
+    let prefer = match &value_kind {
+        Some(CellFormatKind::Duration) => 3,
+        Some(CellFormatKind::Date) => 2,
+        Some(CellFormatKind::Currency) => 1,
+        _ => 0,
+    };
+    let mut slots = [
         (num, CellFormatKind::Number),
         (currency, CellFormatKind::Currency),
         (date, CellFormatKind::Date),
         (duration, CellFormatKind::Duration),
         (text, CellFormatKind::Text),
-    ]
+    ];
+    slots.swap(0, prefer);
+    let found = slots
     .into_iter()
     .find_map(|(id, slot_kind)| {
         id.and_then(|id| format_table.entries.get(&id))

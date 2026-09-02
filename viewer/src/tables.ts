@@ -13,7 +13,7 @@ import type {
   TableMerge,
 } from "../../model/src/shared";
 import { fillToCss } from "./drawables";
-import { applyCharStyle, renderStyledText } from "./text";
+import { applyCharStyle, naturalLineHeight, renderStyledText } from "./text";
 import type { HydratedDoc } from "./hydrate";
 import { cellStyleOf } from "./hydrate";
 import type { ViewerCtx } from "./ctx";
@@ -450,6 +450,11 @@ function applyCellStyle(td: HTMLTableCellElement, style: TableCellStyle | undefi
   }
   if (style?.text) {
     applyCharStyle(td, style.text);
+    // Apple auto-fits a row at the FACE's natural leading, not the
+    // browser's `normal`: maison-martos' 12pt Helvetica Neue rows measure
+    // 36pt for two lines and 50 for three in Numbers' export — 14pt a line
+    // over an 8pt inset — where Chrome's default gave 15.
+    if (style.text.fontName) s.lineHeight = String(naturalLineHeight(style.text.fontName));
     // A cell's text style OVERRIDES the section's, so an explicit
     // bold/italic false has to undo it — applyCharStyle only ever turns
     // them on. The PostScript family name has to give way too: Numbers
