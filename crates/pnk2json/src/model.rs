@@ -1105,6 +1105,11 @@ pub struct TableModel {
     pub merges: Vec<TableMerge>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub style: Option<TableStyle>,
+    /// Look of the table NAME drawn above the table (Numbers furniture):
+    /// text + paragraph alignment, resolved. [proto: TST.TableModelArchive
+    /// table_name_style = 30; height already in table_name_height = 33]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name_style: Option<TableCellStyle>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

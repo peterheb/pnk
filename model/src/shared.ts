@@ -526,6 +526,12 @@ export interface TableModel {
   merges: TableMerge[];
   /** Resolved table-level look. */
   style?: TableStyle;
+  /**
+   * Look of the table NAME drawn above the table (Numbers furniture): text
+   * and paragraph alignment, resolved. [proto: TST.TableModelArchive
+   * table_name_style = 30; the reserved height is table_name_height = 33]
+   */
+  nameStyle?: TableCellStyle;
 }
 
 /**
