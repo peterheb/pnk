@@ -31,21 +31,24 @@
           "level": 0,
           "markerKind": "number",
           "numberKind": "decimal",
-          "start": 1.0
+          "start": 1.0,
+          "textIndentEm": 1.6363636255264282
         }
       },
       {
         "list": {
           "level": 0,
           "markerKind": "number",
-          "numberKind": "decimal"
+          "numberKind": "decimal",
+          "textIndentEm": 1.6363636255264282
         }
       },
       {
         "list": {
           "level": 0,
           "markerKind": "string",
-          "markerText": "•"
+          "markerText": "•",
+          "textIndentEm": 0.8181818127632141
         }
       },
       {
@@ -54,7 +57,8 @@
           "markerKind": "string",
           "markerText": "•",
           "markerIndentPt": 9.0,
-          "markerBaselineOffsetPt": -1.0
+          "markerBaselineOffsetPt": -1.0,
+          "textIndentEm": 0.8181818127632141
         }
       }
     ],

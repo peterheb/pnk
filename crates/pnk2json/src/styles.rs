@@ -464,6 +464,16 @@ pub fn resolve_list_format(ctx: &mut Ctx, list_id: u64, level: u32) -> Option<Li
         .map(|m| m.packed_f32s(13))
         .find(|v| !v.is_empty())
         .unwrap_or_default();
+    // Marker-to-text gap, per level, as a MULTIPLE OF THE EM (the paragraph
+    // font size) — not points [proto: TSWPArchives.proto
+    // ListStyleArchive.text_indents = 12, a parallel array to indents = 13].
+    // Verified on the Dyalog deck: 1.0417 em x 48pt = the 50pt gap Keynote
+    // draws between the bullet and its text.
+    let text_indents: Vec<f32> = msgs
+        .iter()
+        .map(|m| m.packed_f32s(12))
+        .find(|v| !v.is_empty())
+        .unwrap_or_default();
     // Marker LOOK from the list style itself [proto: TSWPArchives.proto
     // ListStyleArchive font_color = 21 (null 20), font_name = 23 (null 22),
     // geometries = 14 (LabelGeometry { scale = 1 [default 1],
@@ -505,6 +515,9 @@ pub fn resolve_list_format(ctx: &mut Ctx, list_id: u64, level: u32) -> Option<Li
         marker_image,
         start: None,
         marker_indent_pt: at_level(&indents, level).map(|v| v as f64),
+        text_indent_em: at_level(&text_indents, level)
+            .map(|v| v as f64)
+            .filter(|v| *v > 0.0),
         marker_color,
         marker_font_name,
         marker_scale,
@@ -715,6 +728,7 @@ pub fn resolve_list_format_minimal(ctx: &mut Ctx, list_id: u64, level: u32) -> L
         marker_image: None,
         start: None,
         marker_indent_pt: None,
+        text_indent_em: None,
     });
     ListFormat { level, ..full }
 }

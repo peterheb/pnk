@@ -321,6 +321,11 @@ export function renderParagraph(
     marker.className = "list-marker";
     if (list!.markerKind !== "image") marker.textContent = markerText;
     marker.style.minWidth = "18px";
+    // 18px was a guess; the list style stores the real marker-to-text column
+    // as an EM multiple of the paragraph font size (ListFormat.textIndentEm,
+    // TSWP.ListStyleArchive text_indents = 12 [proto]). The em is the
+    // PARAGRAPH's size, not the wrapper's inherited 15px, so resolve to px
+    // when a run size is known.
     // The marker inherits the first run's look (size + color): an unstyled
     // span rendered 15px near-black bullets INVISIBLE on dark decks (RIPE
     // slides 2/5: 28pt white body, default marker). Apple actually colors
@@ -337,6 +342,13 @@ export function renderParagraph(
       (runs.length ? charStyleOf(doc, runs[0].cStyle) : undefined);
     if (runCs) applyCharStyle(marker, runCs);
     marker.style.paddingRight = "0.3em"; // marker-to-text gap, scales with size
+    if (list!.textIndentEm) {
+      const emPt = runCs?.fontSizePt ?? runSizes[0];
+      marker.style.minWidth = emPt
+        ? `${(list!.textIndentEm * emPt).toFixed(2)}px`
+        : `${list!.textIndentEm}em`;
+      marker.style.paddingRight = "0";
+    }
     // The list style's OWN marker look wins over run inheritance when stored
     // (ListFormat markerColor/markerFontName/markerScale — RIPE orange dots).
     // markerScale multiplies the RUN size (LabelGeometry scale_with_text), so
