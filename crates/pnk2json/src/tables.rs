@@ -2112,19 +2112,47 @@ fn decode_cell_v4(
             Some(i32::from_le_bytes(buf.get(o..o + 4)?.try_into().ok()?))
         })
         .collect();
-    // The leading bit-2 key is the cell's display format (County Tax Rates
-    // currency); the trailing keys are per-kind fallbacks like v5's — probe
-    // the leading key first.
-    let fmt_key = fmt_lead
-        .filter(|k| format_table.entries.contains_key(k))
-        .or_else(|| {
-            trailing_keys
-                .iter()
-                .copied()
-                .find(|k| format_table.entries.contains_key(k))
-        })
-        .or(fmt_lead)
-        .or_else(|| trailing_keys.first().copied());
+    if std::env::var("PNK_DEBUG_FMT").is_ok() {
+        let kinds: Vec<String> = trailing_keys
+            .iter()
+            .map(|k| {
+                format!(
+                    "{k}:{:?}",
+                    format_table
+                        .entries
+                        .get(k)
+                        .and_then(|e| e.format.as_ref())
+                        .and_then(|f| f.varint(1))
+                )
+            })
+            .collect();
+        eprintln!(
+            "v4fmt r{row}c{col} type={cell_type} flags2={flags2:#x} lead={fmt_lead:?}({:?}) trail={kinds:?} val={f64_value:?}",
+            fmt_lead
+                .and_then(|k| format_table.entries.get(&k))
+                .and_then(|e| e.format.as_ref())
+                .and_then(|f| f.varint(1))
+        );
+    }
+    // Which trailing key is the DISPLAY format: the LAST one (highest set
+    // bit). Bit 16 holds the cell's underlying number format and the higher
+    // bits the format actually shown, so a currency cell carries both.
+    // Fixture-verified against Numbers' PDF export of the cdrky budget:
+    // r1c1 of the FIRE ONLY table has one key (256/number) and prints
+    // "264"; "EMS Debt Service" carries [256, 257] and prints "$ 80,837.74";
+    // "Total FIRE/EMS Budget" the same and prints "$1,214,294.61"; the FIRE
+    // Budget cell carries [258 percent, 257 currency] and prints
+    // "$140,353.01". The LEADING bit-2 key is not the display format — it is
+    // currency (257) on the very cell Numbers prints as a bare 264 — so it
+    // is only a fallback for cells with no trailing keys at all. [inferred]
+    let fmt_key = trailing_keys
+        .iter()
+        .rev()
+        .copied()
+        .find(|k| format_table.entries.contains_key(k))
+        .or_else(|| fmt_lead.filter(|k| format_table.entries.contains_key(k)))
+        .or_else(|| trailing_keys.last().copied())
+        .or(fmt_lead);
 
     // v4 formula cells cache no computed value in the record — the key in the
     // FORMULA list is all there is (budget doc e138671a: type-8 cells; text
