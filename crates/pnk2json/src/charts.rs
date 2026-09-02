@@ -111,19 +111,41 @@ pub fn convert_chart(ctx: &mut Ctx, ca: &Msg) -> ChartModel {
     // usermax 17, usermin 18, majorgridlines 5 }. Burndown's "User
     // Stories" chart stores its title here; Apple draws it above the plot.
     let ext = |ctx: &Ctx, id: Option<u64>| -> Option<Msg> {
-        id.and_then(|i| ctx.loaded.msg(i)).and_then(|m| m.msg(10000))
+        id.and_then(|i| ctx.loaded.msg(i))
+            .and_then(|m| m.msg(10000))
     };
     // The Generated ChartNonStyleArchive keeps the chart-level values in
     // its "default" slots: showlegend = 20, showtitle = 21, title = 23
     // (fixture-verified: burndown's "User Stories" sits at 23 with 21 = 1;
     // the 34/35/46 numbers belong to ChartGenericPropertyMapArchive).
     let (mut title, mut legend_visible, mut inner_radius) = (None, None, None);
+    let mut leader_lines = false;
     if let Some(ns) = ext(ctx, ca.reference(10)) {
+        // piecalloutlinetype (111): non-zero draws the leader line from the
+        // slice to a label sitting off the rim (dbeef slide 7 = 1, slide 9 = 0).
+        leader_lines = ns.varint(111).is_some_and(|v| v != 0);
         if ns.boolean(21) != Some(false) {
             title = ns.string(23).filter(|t| !t.trim().is_empty());
         }
         legend_visible = ns.boolean(20);
-        inner_radius = ns.f32v(27).map(|v| v as f64).filter(|v| *v > 0.0 && *v < 1.0);
+        // The hole belongs to the ring/donut TYPE, never to the stored value.
+        // Keynote 15 writes every non-style default out, so `innerradius`
+        // (27) sits at 0.75 on plain pies and even on LINE charts (dbeef's
+        // slide-4 waiting-list chart carries it) — reading it unconditionally
+        // punched a hole in slide 9's two solid pies. A donut whose non-style
+        // omits it takes Keynote's built-in 0.75: dbeef slide 7's outer ring
+        // stores no 27 and Apple's export puts its inner edge at 0.748 of the
+        // radius (measured on apple/page-7.png). [inferred, fixture-verified]
+        if matches!(ctype, ChartType::Donut) {
+            inner_radius = Some(
+                ns.f32v(27)
+                    .map(|v| v as f64)
+                    .filter(|v| *v > 0.0 && *v < 1.0)
+                    .unwrap_or(0.75),
+            );
+        }
+    } else if matches!(ctype, ChartType::Donut) {
+        inner_radius = Some(0.75);
     }
     let axis_title = |ctx: &Ctx, ids: Vec<u64>, show: u32, field: u32| -> Option<String> {
         ids.into_iter()
@@ -137,11 +159,135 @@ pub fn convert_chart(ctx: &mut Ctx, ca: &Msg) -> ChartModel {
     };
     let value_axis_title = axis_title(ctx, ca.references(14), 14, 16);
     let category_axis_title = axis_title(ctx, ca.references(16), 13, 15);
-    let value_ext = ca.references(14).into_iter().find_map(|id| ext(ctx, Some(id)));
-    let user_bound = |m: &Msg, f: u32| m.msg(f).and_then(|n| n.f64v(1).or_else(|| n.f32v(1).map(|v| v as f64)));
+    let value_ext = ca
+        .references(14)
+        .into_iter()
+        .find_map(|id| ext(ctx, Some(id)));
+    let user_bound = |m: &Msg, f: u32| {
+        m.msg(f)
+            .and_then(|n| n.f64v(1).or_else(|| n.f32v(1).map(|v| v as f64)))
+    };
     let value_axis_max = value_ext.as_ref().and_then(|m| user_bound(m, 17));
     let value_axis_min = value_ext.as_ref().and_then(|m| user_bound(m, 18));
-    let value_axis_major_gridlines = value_ext.as_ref().and_then(|m| m.varint(5)).map(|v| v as u32);
+    let value_axis_major_gridlines = value_ext
+        .as_ref()
+        .and_then(|m| m.varint(5))
+        .map(|v| v as u32);
+    // Value-axis tick format: defaultnumberformat (42), falling back to the
+    // 1.0-era slot (2). Corpus: 1855 of 1868 value axes store
+    // show_thousands_separator = false, which is why Apple's slide-4 export
+    // reads "1200" and not "1,200".
+    let value_axis_format = value_ext
+        .as_ref()
+        .and_then(|m| m.msg(42).or_else(|| m.msg(2)))
+        .map(|f| number_format(&f));
+
+    // Pie/donut slice labels: the series non-styles (sparse array 19) carry
+    // them per series, but Keynote's inspector edits every series together —
+    // series 0 (or the lowest stored index) is the chart's setting.
+    // Only emitted when a series non-style actually says something about pie
+    // labels; absent keeps the viewer's own default.
+    let pie_labels = if matches!(ctype, ChartType::Pie | ChartType::Donut) {
+        let mut entries: Vec<(u64, u64)> = ca
+            .msg(19)
+            .map(|sparse| {
+                sparse
+                    .msgs(2)
+                    .into_iter()
+                    .filter_map(|e| Some((e.varint(1).unwrap_or(0), e.reference(2)?)))
+                    .collect()
+            })
+            .unwrap_or_default();
+        entries.sort_by_key(|(i, _)| *i);
+        entries
+            .first()
+            .and_then(|(_, id)| ext(ctx, Some(*id)))
+            .filter(|ns| ns.has(31) || ns.has(44) || ns.has(99) || ns.has(147) || ns.has(16))
+            .map(|ns| PieLabels {
+                // pieshowserieslabels 31 / pieshowvaluelabels 44; absent keeps
+                // the "name + value" pair the viewer already drew.
+                show_series_name: ns.boolean(31) != Some(false),
+                show_value: ns.boolean(44) != Some(false),
+                // pienumberformat 99, else the 1.0-era pie1_0numberformat 22.
+                // Absent = Keynote's built-in percent (dbeef 464399 stores no
+                // format and Apple labels it "1 LIR 61%").
+                value_format: Some(
+                    ns.msg(99)
+                        .or_else(|| ns.msg(22))
+                        .map(|f| number_format(&f))
+                        .unwrap_or(ChartNumberFormat {
+                            kind: ChartNumberKind::Percent,
+                            decimals: Some(0),
+                            thousands_separator: false,
+                            currency_code: None,
+                        }),
+                ),
+                // pielabelexplosion 147 (pie2_3labelexplosion 16 on older
+                // files): the label centre as a PERCENT of the pie radius.
+                // dbeef slide 7 stores 144.03 on the inner ring, and
+                // 1.4403 x 248.3pt = 357.6pt clears the outer ring's 338.5pt
+                // rim exactly, as Apple's export draws it.
+                radius_pct: ns
+                    .f32v(147)
+                    .or_else(|| ns.f32v(16))
+                    .map(|v| v as f64)
+                    .filter(|v| *v > 0.0),
+                leader_lines,
+            })
+    } else {
+        None
+    };
+
+    // Chart text sizes. Every sub-style stores an INDEX into
+    // ChartArchive.paragraph_styles (20) rather than a font size, and the
+    // size is the paragraph style's char_properties (11) font_size (3).
+    // Verified against the Apple export of dbeef's slides 4/7/9 to the tenth
+    // of a point: axis 32, legend 38, ring labels 50, pie labels 45.
+    let paras = ca.references(20);
+    let para_size = |ctx: &Ctx, idx: Option<u64>| -> Option<f64> {
+        let p = *paras.get(idx? as usize)?;
+        ctx.loaded.msg(p)?.msg(11)?.f32v(3).map(|v| v as f64)
+    };
+    let chart_style = ext(ctx, ca.reference(9));
+    let title_pt = para_size(ctx, chart_style.as_ref().and_then(|m| m.varint(20)));
+    let legend_pt = para_size(
+        ctx,
+        ext(ctx, ca.reference(11))
+            .as_ref()
+            .and_then(|m| m.varint(2)),
+    );
+    let value_axis_style = ca.references(13).first().and_then(|r| ext(ctx, Some(*r)));
+    let category_axis_style = ca.references(15).first().and_then(|r| ext(ctx, Some(*r)));
+    let axis_pt = para_size(ctx, value_axis_style.as_ref().and_then(|m| m.varint(8)))
+        .or_else(|| para_size(ctx, category_axis_style.as_ref().and_then(|m| m.varint(6))))
+        .or_else(|| para_size(ctx, category_axis_style.as_ref().and_then(|m| m.varint(7))));
+    // Data-label index, per chart family, inside then outside; inherited along
+    // the TSS parent chain (dbeef 497170 carries none of its own).
+    let label_slots: &[u32] = match ctype {
+        ChartType::Pie => &[23, 29, 20, 27],
+        ChartType::Donut => &[152, 153, 23, 29, 20, 27],
+        ChartType::Line | ChartType::Scatter => &[21, 20, 27],
+        ChartType::Bar | ChartType::StackedBar => &[19, 20, 27],
+        ChartType::Area | ChartType::StackedArea => &[18, 20, 27],
+        _ => &[20, 27],
+    };
+    let label_idx = series_style_first(ctx, ca, label_slots);
+    let label_pt = para_size(ctx, label_idx).or(title_pt);
+    let font_name = paras
+        .first()
+        .and_then(|p| ctx.loaded.msg(*p))
+        .and_then(|m| m.msg(11))
+        .and_then(|c| c.string(5))
+        .filter(|s| !s.is_empty());
+    let text_sizes =
+        (title_pt.is_some() || legend_pt.is_some() || axis_pt.is_some() || label_pt.is_some())
+            .then(|| ChartTextSizes {
+                title_pt,
+                legend_pt,
+                axis_pt,
+                label_pt,
+                font_name,
+            });
 
     ChartModel {
         r#type: ctype,
@@ -161,6 +307,26 @@ pub fn convert_chart(ctx: &mut Ctx, ca: &Msg) -> ChartModel {
         value_axis_max,
         value_axis_major_gridlines,
         inner_radius,
+        pie_labels,
+        value_axis_format,
+        text_sizes,
+    }
+}
+
+/// `TSK.FormatStructArchive` → the chart-side number format. Format-type ids
+/// are the shared TSK ones already blessed in tables.rs (257 currency, 258
+/// percent, 256/anything else decimal); decimal_places > 20 is the app's AUTO
+/// sentinel (253) and stays absent.
+fn number_format(f: &Msg) -> ChartNumberFormat {
+    ChartNumberFormat {
+        kind: match f.varint(1) {
+            Some(257) => ChartNumberKind::Currency,
+            Some(258) => ChartNumberKind::Percent,
+            _ => ChartNumberKind::Number,
+        },
+        decimals: f.varint(2).filter(|v| *v <= 20).map(|v| v as u32),
+        thousands_separator: f.boolean(5).unwrap_or(false),
+        currency_code: f.string(3).filter(|s| !s.is_empty()),
     }
 }
 
@@ -362,4 +528,34 @@ enum GridVal {
     Num(f64),
     Date(String),
     Hole,
+}
+
+/// First of `slots` found on the chart's series styles (private 18 before
+/// theme 17), following the TSS parent chain (`super.parent`) the way
+/// `series_style_color` does — the label paragraph indices are inherited.
+fn series_style_first(ctx: &Ctx, ca: &Msg, slots: &[u32]) -> Option<u64> {
+    let mut starts: Vec<u64> = ca
+        .msg(18)
+        .map(|sp| sp.msgs(2).iter().filter_map(|e| e.reference(2)).collect())
+        .unwrap_or_default();
+    starts.extend(ca.references(17));
+    for start in starts {
+        let mut seen = std::collections::HashSet::new();
+        let mut cur = Some(start);
+        while let Some(sid) = cur {
+            if !seen.insert(sid) {
+                break;
+            }
+            let Some(m) = ctx.loaded.msg(sid) else { break };
+            if let Some(e) = m.msg(10000) {
+                for &f in slots {
+                    if let Some(v) = e.varint(f) {
+                        return Some(v);
+                    }
+                }
+            }
+            cur = m.msg(1).and_then(|sup| sup.reference(3));
+        }
+    }
+    None
 }

@@ -1100,6 +1100,9 @@ fn chart_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
                 value_axis_max: None,
                 value_axis_major_gridlines: None,
                 inner_radius: None,
+                pie_labels: None,
+                value_axis_format: None,
+                text_sizes: None,
             }
         });
     Drawable::Chart { common, chart }
