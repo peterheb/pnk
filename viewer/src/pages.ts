@@ -172,7 +172,8 @@ function anchorFloat(anchors: Anchor[], hdoc: HydratedDoc, ctx: ViewerCtx, conte
  */
 function fixAnchorDrift(root: HTMLElement): void {
   root.querySelectorAll<HTMLElement>(".pages-anchor").forEach((fl) => {
-    const p = fl.previousElementSibling as HTMLElement | null;
+    const after = fl.dataset.after === "1";
+    const p = (after ? fl.previousElementSibling : fl.nextElementSibling) as HTMLElement | null;
     if (!p) return;
     const objTop = parseFloat(fl.dataset.objTop ?? "0") || 0;
     const drift = fl.offsetTop - p.offsetTop;
@@ -186,7 +187,11 @@ function fixAnchorDrift(root: HTMLElement): void {
       const current = parseFloat(fl.style.marginTop || "0") || 0;
       fl.style.marginTop = `${(current - drift).toFixed(2)}px`;
     }
-    const inset = Math.max(0, objTop - p.offsetHeight);
+    // placed after: the margin box already sits at the paragraph's bottom, so
+    // the inset only has to cover an object that starts lower still.
+    // Placed first: the box IS the paragraph's top and the inset is the
+    // object's own offset.
+    const inset = after ? Math.max(0, objTop - p.offsetHeight) : Math.max(0, objTop);
     fl.style.shapeOutside = inset > 0 ? `inset(${inset.toFixed(2)}px 0 0 0)` : "";
   });
 }
@@ -596,13 +601,27 @@ function paginatedBody(
       !!p.pageBreakBefore || !!paraStyleOf(hdoc, p.pStyle)?.pageBreakBefore || !!fullBleed[i - 1],
     );
   });
-  /** A paragraph into a container, its anchor float AFTER it: a CSS float only
-   *  shortens the line boxes of content that FOLLOWS it, which is exactly the
-   *  exemption Apple gives the anchor paragraph (see fixAnchorDrift). */
+  /**
+   * A paragraph into a container, its anchor float after it — a CSS float
+   * only shortens the line boxes of what FOLLOWS it, which is the exemption
+   * Apple gives the anchor paragraph (see fixAnchorDrift).
+   *
+   * Unless the object starts at or ABOVE that paragraph's own top, in which
+   * case there is nothing to exempt and the float goes first, as before:
+   * d434501c's flyer anchors its 70pt logo to the title paragraph at an
+   * offset of 8.7pt against a 12pt wrap margin, and Apple lays the title out
+   * BELOW the logo. Every wrapping object in 6d4f8527 starts below its
+   * paragraph's top (5.3pt and 29.3pt clear of it) and Apple exempts those.
+   */
   const place = (container: HTMLElement, k: number, el: HTMLElement) => {
-    container.appendChild(el);
     const fl = anchorEls.get(k);
-    if (fl) container.appendChild(fl);
+    const first = !!fl && (parseFloat(fl.dataset.objTop ?? "0") || 0) <= 0;
+    if (fl && first) container.appendChild(fl);
+    container.appendChild(el);
+    if (fl && !first) {
+      fl.dataset.after = "1";
+      container.appendChild(fl);
+    }
   };
 
   // per-paragraph column spec from the sections' body ranges; a section
