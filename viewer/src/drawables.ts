@@ -10,6 +10,7 @@
 
 import type {
   ChartModel,
+  ChartNumberFormat,
   CurveElement,
   Drawable,
   DrawableCommon,
@@ -663,6 +664,37 @@ function chartSummary(d: Extract<Drawable, { type: "chart" }>): HTMLElement {
   return card;
 }
 
+/**
+ * A chart number per its stored TSK format. `total` turns a value into its
+ * share when the format is a percentage (pie labels); a percent format with
+ * no total scales by 100 like a cell would. Apple's charts leave the
+ * thousands separator OFF unless the format says otherwise — 1,855 of the
+ * corpus's 1,868 value axes store `show_thousands_separator = false`, which
+ * is why the RIPE waiting-list axis reads "1200" and not "1,200".
+ */
+function fmtNumber(v: number, f: ChartNumberFormat | undefined, total?: number): string {
+  const dec = f?.decimals;
+  let n = v;
+  let suffix = "";
+  if (f?.kind === "percent") {
+    n = total ? (v / total) * 100 : v * 100;
+    suffix = "%";
+  }
+  const body =
+    dec !== undefined
+      ? n.toFixed(dec)
+      : String(Math.round(n * 1e6) / 1e6);
+  const grouped = f?.thousandsSeparator
+    ? body.replace(/\B(?=(\d{3})+(?!\d))/, "").replace(/^(-?\d+)/, (m) => m.replace(/\B(?=(\d{3})+(?!\d))/g, ","))
+    : body;
+  return (f?.kind === "currency" && f.currencyCode ? currencySymbol(f.currencyCode) : "") + grouped + suffix;
+}
+
+function currencySymbol(code: string): string {
+  const map: Record<string, string> = { USD: "$", EUR: "€", GBP: "£", JPY: "¥" };
+  return map[code] ?? code + " ";
+}
+
 function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null {
   const numeric = chart.series.every((s) => s.values.every((v) => v === null || typeof v === "number"));
   if (!numeric || chart.series.length === 0 || chart.categories.length === 0) return null;
@@ -670,12 +702,20 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
   const svg = document.createElementNS(NS, "svg") as SVGSVGElement;
   svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
   svg.style.overflow = "visible"; // slice labels sit outside the rim
-  svg.setAttribute("font-family", '"Helvetica Neue", Helvetica, Arial, sans-serif');
+  // Chart text is its own typeface and its own sizes: RIPE 85's slides are
+  // Helvetica Neue but every chart in the deck is ArialMT at sizes the chart's
+  // paragraph styles name outright (32pt axes, 38pt legend, 50pt ring labels).
+  const ts = chart.textSizes;
+  const face = ts?.fontName ? `"${ts.fontName.replace(/MT$|-.*$/, "")}", ` : "";
+  svg.setAttribute("font-family", `${face}"Helvetica Neue", Helvetica, Arial, sans-serif`);
   const colors = chart.seriesColors ?? ["#4a90d9", "#e0762e", "#7bb662", "#b0578d", "#5b6abf"];
   // Furniture scales with the chart (Keynote's 1920-wide slides set 24pt
   // legends where a 160pt Numbers chart sets 9pt) and takes currentColor,
   // so a dark slide backdrop gets light labels.
-  const base = Math.max(9, Math.min(30, Math.min(w, h) / 22));
+  const base = ts?.axisPt ?? Math.max(9, Math.min(30, Math.min(w, h) / 22));
+  const legendSize = ts?.legendPt ?? base * 0.95;
+  const titleSize = ts?.titlePt ?? base * 1.25;
+  const labelSize = ts?.labelPt ?? base * 0.9;
   const text = (x: number, y: number, str: string, opts: { size?: number; anchor?: string; weight?: string; fill?: string; rotate?: number } = {}) => {
     const t = document.createElementNS(NS, "text");
     t.setAttribute("x", x.toFixed(1));
@@ -705,33 +745,53 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
   const names = chart.series.map((s, i) => s.name ?? `Series ${i + 1}`);
   const pieBySeries = pieLike && chart.categories.length === 1 && chart.series.length > 1;
   const showLegend = chart.legendVisible === true || (chart.legendVisible !== false && !pieBySeries && (chart.series.length > 1 || pieLike || chart.series[0]?.name !== undefined));
-  let top = 6;
+  let top = 0;
   if (chart.title) {
-    text(w / 2, top + base * 1.1, chart.title, { size: base * 1.25, weight: "600" });
-    top += base * 2.1;
+    // Keynote hangs a pie's title ABOVE its frame (RIPE 85 slide 9: the title
+    // baseline is at y=172 while the chart box starts at 234, and the pie
+    // still fills the whole box); Numbers keeps a plot title inside the frame
+    // (benmatselby's burndown "User Stories").
+    if (pieLike) {
+      text(w / 2, -titleSize * 0.35, chart.title, { size: titleSize, weight: "600" });
+    } else {
+      text(w / 2, top + titleSize * 0.9, chart.title, { size: titleSize, weight: "600" });
+      top += titleSize * 1.7;
+    }
   }
-  let bottom = h - 6;
+  let bottom = h;
   if (showLegend) {
     const items = pieLike ? (pieBySeries ? names : chart.categories) : names;
-    const glyph = base * 0.55;
-    const widths = items.map((name) => name.length * glyph + base * 2.2);
-    const rowW = Math.min(w - 10, widths.reduce((a, b) => a + b, 0));
+    const glyph = legendSize * 0.55;
+    const widths = items.map((name) => name.length * glyph + legendSize * 2.2);
+    // The stored legend frame is relative to the chart frame's CENTRE, and it
+    // routinely sits OUTSIDE the frame: RIPE 85's waiting-list chart stores
+    // (-809.5, -368.0) in a 1663x574 frame, putting the legend row 81pt ABOVE
+    // the chart's top edge, which is where Apple's export draws it. The svg
+    // has overflow visible, so an out-of-box legend just works; only a legend
+    // that lands inside the box steals height from the plot.
+    const lf = chart.legendFrame;
+    const boxX = lf ? w / 2 + lf.x : 0;
+    const boxY = lf ? h / 2 + lf.y : bottom - legendSize * 2;
+    const boxW = lf ? lf.width : w;
+    const boxH = lf ? lf.height : legendSize * 2;
+    const rowW = Math.min(boxW - 4, widths.reduce((a, b) => a + b, 0));
     const shrink = rowW / widths.reduce((a, b) => a + b, 0);
-    const y = bottom - base * 0.4;
-    let x = w / 2 - rowW / 2;
+    const y = boxY + boxH / 2 + legendSize * 0.35;
+    let x = boxX + boxW / 2 - rowW / 2;
     items.forEach((name, i) => {
       const itemW = widths[i] * shrink;
       const sw = document.createElementNS(NS, "rect");
-      sw.setAttribute("x", (x + 2).toFixed(1)); sw.setAttribute("y", (y - base * 0.8).toFixed(1));
-      sw.setAttribute("width", (base * 0.9).toFixed(1)); sw.setAttribute("height", (base * 0.9).toFixed(1)); sw.setAttribute("rx", "1.5");
+      sw.setAttribute("x", (x + 2).toFixed(1)); sw.setAttribute("y", (y - legendSize * 0.8).toFixed(1));
+      sw.setAttribute("width", (legendSize * 0.9).toFixed(1)); sw.setAttribute("height", (legendSize * 0.9).toFixed(1)); sw.setAttribute("rx", "1.5");
       sw.setAttribute("fill", colors[i % colors.length]);
       svg.appendChild(sw);
-      const label = text(x + base * 1.4, y, name, { anchor: "start", size: base * 0.95 });
-      const maxChars = Math.floor((itemW - base * 1.6) / glyph);
+      const label = text(x + legendSize * 1.4, y, name, { anchor: "start", size: legendSize });
+      const maxChars = Math.floor((itemW - legendSize * 1.6) / glyph);
       if (name.length > maxChars) label.textContent = name.slice(0, Math.max(3, maxChars - 1)) + "…";
       x += itemW;
     });
-    bottom -= base * 2;
+    // only a legend drawn over the plot costs the plot its bottom strip
+    if (boxY + boxH > bottom - legendSize * 0.5) bottom = Math.min(bottom, boxY - legendSize * 0.4);
   }
   if (pieLike) {
     // Wedges: one series across the categories, or — Keynote's usual pie
@@ -744,15 +804,44 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
       : chart.series[0].values.map((v) => (typeof v === "number" && v > 0 ? v : 0));
     const labels = bySeries ? names : chart.categories;
     const total = vals.reduce((a, b) => a + b, 0) || 1;
-    const cx = w / 2, cy = (top + bottom) / 2, r = Math.min(w, bottom - top) / 2 - base * 2.5;
+    // The pie fills its own frame: Apple's export puts slide 9's rim at
+    // 304.7pt in a 611.1pt box and slide 7's at 337.7pt in a 677.0pt box —
+    // exactly half the box, with title and labels drawn over/outside it.
+    const cx = w / 2, cy = h / 2, r = Math.min(w, h) / 2;
+    // Slice labels. Keynote stores them on the series non-style: whether the
+    // name and the value show, the value's number format, and — the piece
+    // that decides inside-vs-outside — `pielabelexplosion`, the label centre
+    // as a PERCENT of the pie radius. RIPE 85 slide 9 stores 59 (inside the
+    // wedge, percentages); slide 7's inner ring stores 144, which puts its
+    // labels clear of the OUTER ring it is nested in.
+    const pl = chart.pieLabels;
+    const labelR = pl?.radiusPct !== undefined ? r * (pl.radiusPct / 100) : r + labelSize * 0.8;
+    const outside = labelR > r * 0.98;
+    // Labels are queued and drawn AFTER every wedge: an inside label belongs
+    // on top of its own slice, and svg paints in document order.
+    const pending: (() => void)[] = [];
     let a0 = -Math.PI / 2;
     vals.forEach((v, i) => {
-      // slice label outside the rim like Keynote's default "name / value"
       if (v / total > 0.03) {
         const mid = a0 + (v / total) * Math.PI;
-        const lx = cx + (r + base * 0.8) * Math.cos(mid), ly = cy + (r + base * 0.8) * Math.sin(mid);
-        const anchor = Math.cos(mid) < -0.2 ? "end" : Math.cos(mid) > 0.2 ? "start" : "middle";
-        text(lx, ly, `${labels[i] ?? ""} ${v.toLocaleString("en-US")}`.trim(), { anchor, size: base * 0.9 });
+        const lx = cx + labelR * Math.cos(mid), ly = cy + labelR * Math.sin(mid);
+        const anchor = !outside ? "middle" : Math.cos(mid) < -0.2 ? "end" : Math.cos(mid) > 0.2 ? "start" : "middle";
+        const lines: string[] = [];
+        if (!pl || pl.showSeriesName) lines.push((labels[i] ?? "").trim());
+        if (!pl || pl.showValue) lines.push(pl?.valueFormat ? fmtNumber(v, pl.valueFormat, total) : v.toLocaleString("en-US"));
+        const rows = lines.filter((t) => t.length > 0);
+        pending.push(() => {
+          // name over value, 1.125 em apart — Apple's export stacks them
+          // ("10+ LIRs" at 294.4 and "12%" at 345.0 for a 45pt label).
+          const lead = labelSize * 1.125;
+          const y0 = ly - ((rows.length - 1) * lead) / 2;
+          rows.forEach((t, ri) => text(lx, y0 + ri * lead, t, { anchor, size: labelSize }));
+        });
+        // leader line from the rim out to a label that sits off it
+        if (pl?.leaderLines && outside) {
+          const gap = labelSize * 0.35;
+          line(cx + (r + gap) * Math.cos(mid), cy + (r + gap) * Math.sin(mid), lx - Math.sign(Math.cos(mid)) * gap, ly, "currentColor", 1);
+        }
       }
       const a1 = a0 + (v / total) * Math.PI * 2;
       const p = document.createElementNS(NS, "path");
@@ -779,6 +868,7 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
       mask.appendChild(full); mask.appendChild(hole); defs.appendChild(mask); svg.insertBefore(defs, svg.firstChild);
       for (const el of Array.from(svg.querySelectorAll("path"))) el.setAttribute("mask", `url(#${id})`);
     }
+    for (const draw of pending) draw();
     return svg;
   }
 
@@ -803,20 +893,35 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
   if (chart.valueAxisMin !== undefined) vmin = chart.valueAxisMin;
   if (chart.valueAxisMax !== undefined) vmax = chart.valueAxisMax;
   if (vmax === vmin) vmax = vmin + 1;
-  const targetTicks = chart.valueAxisMajorGridlines && chart.valueAxisMajorGridlines > 1 ? chart.valueAxisMajorGridlines : 4;
+  // Keynote's stored gridline count is a count of INTERVALS, not of lines: the
+  // RIPE waiting-list axis stores 4 and Apple's export draws 0/300/600/900/
+  // 1200 — five labels, four gaps, with the top rounded up to a nice number
+  // that divides evenly. So pick the smallest nice step whose `g` intervals
+  // still cover the data (300 = 3x10^2 here, which a 1/2/2.5/5 ladder can
+  // never reach), then let the axis end exactly on it.
+  const g = chart.valueAxisMajorGridlines && chart.valueAxisMajorGridlines > 1 ? chart.valueAxisMajorGridlines : 0;
+  const targetTicks = g || 4;
   const rawStep = (vmax - vmin) / targetTicks;
   const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
-  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((st) => (vmax - vmin) / st <= targetTicks + 0.5) ?? mag * 10;
+  const ladder = g ? [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10] : [1, 2, 2.5, 5, 10];
+  const step = ladder.map((m) => m * mag).find((st) => (vmax - vmin) / st <= targetTicks + (g ? 1e-9 : 0.5)) ?? mag * 10;
   if (chart.valueAxisMin === undefined) vmin = Math.floor(vmin / step) * step;
-  if (chart.valueAxisMax === undefined) vmax = Math.ceil(vmax / step) * step;
+  if (chart.valueAxisMax === undefined) vmax = g ? vmin + step * g : Math.ceil(vmax / step) * step;
   const ticks: number[] = [];
   for (let v = vmin; v <= vmax + step / 1000; v += step) ticks.push(Math.round(v * 1e6) / 1e6);
-  const fmtTick = (v: number) => (Math.abs(v) >= 1000 ? v.toLocaleString("en-US") : String(v));
-  const tickLabelW = Math.max(...ticks.map((t) => fmtTick(t).length)) * base * 0.58 + base;
-  const left = horizontal ? Math.min(w * 0.3, Math.max(...chart.categories.map((c) => c.length)) * base * 0.55 + base) : tickLabelW + (chart.valueAxisTitle ? base * 1.5 : 0);
-  const right = w - base;
-  const plotTop = top + base * 0.5;
-  const plotBottom = bottom - base * 1.5; // category labels
+  // Axis decimals stay automatic: the stored decimal_places is 1 on 720 of
+  // the corpus's axes with no sign in Apple's exports that ticks carry it.
+  const tickFmt = chart.valueAxisFormat ? { ...chart.valueAxisFormat, decimals: undefined } : undefined;
+  const fmtTick = (v: number) => fmtNumber(v, tickFmt);
+  // The plot box IS the chart's frame; every piece of furniture is drawn
+  // OUTSIDE it. Apple's slide-4 export puts the first category label's centre
+  // at x=152 and the last at 1809 for a frame spanning 150.2 -> 1813.5, and
+  // its value labels ("1200" at x=55.7) sit left of the frame entirely, with
+  // the category row's baseline at 868 below a frame that ends at 851.6.
+  const left = 0;
+  const right = w;
+  const plotTop = top;
+  const plotBottom = bottom;
   const plotW = right - left, plotH = plotBottom - plotTop;
   if (plotW <= 10 || plotH <= 10) return svg;
   const vy = (v: number) => plotBottom - ((v - vmin) / (vmax - vmin)) * plotH;
@@ -835,7 +940,7 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
   for (const t of ticks) {
     if (horizontal) {
       gridLine(vx(t), plotTop, vx(t), plotBottom, false);
-      text(vx(t), plotBottom + base * 1.2, fmtTick(t));
+      text(vx(t), plotBottom + base * 1.1, fmtTick(t));
     } else {
       gridLine(left, vy(t), right, vy(t), false);
       text(left - base * 0.4, vy(t) + base * 0.35, fmtTick(t), { anchor: "end" });
@@ -865,7 +970,7 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
     // points spread edge to edge like Apple's line charts (first category
     // at the axis origin, last at the right edge)
     const px = (i: number) => (n === 1 ? left + plotW / 2 : left + (i / (n - 1)) * plotW);
-    chart.categories.forEach((c, i) => { if (i % labelEvery === 0) text(px(i), plotBottom + base * 1.2, catLabel(c)); });
+    chart.categories.forEach((c, i) => { if (i % labelEvery === 0) text(px(i), plotBottom + base * 1.1, catLabel(c)); });
     const markers = n <= 40; // Keynote drops point markers on dense series
     const running: number[] = new Array(n).fill(0);
     chart.series.forEach((s, si) => {
@@ -910,7 +1015,7 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
   chart.categories.forEach((c, i) => {
     if (i % labelEvery !== 0) return;
     if (horizontal) text(left - base * 0.4, plotTop + (i + 0.5) * groupSpan + base * 0.35, catLabel(c), { anchor: "end" });
-    else text(left + (i + 0.5) * groupSpan, plotBottom + base * 1.2, catLabel(c));
+    else text(left + (i + 0.5) * groupSpan, plotBottom + base * 1.1, catLabel(c));
   });
   const stackPos: number[] = new Array(n).fill(0);
   const stackNeg: number[] = new Array(n).fill(0);
