@@ -430,6 +430,10 @@ table.sheet-table td.cell-error { color: #b03030; font-style: italic; }
    a neighbor cell (Apple renders template placeholder keys like
    "S_LOCALIZABLE_Sunday" clipped to "S_L" in narrow columns; we match). */
 table.sheet-table td, table.sheet-table th { overflow: hidden; }
+/* ...except that unwrapped text spills across EMPTY neighbors (Excel-like);
+   spillUnwrappedCells() in tables.ts widens a .cell-spill box over them. */
+table.sheet-table td.cell-nowrap .styled-text { white-space: pre; }
+table.sheet-table .cell-spill { overflow: hidden; white-space: pre; position: relative; z-index: 1; }
 /* Exact stored column widths (fixed layout): the 42px readability guard
    would inflate genuinely narrow columns (mini-calendar day columns are
    ~15pt in Apple's templates). */
