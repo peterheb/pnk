@@ -532,3 +532,6 @@ table.sheet-table.own-strokes td, table.sheet-table.own-strokes th { border: non
    bod_table, coco-lo's 表1, cdrky's County Tax Rates and maison-martos'
    market table). */
 table.sheet-table > caption.table-caption { color: #1d1d1f; }
+
+/* accounting-style currency cells: symbol at the left edge, amount at the right */
+table.sheet-table .acct { display: flex; justify-content: space-between; gap: 0.5em; }

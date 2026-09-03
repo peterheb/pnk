@@ -388,9 +388,15 @@ function valueToText(cell: TableCell, format: CellFormat | undefined): string {
       // currency groups by default (Apple: $1,234.56); an explicit
       // grouping:false in the stored format turns it off
       const body = formatNumber(Math.abs(n), decimals, true, format?.grouping ?? true);
-      const sym = CURRENCY_SYMBOL[code];
+      const sym = CURRENCY_SYMBOL[code] ?? (code ? code + " " : "$");
+      if (format?.accounting) {
+        // accounting style: symbol at the cell's left edge, amount at the
+        // right, negatives in parentheses; the tab marks the split for the
+        // cell renderer (Numbers prints "$    80,837.74")
+        return n < 0 ? `${sym}\t(${body})` : `${sym}\t${body}`;
+      }
       const sign = n < 0 ? "-" : "";
-      return sym !== undefined ? `${sign}${sym}${body}` : `${sign}${code ? code + " " : "$"}${body}`;
+      return `${sign}${sym}${body}`;
     }
     case "error": return String(v);
     case "richtext": {
@@ -559,6 +565,24 @@ export function tableDrawnWidth(model: TableModel): number {
   return total;
 }
 
+/**
+ * Drawn height of a table: the sum of its visible row heights (a stored 0
+ * means the default row height) plus the caption. Rows with wrapped text
+ * grow past this in the DOM; the sheet canvas is re-fitted after layout.
+ * Returns 0 when a height is unknown.
+ */
+export function tableDrawnHeight(model: TableModel): number {
+  let total = model.name ? 24 : 0;
+  for (let r = 0; r < model.rowCount; r++) {
+    const info = model.rows?.[r];
+    if (info?.hidden) continue;
+    const h = info?.sizePt || model.defaultRowHeightPt;
+    if (!h) return 0;
+    total += h;
+  }
+  return total;
+}
+
 /** One TableModel as a real table; hidden rows/columns are skipped. */
 export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedDoc, _frameWidth?: number): HTMLTableElement {
   const table = document.createElement("table");
@@ -705,6 +729,18 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedD
           // only the base (0839b6d2, a docx import, stores a 1pt cell font
           // under 11pt runs — flattened, "Nome:" vanished into a 1px line).
           td.replaceChildren(renderStyledText(rich, hdoc, ctx));
+        } else if (format?.accounting && text.includes("\t")) {
+          // accounting-style currency: symbol and amount pushed to
+          // opposite edges of the cell
+          const [sym, amount] = text.split("\t", 2);
+          const wrap = document.createElement("span");
+          wrap.className = "acct";
+          const a = document.createElement("span");
+          a.textContent = sym;
+          const b = document.createElement("span");
+          b.textContent = amount;
+          wrap.append(a, b);
+          td.replaceChildren(wrap);
         } else {
           td.textContent = text;
           // multi-paragraph cell text (rich-text cells join with \n) keeps
