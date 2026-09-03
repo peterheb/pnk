@@ -157,9 +157,10 @@ class Judge:
             "model": self.model,
             "temperature": 0,
             # Reasoning models (DeepSeek V4, GLM 5.3) think before answering and
-            # the thinking counts against this budget: leave room, but also pin
-            # the effort low so they cannot wander off for thousands of tokens.
-            "max_tokens": 8000,
+            # the thinking counts against this budget. With thinking off a
+            # verdict is ~80 tokens, so cap tightly: a runaway or an abandoned
+            # request then costs the server seconds, not minutes.
+            "max_tokens": 1500 if REASONING_EFFORT == "none" else 8000,
             **effort_params(REASONING_EFFORT),
             "messages": [{
                 "role": "user",

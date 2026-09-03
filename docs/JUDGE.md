@@ -55,7 +55,12 @@ spent the entire 8,000-token budget deliberating over an identical pair
 `chat_template_kwargs: {"thinking": false}`; vLLM honours both, and a
 verdict then takes 3 to 5 seconds. `low`/`medium`/`high` are passed through
 for servers that honour them. To compare thinking on vs off, run twice with
-different judge names.
+different judge names, and do the two runs separately: the rubric prompt is
+identical for every request, so a run is nearly all prefix-cache hits, but
+on the GLM server toggling thinking invalidates the cached prefix (the
+effort line sits inside the gated template region), and interleaving the
+two settings re-prefills every request. With thinking off `max_tokens` is
+capped at 1,500 so abandoned or runaway generations stay short.
 
 ## Concurrency, and how the GLM box died
 
