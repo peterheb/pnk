@@ -456,11 +456,14 @@ def cmd_report(args) -> int:
     recs = [json.loads(l) for l in log_path.read_text().splitlines() if l.strip()]
     want = getattr(args, "prompt_version", None) or PROMPT_VERSION
     recs = [r for r in recs if r.get("prompt_version") == want]
-    # One verdict per (judge, model, prompt, golden, candidate): the latest
-    # scored one wins; a failure only counts if nothing ever succeeded.
+    # One verdict per (judge, model, prompt, document, page, control): the
+    # latest scored one wins, so a re-harvested page replaces its old
+    # screenshot's verdict instead of counting twice; a failure only counts
+    # if nothing ever succeeded. (The run cache is keyed by image sha; the
+    # report is keyed by page.)
     latest: dict[tuple, dict] = {}
     for r in recs:
-        k = (r["judge"], r["model"], r["prompt_version"], r["golden_sha"], r["candidate_sha"])
+        k = (r["judge"], r["model"], r["prompt_version"], r["doc"], r["page"], r["control"])
         if r.get("score") is not None or k not in latest:
             latest[k] = r
     recs = list(latest.values())
