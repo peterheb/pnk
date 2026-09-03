@@ -293,6 +293,8 @@ def load_done(path: Path) -> set[tuple]:
         for line in path.read_text().splitlines():
             try:
                 r = json.loads(line)
+                if r.get("score") is None or r.get("parse") in ("failed", "error"):
+                    continue  # timeouts and unparseable replies are retried next run
                 done.add((r["judge"], r["model"], r["prompt_version"], r["golden_sha"], r["candidate_sha"]))
             except (ValueError, KeyError):
                 continue
