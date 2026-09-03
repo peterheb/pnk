@@ -893,6 +893,11 @@ pub enum Drawable {
         /// See Shape.text_fit.
         #[serde(skip_serializing_if = "Option::is_none")]
         text_fit: Option<TextFit>,
+        /// Path-source natural size, emitted only when the stored geometry
+        /// is 0×0 (Numbers content-sized text boxes). A hint: Numbers sizes
+        /// the box to its text; this is the size the box had when created.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        natural_size: Option<Size>,
     },
     Image {
         common: DrawableCommon,

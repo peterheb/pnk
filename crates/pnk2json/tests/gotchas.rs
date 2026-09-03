@@ -314,6 +314,7 @@ fn json_escapes_zs_cf_code_points() {
                 vertical_alignment: None,
                 text_insets: None,
                 text_fit: None,
+                natural_size: None,
             }],
             notes: None,
             transition: None,

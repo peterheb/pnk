@@ -336,6 +336,13 @@ export interface TextboxDrawable {
   text: StyledText;
   verticalAlignment?: VerticalAlignment;
   textInsets?: { top?: number; left?: number; bottom?: number; right?: number };
+  /**
+   * Path-source natural size, present only when `common.size` is 0×0
+   * (Numbers content-sized text boxes). A hint, not the box: Numbers sizes
+   * the box to its text; this is the size the box had when created
+   * [inferred: 6914f46e51ab, verified against Numbers' export].
+   */
+  naturalSize?: Size;
   /** See ShapeDrawable.textFit — absent = fixed box, viewer clips. */
   textFit?: "grow" | "shrink";
 }

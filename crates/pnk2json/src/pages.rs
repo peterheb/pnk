@@ -565,6 +565,7 @@ fn tag_drawable(d: Drawable, tag: &str) -> Drawable {
             vertical_alignment,
             text_insets,
             text_fit,
+            natural_size,
         } => {
             let mut common = common;
             common.placeholder = Some(PlaceholderInfo {
@@ -577,6 +578,7 @@ fn tag_drawable(d: Drawable, tag: &str) -> Drawable {
                 vertical_alignment,
                 text_insets,
                 text_fit,
+                natural_size,
             }
         }
         other => other,
