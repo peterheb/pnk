@@ -220,9 +220,13 @@ def effort_params(effort: str) -> dict:
     but both reasoning_effort="none" and chat_template_kwargs.thinking=false
     switch thinking off. GLM-5.3 (EXL3 server) answered without thinking
     under effort low. "none" sends both switches."""
+    # Qwen 3.8 -Next (2026-09-02): off = chat_template_kwargs.enable_thinking
+    # false; low/medium/high = chat_template_kwargs.reasoning_effort. Unknown
+    # kwargs are ignored by the other templates, so send the union.
     if effort == "none":
-        return {"reasoning_effort": "none", "chat_template_kwargs": {"thinking": False}}
-    return {"reasoning_effort": effort}
+        return {"reasoning_effort": "none",
+                "chat_template_kwargs": {"thinking": False, "enable_thinking": False}}
+    return {"reasoning_effort": effort, "chat_template_kwargs": {"reasoning_effort": effort}}
 
 
 def parse_verdict(text: str) -> dict:
