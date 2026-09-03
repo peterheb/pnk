@@ -138,12 +138,15 @@ Security → Local Network.
 ## Results, 2026-09-02/03, prompt v1
 
 Inputs: 28 documents (12 Pages, 8 Numbers, 8 Keynote), up to 4 pages
-each: 87 real pairs, 28 identity controls, 22 misaligned controls. Each
-judge scored every pair. Thinking was off unless the judge name says
-otherwise.
+each: 87 real pairs, 28 identity controls, 22 misaligned controls (six
+documents have one page and get no misaligned control). Each judge scored
+every pair; 137 requests per judge. Thinking was off unless the judge
+name says otherwise. Claude Fable 5.1 through the Anthropic API is the
+reference judge.
 
 | judge | model | mean score | identity correct | misaligned correct | seconds per pair |
 |---|---|---:|---:|---:|---:|
+| claude | claude-fable-5-1 (reference) | 5.91 | 28/28 | 20/22 | 7.9 |
 | deepseek | deepseek-v4-flash | 7.40 | 22/28 | 7/22 | 7.8 |
 | glm | GLM-5.3-Flash-EXL3 | 6.64 | 28/28 | 20/22 | 37.6 |
 | qwen | qwen3.8-flash-next | 6.66 | 28/28 | 21/22 | 10.2 |
@@ -154,13 +157,25 @@ Mean score by app:
 
 | judge | Keynote | Numbers | Pages |
 |---|---:|---:|---:|
+| claude | 7.31 | 3.95 | 5.69 |
 | deepseek | 8.69 | 4.63 | 7.72 |
 | glm | 7.97 | 4.32 | 6.69 |
 | qwen | 7.81 | 4.79 | 6.61 |
 | qwen-low | 7.41 | 4.74 | 5.86 |
 | pixel | 8.12 | 3.89 | 6.58 |
 
-Agreement between judges on the 87 real pairs:
+Agreement of each judge with Claude on the 87 real pairs. Bias is the
+judge's mean score minus Claude's.
+
+| judge | Spearman ρ | mean abs. difference | within 1 point | bias |
+|---|---:|---:|---:|---:|
+| qwen-low | 0.94 | 0.60 | 92% | +0.28 |
+| qwen | 0.93 | 0.95 | 76% | +0.75 |
+| glm | 0.91 | 0.92 | 82% | +0.74 |
+| deepseek | 0.71 | 1.89 | 55% | +1.49 |
+| pixel | 0.54 | 1.76 | 57% | |
+
+Agreement between the local judges:
 
 | a | b | Spearman ρ | mean abs. difference | within 1 point |
 |---|---|---:|---:|---:|
@@ -173,28 +188,28 @@ Agreement between judges on the 87 real pairs:
 | glm | pixel | 0.50 | 1.97 | 48% |
 
 Seconds per pair are wall-clock at the concurrency used (DeepSeek 2, GLM
-1, Qwen 4); GLM's figure includes the slow period before its server
-failed.
+1, Qwen 4, Claude 4); GLM's figure includes the slow period before its
+server failed. The Claude run used about 470k input tokens.
 
 What the numbers show:
 
-- GLM and Qwen pass the controls and agree with each other closely
-  (ρ 0.94, 82% of pairs within one point). They were run on the same
-  server at different times with the same prompt, so the agreement is
-  between two independent models, not shared context.
+- GLM and Qwen pass the controls and rank the pairs the same way Claude
+  does (ρ 0.91 and 0.93). Both score about 0.75 points higher than
+  Claude on average.
+- Qwen with low thinking is the closest local judge to Claude: ρ 0.94,
+  92% of pairs within one point, bias +0.28. With thinking off it ranks
+  pairs equally well (ρ 0.93) but scores higher, and takes 10 seconds per
+  pair instead of 28. Either is usable; use low thinking when the
+  absolute score matters, thinking off when ranking is enough.
 - DeepSeek V4 Flash with thinking off fails 15 of 22 misaligned controls
-  and 6 of 28 identity controls. It scored 10 for a Pages cover whose
-  rotated title bar the viewer places on the wrong edge of the page, and 8
-  for a Numbers sheet whose lower half is missing from the viewer
-  screenshot. Its scores should not be used.
+  and 6 of 28 identity controls, and scores 1.5 points above Claude. It
+  scored 10 for a Pages cover whose rotated title bar the viewer places
+  on the wrong edge of the page, and 8 for a Numbers sheet whose lower
+  half is missing from the viewer screenshot. Its scores should not be
+  used.
 - All judges, including the pixel baseline, rank Numbers lowest and
-  Keynote highest. Numbers is where the viewer's fidelity work is.
-- Qwen at 4 parallel requests is the fastest of the two usable judges:
-  10 seconds per pair against GLM's 37.
-- Low thinking does not improve Qwen. Control accuracy is the same
-  (28/28, 20/22 against 21/22), scores are 0.5 lower on average, mostly
-  on Pages, agreement with GLM drops from 0.94 to 0.88, and each pair
-  takes 28 seconds instead of 10. Use thinking off.
+  Keynote highest. Claude's means are 7.3 for Keynote, 5.7 for Pages, and
+  4.0 for Numbers. Numbers is where the viewer's fidelity work is.
 
 Two problems in the image pairs, found by reading the pairs the judges
 disagreed on: Numbers' PDF export scales a whole sheet onto one page while
@@ -202,5 +217,5 @@ the viewer screenshot is the browser viewport, so long sheets are missing
 rows on the viewer side (a `visual_diff.py` problem, not a viewer problem);
 and `--max-pages 4` samples short documents more heavily than long ones.
 
-Next: score the same pairs with Claude through the Anthropic API and
-report each local judge's agreement with it.
+Next: fix the two harvest problems above and re-run; then score more
+documents, one or two pages each, with Qwen.
