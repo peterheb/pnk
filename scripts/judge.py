@@ -229,7 +229,7 @@ def effort_params(effort: str) -> dict:
     but both reasoning_effort="none" and chat_template_kwargs.thinking=false
     switch thinking off. GLM-5.3 (also on vLLM) answered without thinking
     under effort low. "none" sends both switches."""
-    # Qwen 3.8 -Next (2026-09-02): off = chat_template_kwargs.enable_thinking
+    # Qwen3.8-Flash-Next (2026-09-02): off = chat_template_kwargs.enable_thinking
     # false; low/medium/high = chat_template_kwargs.reasoning_effort. Unknown
     # kwargs are ignored by the other templates, so send the union.
     if effort == "default":

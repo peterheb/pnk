@@ -143,8 +143,8 @@ before sending. Thinking was off unless the judge name says otherwise.
 | judge | model | mean score | identity correct | misaligned correct | seconds per pair |
 |---|---|---:|---:|---:|---:|
 | claude | Claude Fable 5.1 (reference) | 5.91 | 28/28 | 20/22 | 7.9 |
-| qwen | Qwen 3.8 -Next, thinking off | 6.66 | 28/28 | 21/22 | 10.2 |
-| qwen-low | Qwen 3.8 -Next, low thinking | 6.18 | 28/28 | 20/22 | 28.4 |
+| qwen | Qwen3.8-Flash-Next, thinking off | 6.66 | 28/28 | 21/22 | 10.2 |
+| qwen-low | Qwen3.8-Flash-Next, low thinking | 6.18 | 28/28 | 20/22 | 28.4 |
 | glm | GLM-5.3-Flash | 6.64 | 28/28 | 20/22 | 37.6 |
 | deepseek | DeepSeek V4 Flash | 7.40 | 22/28 | 7/22 | 7.8 |
 | pixel | block SSIM | 6.56 | 28/28 | 2/22 | 0.6 |
@@ -180,7 +180,7 @@ failing (below). The Claude run used about 470k input tokens.
 
 ### Conclusions
 
-- **Qwen 3.8 -Next is a usable stand-in for Claude on this task.** With
+- **Qwen3.8-Flash-Next is a usable stand-in for Claude on this task.** With
   low thinking its scores are within one point of Claude's on 92% of pages
   and 0.28 higher on average. With thinking off it ranks pages equally well
   (ρ 0.93) but scores 0.75 higher, at a third of the time per pair. Use low
