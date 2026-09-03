@@ -285,16 +285,18 @@ Qwen's scores for that workbook's four pages, before and after:
 
 | page | before | after | what changed |
 | --- | --- | --- | --- |
-| 1 | 6 | 5 | accounting style and 4-decimal rates now right; the screenshot still clips the right edge |
+| 1 | 6 | 8 | accounting style and 4-decimal rates; the screenshot no longer clips the right edge |
 | 2 | 5 | 9 | integers, percent, and currency all match the export |
-| 3 | 1 | 8 | row order and canvas height |
-| 4 | 8 | 8 | canvas height (the judge had called the table "scaled down") |
+| 3 | 1 | 9 | row order and canvas height |
+| 4 | 8 | 9 | canvas height (the judge had called the table "scaled down") |
 
-The page-1 clip is a capture problem in visual_diff, not a rendering
-one, and is next.
+The clip was in the harness: the viewer's app column is 1160px wide and
+the sheet area scrolls inside it, so an element screenshot of a wider
+sheet stopped at the column's edge. visual_diff now lifts that limit and
+widens the browser viewport to the sheet for each shot.
 
 ### Next
 
-Fix the right-edge clip in the Numbers screenshot. Score more of the corpus, one or two pages per document, with Qwen; use
+Score more of the corpus, one or two pages per document, with Qwen; use
 the ranked list to choose fidelity work; add a reference re-run with
 Claude when the prompt changes again.

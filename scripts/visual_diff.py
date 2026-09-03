@@ -296,12 +296,26 @@ const { chromium } = require(process.env.PW_MODULE);
   if (sheetCount > 0) {
     const shotDir = shotPath.replace(/\/[^/]+$/, "/");
     fs.mkdirSync(shotDir, { recursive: true });
+    // The app column is 1160px wide and the sheet area scrolls inside it,
+    // so anything past that is clipped in an element screenshot (a county
+    // budget lost its Totals column and two tables). Lift the limit for
+    // the sheet shots; the viewport is widened per sheet below.
+    // (CSSOM, not a style tag: the viewer's CSP allows no inline styles.)
+    await page.evaluate(() => { const app = document.getElementById("app"); if (app) app.style.maxWidth = "none"; });
     for (let i = 0; i < sheetCount; i++) {
       await sheetTabs.nth(i).click();
       const canvas = page.locator(`#numbers-view .sheet-area[data-sheet-index="${i}"] .sheet-canvas`).first();
       await canvas.waitFor({ state: "visible", timeout: 10000 });
       await page.waitForTimeout(400);
+      // Widen the viewport to the canvas before shooting, then put it back.
+      const size = await canvas.evaluate((el) => ({ w: el.scrollWidth, h: el.scrollHeight }));
+      await page.setViewportSize({
+        width: Math.max(1280, Math.ceil(size.w) + 160),
+        height: Math.max(900, Math.ceil(size.h) + 240),
+      });
+      await page.waitForTimeout(300);
       await canvas.screenshot({ path: `${shotDir}sheet-${i + 1}.png` });
+      await page.setViewportSize({ width: 1280, height: 900 });
     }
     await sheetTabs.nth(0).click();
     await page.waitForTimeout(300);
