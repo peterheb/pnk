@@ -1370,6 +1370,10 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
     const wrap = el("div", "canvas-table-wrap");
     wrap.appendChild(renderTable(d.table, ctx, doc, d.common?.size?.width));
     div.appendChild(wrap);
+    // Numbers keeps a stale frame on tables (a 3628pt-tall box on a 43-row
+    // budget sheet); the rendered rows set the layer's height instead so
+    // the sheet canvas fits the drawn table.
+    if ((doc as { kind?: string }).kind === "numbers") div.style.height = "auto";
   } else if (d.type === "chart") {
     const svg = chartSvg(d.chart, w, h);
     if (svg) {

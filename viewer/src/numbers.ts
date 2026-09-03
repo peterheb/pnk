@@ -6,7 +6,7 @@ import type { TableModel } from "../../model/src/shared";
 import type { ViewerCtx } from "./ctx";
 import { applyTextFit, renderCanvasDrawable } from "./drawables";
 import type { HydratedDoc } from "./hydrate";
-import { spillUnwrappedCells, tableDrawnWidth } from "./tables";
+import { spillUnwrappedCells, tableDrawnHeight, tableDrawnWidth } from "./tables";
 
 function drawableExtent(
   d: { type: string; table?: TableModel; common?: { position?: { x: number; y: number }; size?: { width: number; height: number } }; children?: unknown[] },
@@ -20,8 +20,14 @@ function drawableExtent(
     const w = d.type === "table" && d.table
       ? Math.max(d.common.size.width, tableDrawnWidth(d.table))
       : d.common.size.width;
+    // The stored height can be stale-tall as well: a pre-BNC budget sheet
+    // keeps a 3628pt frame on a 43-row table, which made the canvas (and
+    // the screenshot) five times taller than the content. Rows decide; the
+    // post-layout fit grows the canvas if wrapped rows run taller.
+    const drawnH = d.type === "table" && d.table ? tableDrawnHeight(d.table) : 0;
+    const h = drawnH > 0 ? drawnH : d.common.size.height;
     cur.x = Math.max(cur.x, d.common.position.x + w);
-    cur.y = Math.max(cur.y, d.common.position.y + d.common.size.height);
+    cur.y = Math.max(cur.y, d.common.position.y + h);
   }
   if (d.type === "group") {
     for (const ch of (d.children ?? []) as Parameters<typeof drawableExtent>[0][]) drawableExtent(ch, cur);
