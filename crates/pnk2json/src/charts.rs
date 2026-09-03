@@ -290,7 +290,7 @@ pub fn convert_chart(ctx: &mut Ctx, ca: &Msg) -> ChartModel {
         .filter(|s| !s.is_empty());
     let text_sizes =
         (title_pt.is_some() || legend_pt.is_some() || axis_pt.is_some() || label_pt.is_some())
-            .then(|| ChartTextSizes {
+            .then_some(ChartTextSizes {
                 title_pt,
                 legend_pt,
                 axis_pt,
