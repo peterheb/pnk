@@ -58,10 +58,25 @@ def _osascript(script: str, timeout: float = 60) -> str:
 
 
 def _doc_names(app_name: str) -> list[str]:
-    out = _osascript(
-        f'tell application "{app_name}" to if it is running then get name of every document',
-        timeout=OPEN_TIMEOUT_S,
-    )
+    script = f'tell application "{app_name}" to if it is running then get name of every document'
+    try:
+        out = _osascript(script, timeout=OPEN_TIMEOUT_S)
+    except subprocess.CalledProcessError as e:
+        # "Application isn't running (-600)" while the process is gone but
+        # Launch Services still answers `running` = true (seen after a long
+        # export session): launch in the background and ask again. Without
+        # this, a whole harvest silently fell back to QuickLook previews.
+        if "-600" not in (e.stderr or ""):
+            raise
+        subprocess.run(["open", "-g", "-a", app_name], check=False, timeout=30)
+        out = ""
+        for _ in range(30):
+            time.sleep(1)
+            try:
+                out = _osascript(script, timeout=OPEN_TIMEOUT_S)
+                break
+            except subprocess.CalledProcessError:
+                continue
     return [s for s in out.split(", ") if s] if out else []
 
 
