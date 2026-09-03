@@ -295,8 +295,41 @@ the sheet area scrolls inside it, so an element screenshot of a wider
 sheet stopped at the column's edge. visual_diff now lifts that limit and
 widens the browser viewport to the sheet for each shot.
 
+### Numbers corpus scoring (2026-09-03, Qwen thinking off, 2 pages per document)
+
+21 more Numbers documents, one per origin host, were exported from
+Numbers and scored alongside the 9 from round 1: 30 documents, 56 pages,
+mean 7.27. Score counts: 1 ×1, 2 ×1, 4 ×3, 5 ×1, 6 ×10, 7 ×7, 8 ×19,
+9 ×14. Two harness problems surfaced on the way and are fixed in the same
+branch: a document query that failed after Numbers had quit silently
+turned the whole run into QuickLook previews, and an element screenshot
+stopped at the viewer's 1160px column. One converter bug came out of the
+scores directly: a Japanese screenshot name stored without the zip UTF-8
+flag was decoded as cp437, so its image was reported missing (page
+score 1, now 8).
+
+What the judge names most often across the 56 pages, in order:
+
+1. Text clipped in cells where Numbers grows the row to fit wrapped text
+   (eight documents; the most common complaint by far). The viewer keeps
+   the stored row height.
+2. "formula error" shown where the export prints a value (three
+   documents): cells whose cached result is absent.
+3. Charts: legend missing, series colors swapped, gridlines, axis range
+   (two documents with charts).
+4. Category grouping rows and their totals missing (one document).
+5. Sheet gridlines drawn behind tables (three documents; the export does
+   not print them). Prompt v2 tells the judge to ignore them, but they
+   still appear in the issue lists.
+
+Two documents cannot be scored fairly by page: a 1,380-row sheet that the
+export scales onto one page, and a 1,129 × 192 table (217,000 cells)
+that the viewer takes too long to lay out; the second is a performance
+item, not a fidelity one.
+
 ### Next
 
-Score more of the corpus, one or two pages per document, with Qwen; use
+Row height from wrapped text is the next fidelity item. Then the cached
+formula results. Score more of the corpus, one or two pages per document, with Qwen; use
 the ranked list to choose fidelity work; add a reference re-run with
 Claude when the prompt changes again.
