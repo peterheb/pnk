@@ -1,135 +1,206 @@
 # Render-fidelity judging (`scripts/judge.py`)
 
-Vision LLMs score how faithfully the pnk viewer reproduces a page, sheet, or
-slide against the real app's PDF export. It is the second half of the
-ground-truth loop: `visual_diff.py` harvests the image pairs, `judge.py`
-grades them. The rubric lives in `scripts/judge_prompt.md` (versioned; bump
-`PROMPT_VERSION` when it changes, verdicts are cached per version).
+`judge.py` sends pairs of images to vision language models and asks each
+model to score, from 0 to 10, how closely the pnk viewer's rendering of a
+page, sheet, or slide matches the PDF export from Pages, Numbers, or
+Keynote. `scripts/visual_diff.py` produces the image pairs; `judge.py`
+scores them and compares the judges against each other. The scoring
+instructions are in `scripts/judge_prompt.md`. They are versioned: change
+`PROMPT_VERSION` in `judge.py` when the prompt changes, because scores are
+cached per prompt version.
 
 ## Pipeline
 
-1. **Harvest pairs.** `scripts/visual_diff.py --app <app> --fixture <file>
-   --out <run>` writes `<run>/apple/page-N.png` (app export, via PDF) and
-   `<run>/ours/{page,sheet,slide}-N.png` (Playwright screenshot of the
-   viewer, local dist by default, `--base-url https://pnk.vu` for the live
-   site). Pages are paired 1:1 by index; skipped Keynote slides are excluded.
-2. **Judge.** Each pair is resized to a common height, JPEG-encoded, and sent
-   to every judge with the rubric. Verdicts append to
-   `<out>/judgments.jsonl`, keyed by (judge name, model, prompt version,
-   golden sha, candidate sha), so re-runs only score new work.
-3. **Report.** `judge.py report --out <out>` writes `<out>/report.md`:
-   per-judge mean/median, control accuracy, per-app and per-document means,
-   and pairwise agreement between judges (Spearman ρ, mean |Δ|, within-1).
+1. **Produce pairs.** `scripts/visual_diff.py --app <app> --fixture <file>
+   --out <run>` writes `<run>/apple/page-N.png` (rendered from the app's PDF
+   export) and `<run>/ours/{page,sheet,slide}-N.png` (a Playwright
+   screenshot of the viewer; local build by default, `--base-url
+   https://pnk.vu` for the live site). Page N is paired with page N. Skipped
+   Keynote slides are left out on both sides.
+2. **Score.** Each pair is resized to 1100 px tall, JPEG-encoded, and sent
+   to every judge with the prompt. Results are appended to
+   `<out>/judgments.jsonl`. The cache key is (judge name, model, prompt
+   version, golden image sha, candidate image sha); a second run scores only
+   pairs that have no successful result yet.
+3. **Report.** `judge.py report --out <out>` writes `<out>/report.md` with,
+   per judge: mean and median score, control accuracy, mean score per app
+   and per document; and for each pair of judges: Spearman rank
+   correlation, mean absolute difference, and the share of pairs scored
+   within one point of each other.
 
 ## Judges
 
-A judge is `name=<spec>`; the name is the cache key, so use a fresh name for
-a new model, prompt experiment, or thinking setting.
+A judge is given as `--judge name=<spec>`. The name is part of the cache
+key, so use a new name for a new model, a prompt experiment, or a different
+thinking setting.
 
-| spec | what it is |
+| spec | meaning |
 |---|---|
-| `name=http://host:port/v1,<model>[,api-key]` | any OpenAI-compatible chat server (vLLM, TabbyAPI, llama.cpp, …) |
-| `name=anthropic,<model>` | Anthropic Messages API, key from `ANTHROPIC_API_KEY` (never on the command line) |
-| `name=pixel,pixel` | deterministic block-SSIM baseline, no network |
+| `name=http://host:port/v1,<model>[,api-key]` | an OpenAI-compatible chat server (vLLM, TabbyAPI, llama.cpp) |
+| `name=anthropic,<model>` | Anthropic Messages API; the key is read from `ANTHROPIC_API_KEY` |
+| `name=pixel,pixel` | block SSIM between the two images, mapped to 0–10; no network |
 
-Rotating the model on an inference box is just a new judge name pointing at
-the same URL, e.g. `--judge qwen=http://192.168.87.91:4444/v1,<qwen-id>`.
-`GET /v1/models` on the box lists the ids it actually serves; they rarely
-match the nickname.
+To add a model that has been loaded on an existing server, add a judge
+with a new name and the same URL. Run `GET /v1/models` first: the id the
+server reports is the one to pass, and it is often not the informal name.
 
 ## Controls (`--controls`)
 
-Every run also scores two synthetic pairs per document: **identity** (the
-golden against itself, expect 10) and **misaligned** (the golden against a
-different page's render, expect 0). The report counts how often each judge
-gets them right. The pixel baseline passes identity every time and fails
-misaligned most of the time, because two slides from one deck share a
-template, which is exactly the judgement a vision model is supposed to add.
+With `--controls`, each document also gets two synthetic pairs: the golden
+image against itself (identity, expected score 10) and the golden image
+against a different page's rendering (misaligned, expected score 0). The
+report counts identity scores of 9 or more and misaligned scores of 1 or
+less as correct. A judge that fails the misaligned control is not looking
+at the page content. The pixel baseline passes identity every time and
+fails misaligned most of the time, because slides in one deck share a
+template and so have similar block statistics.
 
-## Thinking budget (`--effort`)
+## Thinking (`--effort`)
 
-Both local models are reasoning models. With thinking on, DeepSeek V4 Flash
-spent the entire 8,000-token budget deliberating over an identical pair
-(26k characters of "wait, let me look again") and never emitted a verdict.
-`--effort none` (the default) sends `reasoning_effort: "none"` plus
-`chat_template_kwargs: {"thinking": false}`; vLLM honours both, and a
-verdict then takes 3 to 5 seconds. `low`/`medium`/`high` are passed through
-for servers that honour them. To compare thinking on vs off, run twice with
-different judge names, and do the two runs separately: the rubric prompt is
-identical for every request, so a run is nearly all prefix-cache hits, but
-on the GLM server toggling thinking invalidates the cached prefix (the
-effort line sits inside the gated template region), and interleaving the
-two settings re-prefills every request. With thinking off `max_tokens` is
-capped at 1,500 so abandoned or runaway generations stay short.
+The local models are reasoning models. With thinking on, DeepSeek V4 Flash
+used all 8,000 output tokens on an identical pair and produced no verdict.
+`--effort none`, the default, turns thinking off; `low`, `medium`, and
+`high` are passed through to servers that support them. The request fields
+sent for each setting are in `effort_params()` in `judge.py`:
 
-## Concurrency, and how the GLM box died
+| server | off | low/medium/high |
+|---|---|---|
+| vLLM + DeepSeek V4 | `reasoning_effort: "none"` or `chat_template_kwargs.thinking: false` | ignored; the model thinks until `max_tokens` |
+| vLLM + GLM 5.3 | either of the above | `reasoning_effort` |
+| vLLM + Qwen 3.8 -Next | `chat_template_kwargs.enable_thinking: false` | `chat_template_kwargs.reasoning_effort` |
 
-`--concurrency` defaults to 1 per LLM judge; `--concurrency 2
---concurrency glm=1` sets a default and a per-judge override. The default
-is 1 because of the first bake-off: the GLM server (vLLM v1, EXL3 weights,
-tensor-parallel across two DGX Spark nodes) had about 4 GiB of host memory
-headroom. Two-wide multimodal requests ate that in twenty minutes; a second
-client accidentally started alongside made it four-wide, MemAvailable hit
-0.3 GiB, the kernel evicted the mmapped weight pages, and every forward
-pass re-read weights from NVMe (1.9 GB/s of reads, decode 25 → 0.2 tok/s).
-An hour later the TP shared-memory link wedged and the engine died on a
-`sample_tokens` RPC timeout, which vLLM reports as a graceful shutdown.
-Watch `MemAvailable` on the head node when raising concurrency, and keep
-clients from abandoning in-flight requests (a killed client leaves the
-server generating).
+The harness sends the union of these fields; each template ignores the
+ones it does not use.
+
+With thinking off, a verdict is about 80 output tokens, so `max_tokens` is
+1,500; with thinking on it is 8,000.
+
+Use one effort setting per run. The prompt text is identical for every
+request, so the server's prefix cache serves most of each request. On the
+GLM server the effort setting is inside the part of the chat template that
+depends on the thinking flag, so alternating settings invalidates the
+cached prefix and each request is re-prefilled (measured: 26 s instead of
+0.6 s).
+
+## Concurrency (`--concurrency`)
+
+`--concurrency N` sets the number of parallel requests per LLM judge;
+`--concurrency name=N` overrides it for one judge. The default is 1. The
+pixel judge always runs 4 wide on local CPU.
+
+The default is 1 because of what happened on 2026-09-02. The GLM server
+(vLLM v1, EXL3 weights, tensor-parallel across two DGX Spark nodes) had
+about 4 GiB of free host memory. Two parallel requests reduced that to 0.6
+GiB in twenty minutes. A second client started by mistake made it four
+parallel requests; free memory reached 0.3 GiB, the kernel evicted the
+memory-mapped weight pages, and each forward pass re-read weights from
+NVMe (1.9 GB/s of disk reads; decode speed went from 25 to 0.2 tokens per
+second). An hour later the tensor-parallel shared-memory link stopped
+responding and the engine exited on a `sample_tokens` RPC timeout, which
+vLLM logs as a normal shutdown. The same server configuration with Qwen
+3.8 stopped responding after 130 requests at 4 parallel.
+
+Two settings on the server side caused the memory shortage: the KV cache
+pool was sized as a fraction of unified memory, leaving about 6 GiB free
+regardless of model size, and vLLM's host-side multimodal processor cache
+(`mm_processor_cache_gb`, default 4 GiB) filled with preprocessed image
+tensors because every image in a run is distinct. With the KV pool reduced
+to 580k tokens and the processor cache disabled, the server had 27 GiB
+free and stayed at 27 GiB through a 137-request run at 4 parallel.
+
+If you raise concurrency, watch `MemAvailable` on the server during the
+first hundred requests. A client that is killed leaves its in-flight
+requests running on the server, so stop a client with the harness's own
+timeout rather than by killing it while requests are outstanding.
 
 ## Usage
 
 ```
-# local boxes, all three apps, 4 pages per document
-python3 scripts/judge.py run \
+# local servers, all three apps, up to 4 pages per document
+uv run --with pillow python3 scripts/judge.py run \
   --runs-root vd --runs-root vdn --runs-root vdk \
   --judge pixel=pixel,pixel \
   --judge deepseek=http://192.168.87.91:4444/v1,deepseek-v4-flash \
   --judge glm=http://192.168.87.93:8888/v1,GLM-5.3-Flash-EXL3 \
   --controls --max-pages 4 --concurrency 2 --concurrency glm=1 --out judge-out
-python3 scripts/judge.py report --out judge-out
+uv run --with pillow python3 scripts/judge.py report --out judge-out
 
-# later, Claude as the reference judge
-ANTHROPIC_API_KEY=... python3 scripts/judge.py run ... --judge claude=anthropic,claude-fable-5-1
+# Claude as a judge
+ANTHROPIC_API_KEY=... uv run --with pillow python3 scripts/judge.py run ... \
+  --judge claude=anthropic,claude-fable-5-1
 ```
 
-Needs Pillow (`uv run --with pillow python3 scripts/judge.py …`). On macOS
-the first LAN request triggers the Local Network privacy prompt for the
-terminal app; grant it permanently under System Settings → Privacy &
+Requires Pillow. On macOS the first request to a LAN address triggers the
+Local Network permission prompt for the terminal application; the
+permission can be granted permanently under System Settings → Privacy &
 Security → Local Network.
 
-## First bake-off (2026-09-02, prompt v1, thinking off)
+## Results, 2026-09-02/03, prompt v1
 
-28 documents (12 Pages, 8 Numbers, 8 Keynote, up to 4 pages each), 87 real
-pairs plus 28 identity and 22 misaligned controls, all judged blind by
-each model. The GLM server fell over mid-run (see the concurrency section)
-and the last 13 GLM verdicts were collected after it was rebuilt; its
-s/pair figure includes the slow tail before the crash.
+Inputs: 28 documents (12 Pages, 8 Numbers, 8 Keynote), up to 4 pages
+each: 87 real pairs, 28 identity controls, 22 misaligned controls. Each
+judge scored every pair. Thinking was off unless the judge name says
+otherwise.
 
-| judge | model | pairs | mean | identity (expect ≥9) | misaligned (expect ≤1) | s/pair |
-|---|---|---:|---:|---:|---:|---:|
-| deepseek | deepseek-v4-flash | 87 | 7.40 | 22/28 | 7/22 | 7.8 |
-| glm | GLM-5.3-Flash-EXL3 | 87 | 6.64 | 28/28 | 20/22 | 37.6 |
-| pixel | block SSIM | 87 | 6.56 | 28/28 | 2/22 | 0.6 |
+| judge | model | mean score | identity correct | misaligned correct | seconds per pair |
+|---|---|---:|---:|---:|---:|
+| deepseek | deepseek-v4-flash | 7.40 | 22/28 | 7/22 | 7.8 |
+| glm | GLM-5.3-Flash-EXL3 | 6.64 | 28/28 | 20/22 | 37.6 |
+| qwen | qwen3.8-flash-next | 6.66 | 28/28 | 21/22 | 10.2 |
+| qwen-low | qwen3.8-flash-next, low thinking | 6.18 | 28/28 | 20/22 | 28.4 |
+| pixel | block SSIM | 6.56 | 28/28 | 2/22 | 0.6 |
 
-Agreement on the real pairs: DeepSeek vs GLM Spearman ρ 0.68, mean gap
-1.7 points, within one point 61% of the time; each LLM vs the pixel
-baseline ρ 0.50–0.64.
+Mean score by app:
 
-Reading: **GLM is the judge to trust of the two.** It passes the controls
-(it notices when the candidate is a different page and never docks an
-identical pair) and its scores track
-the known state of the viewer (Numbers weakest, Keynote strongest). DeepSeek
-without thinking is generous and often does not look: it gave 10 to a Pages
-cover whose rotated title bar we place on the wrong edge, and 8 to a Numbers
-sheet whose lower half is missing from our capture. Both LLMs rank the apps
-the same way as the pixel baseline, and all three agree Numbers is where the
-fidelity work is.
+| judge | Keynote | Numbers | Pages |
+|---|---:|---:|---:|
+| deepseek | 8.69 | 4.63 | 7.72 |
+| glm | 7.97 | 4.32 | 6.69 |
+| qwen | 7.81 | 4.79 | 6.61 |
+| qwen-low | 7.41 | 4.74 | 5.86 |
+| pixel | 8.12 | 3.89 | 6.58 |
 
-Two harvest issues surfaced by reading the disagreements: Numbers exports
-scale a whole sheet onto one PDF page while our screenshot is the viewport,
-so long sheets lose rows on our side (harvester bug, not viewer), and a
-per-document `--max-pages` of 4 over-samples short documents. Next: rotate
-the Qwen checkpoint in as a third judge, then Claude via `anthropic,` as the
-reference judge and re-derive the per-judge numbers against it.
+Agreement between judges on the 87 real pairs:
+
+| a | b | Spearman ρ | mean abs. difference | within 1 point |
+|---|---|---:|---:|---:|
+| glm | qwen | 0.94 | 0.63 | 82% |
+| qwen | qwen-low | 0.91 | 0.79 | 77% |
+| glm | qwen-low | 0.88 | 0.97 | 72% |
+| deepseek | qwen | 0.69 | 1.44 | 72% |
+| deepseek | glm | 0.68 | 1.68 | 61% |
+| deepseek | pixel | 0.64 | 2.03 | 43% |
+| glm | pixel | 0.50 | 1.97 | 48% |
+
+Seconds per pair are wall-clock at the concurrency used (DeepSeek 2, GLM
+1, Qwen 4); GLM's figure includes the slow period before its server
+failed.
+
+What the numbers show:
+
+- GLM and Qwen pass the controls and agree with each other closely
+  (ρ 0.94, 82% of pairs within one point). They were run on the same
+  server at different times with the same prompt, so the agreement is
+  between two independent models, not shared context.
+- DeepSeek V4 Flash with thinking off fails 15 of 22 misaligned controls
+  and 6 of 28 identity controls. It scored 10 for a Pages cover whose
+  rotated title bar the viewer places on the wrong edge of the page, and 8
+  for a Numbers sheet whose lower half is missing from the viewer
+  screenshot. Its scores should not be used.
+- All judges, including the pixel baseline, rank Numbers lowest and
+  Keynote highest. Numbers is where the viewer's fidelity work is.
+- Qwen at 4 parallel requests is the fastest of the two usable judges:
+  10 seconds per pair against GLM's 37.
+- Low thinking does not improve Qwen. Control accuracy is the same
+  (28/28, 20/22 against 21/22), scores are 0.5 lower on average, mostly
+  on Pages, agreement with GLM drops from 0.94 to 0.88, and each pair
+  takes 28 seconds instead of 10. Use thinking off.
+
+Two problems in the image pairs, found by reading the pairs the judges
+disagreed on: Numbers' PDF export scales a whole sheet onto one page while
+the viewer screenshot is the browser viewport, so long sheets are missing
+rows on the viewer side (a `visual_diff.py` problem, not a viewer problem);
+and `--max-pages 4` samples short documents more heavily than long ones.
+
+Next: score the same pairs with Claude through the Anthropic API and
+report each local judge's agreement with it.

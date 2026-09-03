@@ -250,7 +250,7 @@ def parse_verdict(text: str) -> dict:
 def pixel_score(golden_im, cand_im) -> dict:
     """Baseline judge: mean structural similarity over 8x8 blocks of the
     grayscale images at a common size, mapped onto the rubric. Not a vision
-    model — it anchors the bake-off (does an LLM beat an SSIM-ish number?)
+    model. It gives the comparison a floor (does an LLM beat block SSIM?)
     and gives the controls a deterministic answer."""
     from PIL import Image
     w, h = golden_im.size
@@ -453,7 +453,7 @@ def cmd_report(args) -> int:
             latest[k] = r
     recs = list(latest.values())
     judges = sorted({r["judge"] for r in recs})
-    lines = [f"# Render-fidelity bake-off — prompt {PROMPT_VERSION}", ""]
+    lines = [f"# Render-fidelity judge comparison — prompt {PROMPT_VERSION}", ""]
     # per-judge summary
     lines += ["| judge | model | pairs | mean | median | identity ctrl (expect 10) | misaligned ctrl (expect 0) | parse failures | s/pair |",
               "|---|---|---:|---:|---:|---:|---:|---:|---:|"]
