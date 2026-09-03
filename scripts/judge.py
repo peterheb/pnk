@@ -149,8 +149,12 @@ class Judge:
     def _post(self, url: str, body: dict, headers: dict) -> dict:
         req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST",
                                      headers={"Content-Type": "application/json", **headers})
-        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-            return json.loads(resp.read())
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                return json.loads(resp.read())
+        except urllib.error.HTTPError as e:
+            detail = e.read()[:400].decode("utf-8", "replace")
+            raise urllib.error.URLError(f"HTTP {e.code} from {url}: {detail}") from None
 
     def _openai(self, prompt: str, golden_b64: str, cand_b64: str) -> dict:
         body = {
@@ -194,8 +198,7 @@ class Judge:
     def _anthropic(self, prompt: str, golden_b64: str, cand_b64: str) -> dict:
         body = {
             "model": self.model,
-            "max_tokens": 600,
-            "temperature": 0,
+            "max_tokens": 1500,  # no temperature: current Claude models reject it
             "messages": [{
                 "role": "user",
                 "content": [
