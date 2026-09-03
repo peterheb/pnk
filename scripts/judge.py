@@ -53,7 +53,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 PROMPT_PATH = REPO / "scripts" / "judge_prompt.md"
-PROMPT_VERSION = "v1"
+PROMPT_VERSION = "v2"  # v2: spreadsheet paragraph (ignore pagination, scale, locale)
 
 # Images are normalized to this height; widths follow the page's aspect.
 # ~1100px keeps 9pt text legible for a vision model without blowing the
@@ -454,7 +454,8 @@ def spearman(xs: list[float], ys: list[float]) -> float | None:
 def cmd_report(args) -> int:
     log_path = Path(args.out) / "judgments.jsonl"
     recs = [json.loads(l) for l in log_path.read_text().splitlines() if l.strip()]
-    recs = [r for r in recs if r.get("prompt_version") == PROMPT_VERSION]
+    want = getattr(args, "prompt_version", None) or PROMPT_VERSION
+    recs = [r for r in recs if r.get("prompt_version") == want]
     # One verdict per (judge, model, prompt, golden, candidate): the latest
     # scored one wins; a failure only counts if nothing ever succeeded.
     latest: dict[tuple, dict] = {}
@@ -464,7 +465,7 @@ def cmd_report(args) -> int:
             latest[k] = r
     recs = list(latest.values())
     judges = sorted({r["judge"] for r in recs})
-    lines = [f"# Render-fidelity judge comparison — prompt {PROMPT_VERSION}", ""]
+    lines = [f"# Render-fidelity judge comparison — prompt {want}", ""]
     # per-judge summary
     lines += ["| judge | model | pairs | mean | median | identity ctrl (expect 10) | misaligned ctrl (expect 0) | parse failures | s/pair |",
               "|---|---|---:|---:|---:|---:|---:|---:|---:|"]
@@ -561,6 +562,7 @@ def main() -> int:
     r.set_defaults(fn=cmd_run)
     p = sub.add_parser("report", help="summarize judgments.jsonl into report.md")
     p.add_argument("--out", required=True)
+    p.add_argument("--prompt-version", default=None, help=f"report an older prompt version (default {PROMPT_VERSION})")
     p.set_defaults(fn=cmd_report)
     args = ap.parse_args()
     return args.fn(args)

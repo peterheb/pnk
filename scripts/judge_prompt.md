@@ -1,4 +1,4 @@
-# Render-fidelity judge prompt — version 1
+# Render-fidelity judge prompt — version 2
 
 Two images follow. The FIRST is the GOLDEN reference: a page, worksheet, or
 slide as exported to PDF by the application that created the document
@@ -16,6 +16,15 @@ Ignore differences that are not the viewer's fault: overall image scale or
 resolution, JPEG or anti-aliasing artifacts, a page shadow or frame around the
 page, a slightly different paper margin around the content, and hairline
 gridline weight.
+
+If the page is a spreadsheet (Numbers), the golden is a printed page and the
+candidate is the sheet as shown on screen. Also ignore: page breaks and rows
+or columns that continue past the golden's page edge, page orientation and
+margins, the scale of the tables relative to the image, faint background
+gridlines outside the tables, and the language or separator style of dates
+and numbers (a value such as "1.722,22" against "1,722.22", or "févr." against
+"Feb", is the same value). Judge the tables' content, structure, cell
+formatting and colors, the text boxes, and the charts.
 
 Score on this scale:
 
