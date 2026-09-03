@@ -298,6 +298,27 @@ def load_done(path: Path) -> set[tuple]:
     return done
 
 
+def concurrency_for(specs: list[str], judge: "Judge") -> int:
+    """--concurrency 2 --concurrency glm=1: the bare number is the default,
+    name=N overrides one judge. Pixel judging is local CPU work and always
+    runs 4 wide. Default 1: on 2026-09-02 two-wide multimodal requests
+    against a tp=2 EXL3 server with ~4 GiB of host headroom drove
+    MemAvailable to 0.3 GiB, the kernel evicted the mmapped weights, decode
+    fell from 25 to 0.2 tok/s, and the engine died on an RPC timeout."""
+    if judge.kind == "pixel":
+        return 4
+    n = 1
+    for spec in specs:
+        name, _, val = spec.rpartition("=")
+        if not name:
+            n = int(val)
+    for spec in specs:
+        name, _, val = spec.rpartition("=")
+        if name == judge.name:
+            return int(val)
+    return n
+
+
 def cmd_run(args) -> int:
     global REASONING_EFFORT
     REASONING_EFFORT = args.effort
@@ -381,7 +402,7 @@ def cmd_run(args) -> int:
         return rec
 
     for judge in judges:
-        with ThreadPoolExecutor(max_workers=args.concurrency if judge.kind != "pixel" else 4) as ex:
+        with ThreadPoolExecutor(max_workers=concurrency_for(args.concurrency, judge)) as ex:
             list(ex.map(lambda t: work(judge, t), tasks))
     print(f"[judge] judgments in {log_path}")
     return 0
@@ -503,7 +524,9 @@ def main() -> int:
     r.add_argument("--out", required=True, help="output dir (judgments.jsonl is appended and used as a cache)")
     r.add_argument("--controls", action="store_true", help="add identity and misaligned control pairs per run")
     r.add_argument("--max-pages", type=int, default=0, help="cap pages per run (0 = all)")
-    r.add_argument("--concurrency", type=int, default=2, help="parallel requests per LLM judge")
+    r.add_argument("--concurrency", action="append", default=[],
+                   help="parallel requests per LLM judge: a number for all, or name=N for one judge "
+                        "(repeatable; default 1 — a memory-tight box will page its weights out under 2+)")
     r.add_argument("--timeout", type=float, default=240.0)
     r.add_argument("--seed", type=int, default=1)
     r.add_argument("--effort", default="none", choices=["none", "low", "medium", "high"],

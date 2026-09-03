@@ -57,6 +57,22 @@ verdict then takes 3 to 5 seconds. `low`/`medium`/`high` are passed through
 for servers that honour them. To compare thinking on vs off, run twice with
 different judge names.
 
+## Concurrency, and how the GLM box died
+
+`--concurrency` defaults to 1 per LLM judge; `--concurrency 2
+--concurrency glm=1` sets a default and a per-judge override. The default
+is 1 because of the first bake-off: the GLM server (vLLM v1, EXL3 weights,
+tensor-parallel across two DGX Spark nodes) had about 4 GiB of host memory
+headroom. Two-wide multimodal requests ate that in twenty minutes; a second
+client accidentally started alongside made it four-wide, MemAvailable hit
+0.3 GiB, the kernel evicted the mmapped weight pages, and every forward
+pass re-read weights from NVMe (1.9 GB/s of reads, decode 25 → 0.2 tok/s).
+An hour later the TP shared-memory link wedged and the engine died on a
+`sample_tokens` RPC timeout, which vLLM reports as a graceful shutdown.
+Watch `MemAvailable` on the head node when raising concurrency, and keep
+clients from abandoning in-flight requests (a killed client leaves the
+server generating).
+
 ## Usage
 
 ```
@@ -66,7 +82,7 @@ python3 scripts/judge.py run \
   --judge pixel=pixel,pixel \
   --judge deepseek=http://192.168.87.91:4444/v1,deepseek-v4-flash \
   --judge glm=http://192.168.87.93:8888/v1,GLM-5.3-Flash-EXL3 \
-  --controls --max-pages 4 --out judge-out
+  --controls --max-pages 4 --concurrency 2 --concurrency glm=1 --out judge-out
 python3 scripts/judge.py report --out judge-out
 
 # later, Claude as the reference judge
