@@ -56,7 +56,8 @@ impl Members {
             MembersInner::Map(m) => m.get(name).cloned(),
             MembersInner::Zip(z) => {
                 let mut z = z.borrow_mut();
-                let f = z.by_name(name).ok()?;
+                let idx = zip_index_of(&mut z, name, false)?;
+                let f = z.by_index(idx).ok()?;
                 read_bounded(f)
             }
         }
@@ -73,10 +74,7 @@ impl Members {
             MembersInner::Map(m) => {
                 m.contains_key(&exact) || m.keys().any(|k| k.ends_with(&suffix))
             }
-            MembersInner::Zip(z) => z
-                .borrow()
-                .file_names()
-                .any(|n| n == exact || n.ends_with(&suffix)),
+            MembersInner::Zip(z) => zip_index_of(&mut z.borrow_mut(), &exact, true).is_some(),
         }
     }
 
@@ -96,15 +94,47 @@ impl Members {
                 .find(|(k, _)| k.ends_with(&suffix))
                 .map(|(_, v)| v.clone()),
             MembersInner::Zip(z) => {
-                let name = z
-                    .borrow()
-                    .file_names()
-                    .find(|n| n.ends_with(&suffix))
-                    .map(|n| n.to_string())?;
-                self.get(&name)
+                let mut z = z.borrow_mut();
+                let idx = zip_index_of(&mut z, &exact, true)?;
+                let f = z.by_index(idx).ok()?;
+                read_bounded(f)
             }
         }
     }
+}
+
+/// Index of the member named `name` (or, with `allow_suffix`, one ending in
+/// `/name`), matched on the entry's RAW name bytes. Numbers writes media
+/// names as UTF-8 without setting the zip UTF-8 flag (bit 11), and the zip
+/// crate then decodes them as cp437: a Japanese screenshot name came back
+/// as mojibake and its image was reported missing while Numbers showed it.
+/// The stored Data record carries the real UTF-8 name, so bytes are the
+/// reliable comparison; the decoded name is checked too for entries whose
+/// flag is set.
+fn zip_index_of<R: std::io::Read + std::io::Seek>(
+    z: &mut zip::ZipArchive<R>,
+    name: &str,
+    allow_suffix: bool,
+) -> Option<usize> {
+    let want = name.as_bytes();
+    let suffix = format!("/{name}");
+    let mut suffix_hit = None;
+    for i in 0..z.len() {
+        let Ok(f) = z.by_index_raw(i) else {
+            continue;
+        };
+        let raw = f.name_raw();
+        if raw == want || f.name() == name {
+            return Some(i);
+        }
+        if allow_suffix
+            && suffix_hit.is_none()
+            && (raw.ends_with(suffix.as_bytes()) || f.name().ends_with(&suffix))
+        {
+            suffix_hit = Some(i);
+        }
+    }
+    suffix_hit
 }
 
 /// Inflate one zip member with the bomb ceiling applied.

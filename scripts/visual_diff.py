@@ -324,12 +324,23 @@ const { chromium } = require(process.env.PW_MODULE);
       await page.waitForTimeout(400);
       // Widen the viewport to the canvas before shooting, then put it back.
       const size = await canvas.evaluate((el) => ({ w: el.scrollWidth, h: el.scrollHeight }));
+      // Cap the shot: a 1,380-row sheet is 46,000pt tall, which made a
+      // 391-megapixel PNG that no judge (or Pillow) will open. The export
+      // scales such a sheet onto one page anyway, so the top is what pairs.
+      const MAX_H = 6000;
+      const h = Math.min(Math.ceil(size.h), MAX_H);
       await page.setViewportSize({
         width: Math.max(1280, Math.ceil(size.w) + 160),
-        height: Math.max(900, Math.ceil(size.h) + 240),
+        height: Math.max(900, h + 240),
       });
       await page.waitForTimeout(300);
-      await canvas.screenshot({ path: `${shotDir}sheet-${i + 1}.png` });
+      if (size.h > MAX_H) {
+        const box = await canvas.boundingBox();
+        await page.screenshot({ path: `${shotDir}sheet-${i + 1}.png`,
+          clip: { x: box.x, y: box.y, width: box.width, height: MAX_H } });
+      } else {
+        await canvas.screenshot({ path: `${shotDir}sheet-${i + 1}.png` });
+      }
       await page.setViewportSize({ width: 1280, height: 900 });
     }
     await sheetTabs.nth(0).click();
