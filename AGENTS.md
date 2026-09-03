@@ -17,8 +17,9 @@ email, no upload.
 
 ## Repo conventions
 
-- Commit straight to `main`. No branches, no PRs, no ceremony. Commit often, in small
-  steps, with educational messages — peers will read this history.
+- Since v0.2 (2026-09-02): feature branch + PR into `main` (during the hackathon we
+  committed straight to `main`). Commit often, in small steps, with educational
+  messages — peers will read this history.
 - Provenance tagging for all format documentation: every claim gets one of
   - `proto` — structure verified in the protobuf definitions,
   - `parser` — behavior confirmed in third-party parser code (name which),
