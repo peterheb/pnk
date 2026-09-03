@@ -440,6 +440,14 @@ def cmd_report(args) -> int:
     log_path = Path(args.out) / "judgments.jsonl"
     recs = [json.loads(l) for l in log_path.read_text().splitlines() if l.strip()]
     recs = [r for r in recs if r.get("prompt_version") == PROMPT_VERSION]
+    # One verdict per (judge, model, prompt, golden, candidate): the latest
+    # scored one wins; a failure only counts if nothing ever succeeded.
+    latest: dict[tuple, dict] = {}
+    for r in recs:
+        k = (r["judge"], r["model"], r["prompt_version"], r["golden_sha"], r["candidate_sha"])
+        if r.get("score") is not None or k not in latest:
+            latest[k] = r
+    recs = list(latest.values())
     judges = sorted({r["judge"] for r in recs})
     lines = [f"# Render-fidelity bake-off — prompt {PROMPT_VERSION}", ""]
     # per-judge summary
