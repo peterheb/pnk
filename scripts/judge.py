@@ -1,36 +1,37 @@
 #!/usr/bin/env python3
-"""Render-fidelity judging: vision LLMs (or a pixel baseline) score our
-renders against the apps' own PDF exports, page by page.
+"""Render-fidelity judging: vision language models (or a pixel baseline)
+score the viewer's renders against the apps' own PDF exports, page by page.
+See docs/JUDGE.md for the purpose, options, and results.
 
 Pairs come from visual_diff.py output directories: `<run>/apple/page-N.png`
 is the GOLDEN (the app's export rasterized) and `<run>/ours/{page,sheet,
-slide}-N.png` the CANDIDATE (our viewer's frame screenshot). Every judge is
-a named config — an OpenAI-compatible endpoint + model alias, the Anthropic
-Messages API, or the built-in pixel baseline — and every (judge, prompt
+slide}-N.png` the CANDIDATE (the viewer's screenshot). A judge is a named
+configuration: an OpenAI-compatible endpoint plus model id, the Anthropic
+Messages API, or the built-in pixel baseline. Every (judge, model, prompt
 version, golden, candidate) verdict is cached in judgments.jsonl, so adding
-a judge later (or swapping the live model on an inference box and giving
-it a new name) only runs the new one.
+a judge later only sends the new judge's requests.
 
-Controls calibrate the judges: an IDENTITY pair (golden vs golden, expect
-10) and a MISALIGNED pair (golden page i vs candidate page j != i, expect 0)
-per run tell you whether a judge respects the ends of the scale before you
-trust its middle.
+Controls check the judges: an IDENTITY pair (golden vs golden, expect 10)
+and a MISALIGNED pair (golden page i vs candidate page j != i, expect 0)
+per document show whether a judge distinguishes the ends of the scale.
 
-    # score every run under the visual_diff output roots with two judges
-    python3 scripts/judge.py run --runs-root /path/to/vd /path/to/vdn \\
-        --judge deepseek=http://192.168.87.91:4444/v1,deepseek-v4-flash-vision-exp \\
-        --judge glm=http://192.168.87.93:8888/v1,glm-5.3-flash \\
-        --judge pixel=pixel,pixel --controls --out judge-out
+    # score every run under two visual_diff output roots with a hosted
+    # model through OpenRouter (key in OPENROUTER_API_KEY) and the baseline
+    python3 scripts/judge.py run --runs-root vd --runs-root vdn \
+        --judge openrouter=https://openrouter.ai/api/v1,openai/gpt-5.6-luna \
+        --judge pixel=pixel,pixel --controls --effort default --out judge-out
 
-    # later: the Anthropic judge (ANTHROPIC_API_KEY in the environment)
+    # a local OpenAI-compatible server (vLLM, llama.cpp, ...), no key
+    python3 scripts/judge.py run ... --judge local=http://localhost:8000/v1,<model-id>
+
+    # Claude through the Anthropic API (ANTHROPIC_API_KEY in the environment)
     python3 scripts/judge.py run ... --judge claude=anthropic,claude-fable-5-1
 
-    # the bake-off: agreement, control accuracy, per-app means
+    # per-judge statistics, control accuracy, and agreement between judges
     python3 scripts/judge.py report --out judge-out
 
-Harvest more pairs with visual_diff.py (`--batch success.tsv` or repeated
-`--fixture`), pointing `--base-url` at a local viewer or https://pnk.vu —
-the file is parsed in the browser either way.
+Produce more pairs with visual_diff.py (`--batch success.tsv` or repeated
+`--fixture`), pointing `--base-url` at a local viewer or https://pnk.vu.
 """
 from __future__ import annotations
 
@@ -136,7 +137,12 @@ class Judge:
             if not key:
                 sys.exit(f"judge {name}: ANTHROPIC_API_KEY not set")
             return cls(name, "anthropic", "https://api.anthropic.com", model, key, timeout)
-        return cls(name, "openai", target, model, key or os.environ.get("OPENAI_API_KEY", "none"), timeout)
+        # Key: third spec field, else <NAME>_API_KEY (e.g. OPENROUTER_API_KEY
+        # for a judge named openrouter), else OPENAI_API_KEY, else none
+        # (local servers usually need none).
+        key = key or os.environ.get(f"{name.upper().replace('-', '_')}_API_KEY") \
+            or os.environ.get("OPENAI_API_KEY") or "none"
+        return cls(name, "openai", target, model, key, timeout)
 
     # -- transports -------------------------------------------------------
     def score(self, prompt: str, golden_b64: str, cand_b64: str, golden_im, cand_im) -> dict:
@@ -221,11 +227,13 @@ def effort_params(effort: str) -> dict:
     Verified 2026-09-02 against vLLM serving deepseek-v4-flash: the model
     ignores reasoning_effort low/medium/high and thinks until max_tokens,
     but both reasoning_effort="none" and chat_template_kwargs.thinking=false
-    switch thinking off. GLM-5.3 (EXL3 server) answered without thinking
+    switch thinking off. GLM-5.3 (also on vLLM) answered without thinking
     under effort low. "none" sends both switches."""
     # Qwen 3.8 -Next (2026-09-02): off = chat_template_kwargs.enable_thinking
     # false; low/medium/high = chat_template_kwargs.reasoning_effort. Unknown
     # kwargs are ignored by the other templates, so send the union.
+    if effort == "default":
+        return {}  # server default; for hosted APIs that reject unknown fields
     if effort == "none":
         return {"reasoning_effort": "none",
                 "chat_template_kwargs": {"thinking": False, "enable_thinking": False}}
@@ -312,7 +320,7 @@ def concurrency_for(specs: list[str], judge: "Judge") -> int:
     """--concurrency 2 --concurrency glm=1: the bare number is the default,
     name=N overrides one judge. Pixel judging is local CPU work and always
     runs 4 wide. Default 1: on 2026-09-02 two-wide multimodal requests
-    against a tp=2 EXL3 server with ~4 GiB of host headroom drove
+    against a two-node vLLM server with ~4 GiB of host headroom drove
     MemAvailable to 0.3 GiB, the kernel evicted the mmapped weights, decode
     fell from 25 to 0.2 tok/s, and the engine died on an RPC timeout."""
     if judge.kind == "pixel":
@@ -547,7 +555,7 @@ def main() -> int:
                         "(repeatable; default 1 — a memory-tight box will page its weights out under 2+)")
     r.add_argument("--timeout", type=float, default=240.0)
     r.add_argument("--seed", type=int, default=1)
-    r.add_argument("--effort", default="none", choices=["none", "low", "medium", "high"],
+    r.add_argument("--effort", default="none", choices=["none", "low", "medium", "high", "default"],
                    help="thinking budget for OpenAI-compatible judges (default none = thinking off; "
                         "use a distinct judge name per effort, the cache is keyed by name)")
     r.set_defaults(fn=cmd_run)
