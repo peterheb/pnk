@@ -265,8 +265,36 @@ number formats (integers shown as currency, a percentage as $0.95),
 category grouping rows, chart legends and axis titles, and cell border
 weight and alternating row shading.
 
+### Numbers, round 2 (2026-09-03, Qwen thinking off)
+
+Number formats first, because the judges named them most often. The
+worst case was a county budget workbook saved by an older Numbers
+(pre-BNC cell storage), where a plain-integer column printed as
+"$1,573.00" and a 95% cell as "$0.95". The cause was in the converter,
+not the viewer: an old-format cell keeps one format key per kind it has
+ever used (number, currency), and the converter took the last one. The
+document's own PDF export settled which key Numbers displays (the
+leading key; see docs/format/gotchas.md #13). Two more bugs surfaced in
+the same workbook once its pages were readable: tiles listed out of
+order put the title row of a 43-row table 28 rows down, and a stale
+3628pt table frame made the sheet screenshot five times taller than
+the table. Accounting-style currency ("$" at the left edge, amount at
+the right) is now carried in the model and rendered.
+
+Qwen's scores for that workbook's four pages, before and after:
+
+| page | before | after | what changed |
+| --- | --- | --- | --- |
+| 1 | 6 | 5 | accounting style and 4-decimal rates now right; the screenshot still clips the right edge |
+| 2 | 5 | 9 | integers, percent, and currency all match the export |
+| 3 | 1 | 8 | row order and canvas height |
+| 4 | 8 | 8 | canvas height (the judge had called the table "scaled down") |
+
+The page-1 clip is a capture problem in visual_diff, not a rendering
+one, and is next.
+
 ### Next
 
-Score more of the corpus, one or two pages per document, with Qwen; use
+Fix the right-edge clip in the Numbers screenshot. Score more of the corpus, one or two pages per document, with Qwen; use
 the ranked list to choose fidelity work; add a reference re-run with
 Claude when the prompt changes again.
