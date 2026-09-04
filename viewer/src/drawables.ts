@@ -1180,7 +1180,10 @@ function anchorZeroSizeText(
     }
     const lineH = sizePt ? sizePt * naturalLineHeight(font) : 0;
     if (lineH && naturalSize.height > 1.5 * lineH) {
-      layer.style.width = `${naturalSize.width}px`;
+      // 3% wider than Apple's laid-out width: browser faces run a hair
+      // wider, and at the exact width a line that just fit in Keynote
+      // wraps its last word (pre-trib slide 9, Helvetica Bold 42pt).
+      layer.style.width = `${(naturalSize.width * 1.03).toFixed(1)}px`;
       layer.style.whiteSpace = "normal";
       // The natural height caps the box (and triggers the bounded shrink)
       // only when it can hold the paragraphs at all: pre-trib.org's
@@ -1188,7 +1191,8 @@ function anchorZeroSizeText(
       // a stale size that shrank the block to 65% where Keynote draws it
       // full size below the anchor.
       const paraCount = text?.paragraphs.filter((p) => p.items.length > 0).length ?? 1;
-      if (naturalSize.height >= 0.9 * paraCount * lineH) {
+      const leading = paraStyleOf(doc, typeof first === "string" ? undefined : first?.pStyle)?.lineSpacingMultiple ?? 1;
+      if (naturalSize.height >= 0.9 * paraCount * lineH * leading) {
         layer.style.height = `${naturalSize.height}px`;
         multiLine = true;
       }
