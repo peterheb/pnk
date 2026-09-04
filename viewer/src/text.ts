@@ -194,7 +194,7 @@ export function naturalLineHeight(fontName: string | undefined): number {
   return FONT_LINE_HEIGHTS.find(([re]) => re.test(flat))?.[1] ?? 1.2;
 }
 
-export function applyParaStyle(el: HTMLElement, ps: ParaStyle, fontName?: string): void {
+export function applyParaStyle(el: HTMLElement, ps: ParaStyle, fontName?: string, fontSizePx?: number): void {
   const s = el.style;
   const align = ps.horizontalAlignment;
   if (align === "center" || align === "right" || align === "justify") s.textAlign = align;
@@ -212,7 +212,24 @@ export function applyParaStyle(el: HTMLElement, ps: ParaStyle, fontName?: string
   if (ps.spaceAfterPt) s.marginBottom = `${ps.spaceAfterPt}px`;
   // multiple × the face's natural line height (see FONT_LINE_HEIGHTS)
   if (ps.lineSpacingMultiple) s.lineHeight = (ps.lineSpacingMultiple * naturalLineHeight(fontName)).toFixed(3);
-  else if (ps.lineSpacingExactPt) s.lineHeight = `${ps.lineSpacingExactPt}px`;
+  else if (ps.lineSpacingExactPt) {
+    // "min"/"max" bound the NATURAL line height rather than replace it
+    // (TSWP.LineSpacingArchive mode 1/3): kcsrk's Menlo 24pt code blocks
+    // store "at least 20pt" and Keynote lays them out at Menlo's natural
+    // 28pt pitch; an exact 20px packed them 30% too tight. "space-between"
+    // (mode 4) adds the amount to the natural height. Without a known
+    // paragraph size the bound falls back to exact. [inferred from the
+    // export; mode semantics per the proto's enum names]
+    const natural = fontSizePx ? naturalLineHeight(fontName) * fontSizePx : undefined;
+    const mode = ps.lineSpacingMode;
+    let lh = ps.lineSpacingExactPt;
+    if (natural !== undefined) {
+      if (mode === "min") lh = Math.max(lh, natural);
+      else if (mode === "max") lh = Math.min(lh, natural);
+      else if (mode === "space-between") lh = natural + lh;
+    }
+    s.lineHeight = `${lh.toFixed(2)}px`;
+  }
   if (ps.backgroundColor) s.backgroundColor = ps.backgroundColor;
   if (ps.border) {
     const b = ps.border;
@@ -370,9 +387,10 @@ export function renderParagraph(
     )
     .find((n): n is string => !!n);
 
+  const paraSizePx = runSizes.length ? Math.max(...runSizes) : undefined;
   if (!hasMarker) {
     listState.lastKey = null;
-    if (style) applyParaStyle(el, style, paraFont);
+    if (style) applyParaStyle(el, style, paraFont, paraSizePx);
   } else {
     // numbering: the stored restart flag (surfaced as list.start on the
     // paragraph's pooled style) resets the counter; otherwise numbering
@@ -394,7 +412,7 @@ export function renderParagraph(
     const wrap = document.createElement("div");
     wrap.className = "list-item";
     if (style) {
-      applyParaStyle(wrap, style, paraFont);
+      applyParaStyle(wrap, style, paraFont, paraSizePx);
       el.style.marginTop = "0";
       el.style.marginBottom = "0";
       el.style.marginLeft = "0";
@@ -433,6 +451,9 @@ export function renderParagraph(
       runs.map((r) => charStyleOf(doc, r.cStyle)).find((cs) => cs?.fontSizePt) ??
       (runs.length ? charStyleOf(doc, runs[0].cStyle) : undefined);
     if (runCs) applyCharStyle(marker, runCs);
+    // ...but not its underline or strikethrough: Keynote draws a plain dot
+    // beside a hyperlink bullet (RIPE 75 slide 6), not an underlined one.
+    marker.style.textDecoration = "none";
     marker.style.paddingRight = "0.3em"; // marker-to-text gap, scales with size
     if (list!.textIndentEm) {
       const emPt = runCs?.fontSizePt ?? runSizes[0];
@@ -463,6 +484,16 @@ export function renderParagraph(
         : `${list!.markerScale}em`;
     }
     if (list!.markerBaselineOffsetPt) marker.style.verticalAlign = `${list!.markerBaselineOffsetPt}px`;
+    // The marker must not set the row's height: it is a flex item beside
+    // the paragraph, baseline-aligned, and a 1.5× marker (RIPE's orange
+    // dots, 63px beside 42px text) or a marker at normal leading beside a
+    // paragraph with a tighter exact line height made every list row
+    // taller than its text. Keynote sizes the line from the text and hangs
+    // the marker on its baseline; zero line-height keeps the glyph and its
+    // baseline while contributing no height (Keynote's export: RIPE 75
+    // sub-bullets step 62pt = 25pt space-before + Arial 32pt's natural
+    // 36.8pt; ours stepped 78pt).
+    if (list!.markerKind !== "image") marker.style.lineHeight = "0";
     // Image marker (0d5851c0 rightArrow bullets): the PNG scales with the
     // text like a glyph would — markerScale × the run's size (same
     // scale_with_text rule as string markers), hung on the baseline.
