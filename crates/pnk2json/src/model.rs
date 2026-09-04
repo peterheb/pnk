@@ -1060,6 +1060,11 @@ pub struct ShapeGeometry {
     pub path: Option<CurvePath>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub callout: Option<CalloutParams>,
+    /// Control point of a point preset (arrows, star, plus) in `natural_size`
+    /// space: for the arrows it is the inner corner where the head meets the
+    /// shaft [proto: TSD.PointPathSourceArchive.point].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub point: Option<Point>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

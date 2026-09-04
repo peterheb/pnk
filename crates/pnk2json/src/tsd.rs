@@ -114,6 +114,7 @@ fn editable_bezier(m: &Msg, natural: Option<Size>) -> ShapeGeometry {
         natural_size: natural,
         path: Some(path),
         callout: None,
+        point: None,
     }
 }
 
@@ -209,6 +210,7 @@ pub fn shape_geometry(pathsource: &Msg) -> ShapeGeometry {
                 natural_size: natural,
                 path: Some(p),
                 callout: None,
+                point: None,
             };
         }
         // deprecated path_string: opaque, fall through
@@ -245,6 +247,7 @@ pub fn shape_geometry(pathsource: &Msg) -> ShapeGeometry {
                 corner_radius: c.f32v(4).map(|v| v as f64),
                 center_tail: c.boolean(5),
             }),
+            point: None,
         };
     }
     // 3. scalar presets
@@ -266,6 +269,7 @@ pub fn shape_geometry(pathsource: &Msg) -> ShapeGeometry {
             natural_size: natural,
             path: None,
             callout: None,
+            point: None,
         };
     }
     // 4. point presets (arrows/star/plus)
@@ -283,12 +287,14 @@ pub fn shape_geometry(pathsource: &Msg) -> ShapeGeometry {
             width: w,
             height: h,
         });
+        let point = p.point(2).map(|(x, y)| Point { x, y });
         return ShapeGeometry {
             preset,
             scalar: None,
             natural_size: natural,
             path: None,
             callout: None,
+            point,
         };
     }
     ShapeGeometry {
@@ -297,6 +303,7 @@ pub fn shape_geometry(pathsource: &Msg) -> ShapeGeometry {
         natural_size: None,
         path: None,
         callout: None,
+        point: None,
     }
 }
 

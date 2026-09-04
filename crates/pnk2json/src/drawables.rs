@@ -663,6 +663,7 @@ fn shape_drawable(
             natural_size: None,
             path: None,
             callout: None,
+            point: None,
         });
     Drawable::Shape {
         common,
@@ -740,6 +741,7 @@ fn image_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
                 natural_size: None,
                 path: None,
                 callout: None,
+                point: None,
             });
         Some(ImageMask { geometry, common })
     });
@@ -1165,6 +1167,7 @@ fn mask_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
             natural_size: None,
             path: None,
             callout: None,
+            point: None,
         });
     // A bare mask at top level: represent as a shape carrying the mask path.
     Drawable::Shape {

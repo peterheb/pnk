@@ -285,6 +285,7 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
                         natural_size: None,
                         path: None,
                         callout: None,
+                        point: None,
                     },
                     text: None,
                     vertical_alignment: None,
