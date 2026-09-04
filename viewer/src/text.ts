@@ -567,7 +567,24 @@ function renderParagraphContent(
       ];
     }
   }
-  for (const item of items) {
+  // Trailing whitespace hangs past the box edge in Keynote and paints no
+  // background there (kcsrk's code blocks end every line in 25-80 spaces
+  // carrying the code's white highlight, one of them red: Keynote's export
+  // shows neither, ours painted white bars across the stack diagram and a
+  // red block at the slide edge). CSS pre-wrap hangs the spaces the same
+  // way but still paints their background, so runs after the last visible
+  // character lose it.
+  let lastVisible = -1;
+  items.forEach((it, i) => {
+    const t = typeof it === "string" ? it : "type" in it ? "\ufffc" : (it as TextRun).text;
+    if (t.trim().length > 0) lastVisible = i;
+  });
+  const bareOfBackground = (cs: CharStyle | undefined): CharStyle | undefined => {
+    if (!cs?.backgroundColor) return cs;
+    const { backgroundColor: _bg, ...rest } = cs;
+    return rest;
+  };
+  for (const [index, item] of items.entries()) {
     // bare string = plain unstyled run; object = styled/typed run
     if (typeof item === "string") {
       appendRunText(el, item, undefined);
@@ -592,7 +609,8 @@ function renderParagraphContent(
       const run = item as TextRun;
       const linkable = run.hyperlink !== undefined && safeHref(run.hyperlink);
       const span = document.createElement(linkable ? "a" : "span");
-      applyCharStyle(span, charStyleOf(doc, run.cStyle));
+      const cs = charStyleOf(doc, run.cStyle);
+      applyCharStyle(span, index > lastVisible ? bareOfBackground(cs) : cs);
       if (linkable && run.hyperlink) {
         (span as HTMLAnchorElement).href = run.hyperlink;
         (span as HTMLAnchorElement).target = "_blank";

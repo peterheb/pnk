@@ -1181,9 +1181,17 @@ function anchorZeroSizeText(
     const lineH = sizePt ? sizePt * naturalLineHeight(font) : 0;
     if (lineH && naturalSize.height > 1.5 * lineH) {
       layer.style.width = `${naturalSize.width}px`;
-      layer.style.height = `${naturalSize.height}px`;
       layer.style.whiteSpace = "normal";
-      multiLine = true;
+      // The natural height caps the box (and triggers the bounded shrink)
+      // only when it can hold the paragraphs at all: pre-trib.org's
+      // section list stores 305pt for seven 42pt paragraphs at 1.6 leading,
+      // a stale size that shrank the block to 65% where Keynote draws it
+      // full size below the anchor.
+      const paraCount = text?.paragraphs.filter((p) => p.items.length > 0).length ?? 1;
+      if (naturalSize.height >= 0.9 * paraCount * lineH) {
+        layer.style.height = `${naturalSize.height}px`;
+        multiLine = true;
+      }
     }
   }
   const paras = text?.paragraphs;
