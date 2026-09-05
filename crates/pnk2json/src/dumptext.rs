@@ -34,6 +34,12 @@ pub fn to_markdown(doc: &PnkDocument) -> String {
 // ---------------------------------------------------------------------------
 
 pub(crate) fn para_plain(p: &Paragraph) -> String {
+    para_line(p, false)
+}
+
+/// One paragraph as a line. With `math`, inline LaTeX equations go out as
+/// `$...$` spans (markdown); without, as their bare source (text).
+fn para_line(p: &Paragraph, math: bool) -> String {
     let mut s = String::new();
     for item in &p.items {
         match item {
@@ -51,7 +57,13 @@ pub(crate) fn para_plain(p: &Paragraph) -> String {
                         equation: Some(eq), ..
                     },
                 ..
-            } => s.push_str(&eq.source),
+            } => {
+                if math {
+                    s.push_str(&equation_markdown(eq));
+                } else {
+                    s.push_str(&eq.source);
+                }
+            }
             ParagraphItem::InlineObject { .. } => s.push(' '), // object placeholder
             ParagraphItem::Field { value, field, .. } => match (value, field) {
                 (Some(v), _) => s.push_str(v),
@@ -113,11 +125,29 @@ fn para_markdown(p: &Paragraph, char_styles: &[CharStyle]) -> String {
     s.trim_end().to_string()
 }
 
-/// LaTeX sources go out as `$...$` math spans; MathML markup (all tags,
-/// which the HTML escape would neutralize anyway) as a code span.
+/// LaTeX sources go out as `$...$` math spans, unescaped: math-aware
+/// renderers read the span raw, and `<` is common in LaTeX. MathML markup
+/// goes out as a code span.
 fn equation_markdown(eq: &EquationInfo) -> String {
     match eq.format {
-        EquationFormat::Latex => format!("${}$", escape_html(&eq.source)),
+        EquationFormat::Latex => format!("${}$", eq.source.trim()),
+        EquationFormat::Mathml => format!("`{}`", eq.source.replace('`', "'")),
+    }
+}
+
+/// A drawable text for markdown: equations as display math, others as is.
+fn md_text_block(kind: &str, t: &str) -> String {
+    if kind == "equation" {
+        format!("$$\n{}\n$$", t.trim())
+    } else {
+        t.to_string()
+    }
+}
+
+/// A canvas-level equation as a display block: `$$...$$` on its own lines.
+fn equation_display_markdown(eq: &EquationInfo) -> String {
+    match eq.format {
+        EquationFormat::Latex => format!("$$\n{}\n$$", eq.source.trim()),
         EquationFormat::Mathml => format!("`{}`", eq.source.replace('`', "'")),
     }
 }
@@ -216,6 +246,7 @@ fn warnings_block(doc_warnings: &[Warning], out: &mut String, markdown: bool) {
 fn slide_title_and_bullets(
     slide: &Slide,
     para_styles: &[ParaStyle],
+    markdown: bool,
 ) -> (Option<String>, Vec<String>) {
     // The title is the converter's `Slide.title` (the first title placeholder
     // with text); the dumpers print its first line and skip that drawable
@@ -237,6 +268,17 @@ fn slide_title_and_bullets(
         let text = match d {
             Drawable::Textbox { text, .. } => Some(text),
             Drawable::Shape { text: Some(t), .. } => Some(t),
+            // A canvas-level equation image is content: its source is the line.
+            Drawable::Image {
+                equation: Some(eq), ..
+            } => {
+                bullets.push(if markdown {
+                    equation_display_markdown(eq)
+                } else {
+                    eq.source.trim().to_string()
+                });
+                None
+            }
             _ => None,
         };
         let Some(text) = text else { continue };
@@ -249,7 +291,7 @@ fn slide_title_and_bullets(
             continue;
         }
         for p in &text.paragraphs {
-            let line = para_plain(p);
+            let line = para_line(p, markdown);
             if line.is_empty() {
                 continue;
             }
@@ -279,7 +321,7 @@ fn keynote_text(d: &KeynoteDocument, out: &mut String) {
         if slide.skipped == Some(true) {
             out.push_str("[skipped]\n");
         }
-        let (title, bullets) = slide_title_and_bullets(slide, &d.styles.para);
+        let (title, bullets) = slide_title_and_bullets(slide, &d.styles.para, false);
         if let Some(t) = &title {
             out.push_str(&format!("Title: {t}\n"));
         }
@@ -302,7 +344,7 @@ fn keynote_md(d: &KeynoteDocument, out: &mut String) {
         out.push_str(&format!("*Theme: {name} — {} slides*\n\n", d.slides.len()));
     }
     for (i, slide) in d.slides.iter().enumerate() {
-        let (title, bullets) = slide_title_and_bullets(slide, &d.styles.para);
+        let (title, bullets) = slide_title_and_bullets(slide, &d.styles.para, true);
         let heading = title.clone().unwrap_or_else(|| format!("Slide {}", i + 1));
         out.push_str(&format!("## {heading}\n\n"));
         if slide.skipped == Some(true) {
@@ -552,9 +594,9 @@ fn pages_md(d: &PagesDocument, out: &mut String) {
                 for dr in &page.drawables {
                     let mut texts = Vec::new();
                     drawable_texts(dr, &mut texts);
-                    for (_, t) in texts {
+                    for (kind, t) in texts {
                         if !t.is_empty() {
-                            out.push_str(&format!("{t}\n\n"));
+                            out.push_str(&format!("{}\n\n", md_text_block(&kind, &t)));
                         }
                     }
                 }
@@ -756,7 +798,7 @@ fn numbers_md(d: &NumbersDocument, out: &mut String) {
                 }
                 Drawable::Image {
                     equation: Some(eq), ..
-                } => out.push_str(&format!("{}\n\n", equation_markdown(eq))),
+                } => out.push_str(&format!("{}\n\n", equation_display_markdown(eq))),
                 Drawable::Image { .. } => out.push_str("*(image)*\n\n"),
                 Drawable::Movie { .. } => out.push_str("*(movie)*\n\n"),
                 Drawable::Group { children, .. } => {
@@ -764,9 +806,9 @@ fn numbers_md(d: &NumbersDocument, out: &mut String) {
                     for c in children {
                         drawable_texts(c, &mut texts);
                     }
-                    for (_, t) in texts {
+                    for (kind, t) in texts {
                         if !t.is_empty() {
-                            out.push_str(&format!("{t}\n\n"));
+                            out.push_str(&format!("{}\n\n", md_text_block(&kind, &t)));
                         }
                     }
                 }

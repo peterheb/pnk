@@ -6,7 +6,7 @@
 #      tiny JS file is deterministic for a given wasm-bindgen version) so
 #      esbuild can bundle `import init from "./wasm/pnk2json_wasm.js"`
 #   4. esbuild bundles viewer/src/main.ts -> viewer/dist/main.js
-#   5. the static shell (index.html, styles.css) is copied to viewer/dist/
+#   5. the static shell is copied to viewer/dist/ (styles.css minified)
 #
 # Prerequisites: cargo, wasm-bindgen 0.2.127 on PATH; `npm install` run once
 # inside viewer/ (esbuild + playwright devDependencies). Optional: binaryen
@@ -56,10 +56,11 @@ cp viewer/node_modules/pdfjs-dist/build/pdf.worker.min.mjs viewer/dist/pdf.worke
 echo "==> esbuild bundle -> viewer/dist/main.js (+ chunks/ for on-demand modules)"
 rm -rf viewer/dist/chunks
 "$ESBUILD" viewer/src/main.ts \
-  --bundle --format=esm --target=es2022 --splitting \
+  --bundle --format=esm --target=es2022 --splitting --minify \
   --outdir=viewer/dist --entry-names=[name] --chunk-names=chunks/[name]-[hash]
 
 echo "==> static shell -> viewer/dist/"
-cp viewer/index.html viewer/styles.css viewer/dist/
+cp viewer/index.html viewer/dist/
+"$ESBUILD" viewer/styles.css --minify --outfile=viewer/dist/styles.css --log-level=warning
 
 echo "viewer built: viewer/dist/  (serve: cd viewer && npm run serve)"
