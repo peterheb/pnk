@@ -2146,6 +2146,34 @@ pub struct PagesDocument {
     /// Bookmark anchors in the body; a run `hyperlink` of `#<id>` targets one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bookmarks: Option<Vec<Bookmark>>,
+    /// Tracked-change markup of the body; `body` itself is the accepted view.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub changes: Option<Vec<TrackedChange>>,
+}
+
+/// One tracked change. [proto: TSWP.StorageArchive table_insertion (21) /
+/// table_deletion (22) → TSWP.ChangeArchive { kind = 1, session = 2, date = 3 };
+/// session → TSWP.ChangeSessionArchive { author = 2, date = 3 }; author →
+/// TSK.AnnotationAuthorArchive.name]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TrackedChange {
+    pub kind: ChangeKind,
+    /// Index into `body.paragraphs` where the changed range starts.
+    pub paragraph_index: u32,
+    /// The inserted text (present in `body`) or the deleted text (absent).
+    pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub date: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ChangeKind {
+    Insertion,
+    Deletion,
 }
 
 /// A comment thread anchored at a body position. [proto: TSWP.StorageArchive

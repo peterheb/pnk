@@ -215,6 +215,29 @@ export interface PagesDocument extends DocumentEnvelope {
    * table_bookmark (15) → TSWP.BookmarkFieldArchive; fixture eb2a7cde]
    */
   bookmarks?: Bookmark[];
+  /**
+   * Tracked-change markup of the body, in text order. `body` is the
+   * ACCEPTED view: an insertion's text is present in it, a deletion's text
+   * is not (a deleted paragraph break leaves an empty paragraph behind).
+   * [proto: TSWP.StorageArchive table_insertion (21) / table_deletion (22)
+   * → TSWP.ChangeArchive { kind, session, date }; session →
+   * TSWP.ChangeSessionArchive.author → TSK.AnnotationAuthorArchive.name;
+   * fixture 55d37c2b: 3 insertions, 1 deletion, one author]
+   */
+  changes?: TrackedChange[];
+}
+
+/** One tracked change (see PagesDocument.changes). */
+export interface TrackedChange {
+  kind: "insertion" | "deletion";
+  /** Index into `body.paragraphs` where the changed range starts. */
+  paragraphIndex: number;
+  /** The inserted text (present in `body`) or the deleted text (absent from it). */
+  text: string;
+  /** Author display name, from the change session. */
+  author?: string;
+  /** When the change was made. [proto: ChangeArchive.date, else the session's] */
+  date?: IsoDateString;
 }
 
 /** A comment thread anchored at a body position. */
