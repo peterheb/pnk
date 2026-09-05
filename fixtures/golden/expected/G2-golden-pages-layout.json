@@ -541,7 +541,8 @@
                 "cap": "round",
                 "join": "miter",
                 "miterLimit": 4.0,
-                "dashPhase": 0.0
+                "dashPhase": 0.0,
+                "smartStroke": "Dry Brush"
               }
             },
             "opacity": 1.0,
@@ -861,7 +862,8 @@
                 "cap": "round",
                 "join": "miter",
                 "miterLimit": 4.0,
-                "dashPhase": 0.0
+                "dashPhase": 0.0,
+                "smartStroke": "Chalk2"
               }
             },
             "opacity": 1.0
