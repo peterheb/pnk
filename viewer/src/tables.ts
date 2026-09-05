@@ -574,7 +574,7 @@ export function tableDrawnWidth(model: TableModel): number {
  * Returns 0 when a height is unknown.
  */
 export function tableDrawnHeight(model: TableModel): number {
-  let total = model.name ? 24 : 0;
+  let total = model.name && !model.nameHidden ? 24 : 0;
   for (let r = 0; r < model.rowCount; r++) {
     const info = model.rows?.[r];
     if (info?.hidden) continue;
@@ -589,7 +589,7 @@ export function tableDrawnHeight(model: TableModel): number {
 export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedDoc, _frameWidth?: number): HTMLTableElement {
   const table = document.createElement("table");
   table.className = "sheet-table";
-  if (model.name) {
+  if (model.name && !model.nameHidden) {
     const cap = document.createElement("caption");
     cap.className = "table-caption";
     cap.style.captionSide = "top";
@@ -723,6 +723,9 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedD
         const numeric = typeof norm.v === "number" || typedAligns || (norm.type === undefined && formatAligns && typeof norm.v !== "string" && typeof norm.v !== "boolean");
         if (!td.style.textAlign && numeric && norm.type !== "error") td.style.textAlign = "right";
         if (norm.type === "error") td.classList.add("cell-error");
+        // Decoded formula text as a hover tooltip (the cell shows the
+        // cached result, as Numbers does).
+        if (norm.formula?.sourceText) td.title = "=" + norm.formula.sourceText;
         const text = valueToText(norm, format);
         const rich = norm.type === "richtext" && typeof norm.v === "object" && norm.v !== null && "paragraphs" in norm.v
           ? norm.v : null;

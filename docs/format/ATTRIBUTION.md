@@ -18,7 +18,7 @@ code from any of them.
 | --- | --- | --- | --- |
 | [`iwork`](https://github.com/dunhamsteve/iwork) | `02c26ebf5e2fb9d0bc7222116d564b3aab6a2f63` | MIT (LICENSE) | PRIMARY source for .proto definitions and the TSP object-id / constant registry. Its registry is the authoritative id/constant source for docs/format/registry.md (otorp protos carry no registry). |
 | [`litchi`](https://github.com/DevExzh/litchi) | `92293640f02facbd8f2fd3cb5f0bc49785dda471` | Apache-2.0 (LICENSE) | Secondary .proto definitions + constants for cross-checking dunhamsteve/iwork (independent extraction of the same format). |
-| [`numbers-parser`](https://github.com/masaccio/numbers-parser) | `323879582b0595c90d543e9cc067214b7ac59f22` | MIT (LICENSE.rst) | Reference for the Numbers (.numbers) document tree, table model (TST) and formula handling. Consulted, not vendored. |
+| [`numbers-parser`](https://github.com/masaccio/numbers-parser) | `323879582b0595c90d543e9cc067214b7ac59f22` | MIT (LICENSE.rst) | Reference for the Numbers (.numbers) document tree, table model (TST) and formula handling. One table VENDORED (2026-09-05): `src/numbers_parser/generated/functionmap.py` (TSCE function-node index → function name) as `crates/pnk2json/src/function_names.rs`; the formula stack walker in `formulas.rs` is a re-implementation of `formula.py` / `model.py:node_to_ref`, not a copy. |
 | [`keynote-parser`](https://github.com/psobot/keynote-parser) | `56a4d3b0d38c999f4273d084acd45415665e2030` | MIT | Reference for the Keynote (.key) document tree and for the IWA Snappy framing (its protos/versions/<ver>/ + registry.json layout documents per-version registry drift). Consulted, not vendored. |
 
 ## Local app extraction (npx otorp)

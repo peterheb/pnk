@@ -173,6 +173,9 @@ pub struct Ctx {
     /// contained storages, which can reference attachments that pull more
     /// storages). Guards a crafted cyclic graph — FINDINGS.md H-4.
     pub text_extract_depth: u32,
+    /// Formula reference targets (sheet/table names by uuid), built lazily
+    /// by `formulas::names` on the first table with formulas.
+    pub formula_names: Option<std::rc::Rc<crate::formulas::FormulaNames>>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -212,6 +215,7 @@ impl Ctx {
             datas: HashMap::new(),
             referenced_datas: BTreeSet::new(),
             text_extract_depth: 0,
+            formula_names: None,
         };
         ctx.refine_app();
         ctx.load_metadata_plists();
@@ -648,6 +652,7 @@ impl Ctx {
             datas: HashMap::new(),
             referenced_datas: std::collections::BTreeSet::new(),
             text_extract_depth: 0,
+            formula_names: None,
         };
         ctx.refine_app();
         ctx.load_metadata_plists();

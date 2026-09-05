@@ -19,6 +19,8 @@ struct ListEntry {
     reference: Option<u64>,
     format: Option<Msg>,
     custom_format: Option<Msg>,
+    /// FORMULA lists: the inline TSCE.FormulaArchive (entry field 5).
+    formula: Option<Msg>,
 }
 
 /// A decoded TableDataList (string/style/formula/format tables).
@@ -40,6 +42,7 @@ fn load_data_list(ctx: &Ctx, list_id: Option<u64>) -> DataList {
             reference: e.reference(4).or_else(|| e.reference(9)),
             format: e.msg(6),
             custom_format: e.msg(8),
+            formula: e.msg(5),
         });
     }
     // Segmented lists (large tables): segments = 4 → TableDataListSegment
@@ -55,6 +58,7 @@ fn load_data_list(ctx: &Ctx, list_id: Option<u64>) -> DataList {
                     reference: e.reference(4).or_else(|| e.reference(9)),
                     format: e.msg(6),
                     custom_format: e.msg(8),
+                    formula: e.msg(5),
                 });
             }
         }
@@ -273,18 +277,7 @@ fn header_info(
 /// u128 from a TSP.UUID ({lower=1, upper=2}) or TSP.CFUUIDArchive
 /// ({uuid_w0..w3 = fields 2..5}); both normalize to the same 128-bit value
 /// (parser: masaccio/numbers-parser@3238795 numbers_uuid.py).
-fn uuid_u128(m: &Msg) -> Option<u128> {
-    if let (Some(w2), Some(w3)) = (m.varint(4), m.varint(5)) {
-        let w0 = m.varint(2)?;
-        let w1 = m.varint(3)?;
-        return Some(
-            ((w3 as u128) << 96) | ((w2 as u128) << 64) | ((w1 as u128) << 32) | w0 as u128,
-        );
-    }
-    let lower = m.varint(1)?;
-    let upper = m.varint(2)?;
-    Some(((upper as u128) << 64) | lower as u128)
-}
+use crate::formulas::uuid_u128;
 
 /// Merge rects from TSCE.FormulaOwnerDependenciesArchive (type 4008)
 /// records: the HAUNTED_OWNER (kind 35) archive whose formula_owner_uid
@@ -765,6 +758,53 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
     }
     cells.sort_by_key(|(r, c, _, _)| (*r, *c));
 
+    // Formula text: re-synthesize each formula cell's text from its TSCE
+    // AST (docs/format/calcengine.md §Formula text). Refs the walker cannot
+    // decode stay "unparsed" with their warning.
+    if cells.iter().any(|(_, _, c, _)| c.formula.is_some()) {
+        let names = crate::formulas::names(ctx);
+        let self_uid = m
+            .msg(84)
+            .and_then(|h| h.msg(1))
+            .as_ref()
+            .and_then(uuid_u128)
+            .map(|h| names.base_uid(h));
+        let scope = crate::formulas::TableScope {
+            names: &names,
+            self_uid,
+            sheet: self_uid.and_then(|u| names.sheet_of(u)),
+        };
+        let debug = std::env::var("PNK_DEBUG_FORMULA").is_ok();
+        for (r, c, cell, _) in cells.iter_mut() {
+            let Some(fref) = cell.formula.as_mut() else { continue };
+            let Some(fm) = fref
+                .id
+                .parse::<i32>()
+                .ok()
+                .and_then(|k| formula_table.entries.get(&k))
+                .and_then(|e| e.formula.as_ref())
+            else {
+                if debug {
+                    eprintln!("formula r{r}c{c} key {}: no FormulaArchive in the FORMULA list", fref.id);
+                }
+                continue;
+            };
+            match crate::formulas::decode(&scope, fm, *r, *c) {
+                Ok(text) => {
+                    if debug {
+                        eprintln!("formula r{r}c{c} = {text}");
+                    }
+                    *fref = TsceFormulaRef::decoded(fref.id.clone(), text);
+                }
+                Err(reason) => {
+                    if debug {
+                        eprintln!("formula r{r}c{c} key {}: {reason}", fref.id);
+                    }
+                }
+            }
+        }
+    }
+
     // Merges, in numbers-parser's priority order (model.py merge_cells):
     // (1) merge_owner (model f47) formula-store ranges — modern files write
     //     COLON_TRACT_NODE (67) ASTs with absolute row/col tracts; pre-BNC
@@ -1148,18 +1188,20 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
         }
     }
 
+    // The stored table name is always carried: formula text names tables
+    // by it ("Table 1::A1"), so a consumer needs it even when the caption
+    // is off. table_name_enabled (f22) defaults OFF: Apple's own templates
+    // (02_Invoice "Details") and older docs (lafs "Table 1") omit the field
+    // and render no caption; table_name_height (f33) is 0 there too. Only
+    // an explicit true shows it — `name_hidden` records the off state.
+    let stored_name = m.string(8).filter(|n| !n.is_empty());
+    let name_shown = m.boolean(22) == Some(true);
     TableModel {
-        name: {
-            // table_name_enabled (f22) defaults OFF: Apple's own templates
-            // (02_Invoice "Details") and older docs (lafs "Table 1") omit the
-            // field and render no table name; table_name_height (f33) is 0
-            // there too. Only an explicit true shows the caption.
-            let n = m.string(8);
-            match n {
-                Some(name) if !name.is_empty() && m.boolean(22) == Some(true) => Some(name),
-                _ => None,
-            }
+        name_hidden: match &stored_name {
+            Some(_) if !name_shown => Some(true),
+            _ => None,
         },
+        name: stored_name,
         row_count,
         column_count,
         header_row_count: m.varint(9).unwrap_or(0) as u32,
@@ -1193,6 +1235,7 @@ fn fixed32(v: &iwadump::proto::Value) -> Option<u32> {
 fn empty_table() -> TableModel {
     TableModel {
         name: None,
+        name_hidden: None,
         row_count: 0,
         column_count: 0,
         header_row_count: 0,

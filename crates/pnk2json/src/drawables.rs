@@ -1093,6 +1093,7 @@ fn table_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
 fn empty_table() -> TableModel {
     TableModel {
         name: None,
+        name_hidden: None,
         row_count: 0,
         column_count: 0,
         header_row_count: 0,

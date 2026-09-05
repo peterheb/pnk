@@ -1085,6 +1085,10 @@ pub struct CalloutParams {
 pub struct TableModel {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// True when the caption is not shown (table_name_enabled off); the
+    /// name is still carried because formulas reference tables by it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name_hidden: Option<bool>,
     pub row_count: u32,
     pub column_count: u32,
     pub header_row_count: u32,
@@ -1528,11 +1532,14 @@ pub enum ChartType {
 #[serde(rename_all = "camelCase")]
 pub struct TsceFormulaRef {
     pub id: String,
-    /// Always "unparsed" (TSCE ASTs are never decompiled).
+    /// "decoded" = `source_text` holds the formula text re-synthesized from
+    /// the TSCE AST (formulas.rs); "unparsed" = kept opaque, see `warning`.
     pub status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_text: Option<String>,
-    pub warning: Warning,
+    /// Present when status is "unparsed".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warning: Option<Warning>,
 }
 
 impl TsceFormulaRef {
@@ -1541,14 +1548,23 @@ impl TsceFormulaRef {
             id: id.into(),
             status: "unparsed".to_string(),
             source_text: None,
-            warning: Warning {
+            warning: Some(Warning {
                 code: WarningCode::FormulaUnparsed,
                 message: "TSCE formula kept opaque; the stored last-calculated value is in the cell/chart data".into(),
                 path: None,
                 detail: None,
                 count: None,
                 paths: None,
-            },
+            }),
+        }
+    }
+
+    pub fn decoded(id: impl Into<String>, source_text: String) -> TsceFormulaRef {
+        TsceFormulaRef {
+            id: id.into(),
+            status: "decoded".to_string(),
+            source_text: Some(source_text),
+            warning: None,
         }
     }
 }
