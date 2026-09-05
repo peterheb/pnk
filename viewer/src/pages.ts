@@ -163,11 +163,25 @@ function floatGeometry(boxes: AnchorBox[], contentW: number): FloatGeom {
   return { side, width, height, insetTop };
 }
 
-function anchorFloat(anchors: Anchor[], hdoc: HydratedDoc, ctx: ViewerCtx, contentW: number): HTMLElement {
+function anchorFloat(anchors: Anchor[], hdoc: HydratedDoc, ctx: ViewerCtx, contentW: number, contentH: number): HTMLElement {
   const fl = document.createElement("div");
   fl.className = "pages-anchor";
   const boxes = anchorBoxes(anchors);
-  const { side, width, height, insetTop } = floatGeometry(boxes, contentW);
+  let { side, width, height, insetTop } = floatGeometry(boxes, contentW);
+  // A "Move with Text" object that leaves no room on its page — the full
+  // column width and down to the printable bottom — excludes nothing: the
+  // text flows over it. Pages cannot push the anchor paragraph off the
+  // page without taking the object along, so it drops the wrap instead.
+  // f82b2fa4's covers (524×810 and 545×842 on a 576×774 printable area,
+  // wrap "largest") carry the title inside the frame in Pages' export; a
+  // bounding-box exclusion pushed it to the next page, and every later
+  // page compared different content. [inferred: one fixture, two objects]
+  const noRoom = width >= contentW && height >= contentH - 14;
+  if (noRoom) {
+    width = 0;
+    height = 0;
+    insetTop = 0;
+  }
   fl.style.cssFloat = side;
   fl.style.width = `${width.toFixed(2)}px`;
   // Geometry is relative to the ANCHOR PARAGRAPH's top; the float sits after
@@ -185,6 +199,9 @@ function anchorFloat(anchors: Anchor[], hdoc: HydratedDoc, ctx: ViewerCtx, conte
     el.style.top = `${b.y.toFixed(2)}px`;
     fl.appendChild(el);
   }
+  // text flows over the object: the float (a stacking context above the
+  // text, z-index 1) goes behind the paragraphs, as Pages prints the cover
+  if (noRoom) fl.style.zIndex = "-1";
   return fl;
 }
 
@@ -786,7 +803,7 @@ function paginatedBody(
   body.paragraphs.forEach((p0, i) => {
     const { para: p, anchors } = splitAnchors(p0);
     if (anchors.length) {
-      anchorEls.set(i, anchorFloat(anchors, hdoc, ctx, g.contentW));
+      anchorEls.set(i, anchorFloat(anchors, hdoc, ctx, g.contentW, g.contentH));
       const visible = p.items.some((it) =>
         typeof it === "string" ? it.length > 0 : "type" in it ? true : it.text.length > 0,
       );

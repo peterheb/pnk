@@ -426,6 +426,11 @@ def render_ours(fixture: Path, work: Path, base_url: str, log) -> tuple[Path, di
 
     shot = work / "ours" / "render.png"
     bbox_path = work / "ours" / "bboxes.json"
+    # per-page/slide shots of an earlier run would pair with Apple's pages
+    # past the end of a shorter render (a 24-page render after a 25-page one
+    # kept a stale page-25.png and a 25th composite)
+    for stale in list((work / "ours").glob("page-*.png")) + list((work / "ours").glob("slide-*.png")):
+        stale.unlink()
     js = work / "render.js"
     js.write_text(RENDER_JS)
     r = subprocess.run(
