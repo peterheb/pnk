@@ -185,6 +185,22 @@ masaccio/numbers-parser@3238795]
   numbers-parser writer model.py:1262-1306 + reader model.py:1071-1097; verify
   against fixtures for tables whose tiles are not row-block-aligned]
 
+## Row heights: no per-row fit-to-content flag
+
+`HeaderStorageBucket.Header` carries only `index`, `size`, `hidingState`,
+`numberOfCells` (+ style refs) [proto]; there is no flag saying whether a
+row was sized by hand or fits its content. Numbers grows a row whose
+wrapped text needs more than the stored `size` (90fbb6c53674: every row
+stored at the 19.93pt default, the export shows two- and three-line rows).
+The only trace of the grown heights is a layout cache,
+`TST.TableInfoArchive.layout_engine` (f14) → `LayoutEngineArchive` {
+width_height_cache 1 → `WidthHeightCache` { rows_fitting_entries 1
+[{ fitting_index 1, fitting_size 2 (float) }] } }, present in 1 of 3
+flagged files (c4b881955676) and absent from the others — not a source a
+viewer can rely on. pnk2json therefore carries the stored size only; the
+viewer treats it as a minimum and lets wrapped text grow the row (a `<tr>`
+height is a minimum in CSS). `[proto + fixture-verified 2026-09-05]`
+
 ## Category grouping ("Organize by")
 
 `TableModelArchive.category_owner` (f86, TSP.Reference) → `TST.CategoryOwnerRefArchive`
