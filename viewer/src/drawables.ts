@@ -1284,9 +1284,21 @@ function chartSvg(chart: ChartModel, w: number, h: number, numbersAxis = false):
  *  block on the stored y, "bottom" stacks it above; "top" (default) flows
  *  down as before. Composed after any rotation so the shift is in the
  *  box's own frame. */
-function anchorLineVertical(div: HTMLElement, verticalAlignment: string | undefined): void {
+function anchorLineVertical(div: HTMLElement, layer: HTMLElement | null, verticalAlignment: string | undefined): void {
   const ty = verticalAlignment === "middle" ? "-50%" : verticalAlignment === "bottom" ? "-100%" : null;
   if (!ty) return;
+  // The translate is a fraction of the box's own height, so the box must
+  // take its content's height: a 0-height div with an absolutely placed
+  // text layer stayed 0 tall and the shift was a no-op (icecube c3582f31
+  // slide 1: the bottom-aligned slide-number placeholder at y=1060 hung
+  // its "1" below the slide's edge). Grow boxes already sized this way.
+  div.style.height = "auto";
+  div.style.overflow = "visible";
+  if (layer) {
+    layer.style.position = "relative";
+    layer.style.height = "auto";
+    layer.style.overflow = "visible";
+  }
   div.style.transform = `${div.style.transform ?? ""} translate(0, ${ty})`.trim();
 }
 
@@ -1521,7 +1533,7 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
         // above. Keynote's export of RIPE 75's "Questions?" (613×0, middle,
         // y=286) paints the 97pt line spanning 250–327; ours hung it below
         // the anchor, over the email link. Same for kcsrk's 368×0 code box.
-        if (c.size.height === 0 && c.size.width > 0) anchorLineVertical(div, d.verticalAlignment);
+        if (c.size.height === 0 && c.size.width > 0) anchorLineVertical(div, layer, d.verticalAlignment);
       }
       div.appendChild(layer);
     } else div.textContent = "";
@@ -1554,7 +1566,7 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
         layer.style.bottom = "auto";
         layer.style.height = "auto";
         layer.style.overflow = "visible";
-        anchorLineVertical(div, d.verticalAlignment);
+        anchorLineVertical(div, layer, d.verticalAlignment);
       } else {
         // Shapes keep their geometry: a shape never grows for its text, so
         // "grow" degrades to the fixed-box tolerance mode.
