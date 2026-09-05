@@ -67,3 +67,12 @@ discrepancy is recorded as a drift note in `docs/format/registry.md`.
     copied from it. We consult it only if stuck, as a human-readable sanity
     check of format behavior; any insight used is re-verified against the
     protos or MIT-licensed parsers above and tagged with its own provenance.
+
+## Viewer runtime dependencies
+
+Bundled into `viewer/dist/main.js` by esbuild from `viewer/node_modules`; no
+CDN loads.
+
+| package | version | license | use |
+| --- | --- | --- | --- |
+| [`pdfjs-dist`](https://github.com/mozilla/pdf.js) (pdf.js) | 6.3.289 (npm, 2026-09-05) | Apache-2.0 (LICENSE in the package) | Rasterizes PDF media in-page: Keynote equations (`equation-N.pdf`, no raster twin) and pasted vector art. `build/pdf.min.mjs` is bundled; `build/pdf.worker.min.mjs` is embedded as text at build time (`viewer/src/gen/pdf.worker.txt`, gitignored) and started from a blob: URL. |

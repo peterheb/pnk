@@ -47,9 +47,17 @@ echo "==> vendoring generated glue into viewer/src/wasm/"
 cp viewer/dist/wasm/pnk2json_wasm.js viewer/src/wasm/pnk2json_wasm.js
 cp viewer/dist/wasm/pnk2json_wasm.d.ts viewer/src/wasm/pnk2json_wasm.d.ts
 
+# pdf.js (viewer/node_modules/pdfjs-dist, Apache-2.0) renders PDF media
+# in-page. Its worker script is embedded in the bundle as a string and
+# started from a blob: URL, so the served page makes no request after load.
+echo "==> pdf.js worker -> viewer/src/gen/pdf.worker.txt"
+mkdir -p viewer/src/gen
+cp viewer/node_modules/pdfjs-dist/build/pdf.worker.min.mjs viewer/src/gen/pdf.worker.txt
+
 echo "==> esbuild bundle -> viewer/dist/main.js"
 "$ESBUILD" viewer/src/main.ts \
   --bundle --format=esm --target=es2022 \
+  --loader:.txt=text \
   --outfile=viewer/dist/main.js
 
 echo "==> static shell -> viewer/dist/"

@@ -86,6 +86,13 @@ into `styles.para`; **`cur`** = ISO 4217 currency code when
 2 numbers per move/line element, 4 for quad, 6 for cubic, absent on close
 (see §2.5).
 
+**`Stroke.dash`** is in POINTS. `TSD.StrokePatternArchive.pattern` stores
+multiples of the stroke width (Keynote's "dotted" preset is `[1, 1]` on a
+2pt stroke and its export draws 2pt on / 2pt off) padded to six entries with
+`count` real ones; the converter truncates to `count` and multiplies by the
+width, `dashPhase` likewise [fixture-verified 2026-09-05: kcsrk deck slide 8,
+measured on the PDF export].
+
 **STYLES OMIT-DEFAULT** (approved): pooled styles (`styles.para`,
 `styles.char`, per-table `cellStyles`) emit only NON-DEFAULT values; an
 absent key means the documented default applies (for resolved styles this
@@ -206,9 +213,10 @@ headroom ≠ 1 → clamp + warning. Alpha byte appended when `a ≠ 1`.
 | `TSD.ShapeArchive` + `PathSourceArchive` variants | `ShapeDrawable.geometry: ShapeGeometry` (see §2.5) |
 | `TSWP.ShapeInfoArchive` (is_text_box) + owned storage | `TextboxDrawable` (or `ShapeDrawable.text` for shapes with text) |
 | `TSD.ImageArchive` (`data` DataReference, modern; `database_data` TSP.Reference, legacy) | `ImageDrawable.image: MediaRef` resolved through the DataInfo registry (docs/format/media.md) |
+| `TSWP.EquationInfoArchive` extension fields on `TSD.ImageArchive` (`equation_source_text` 103 / `equation_source_old` 100, `equation_depth` 102, `equation_text_properties` 101) | `ImageDrawable.equation: { source, format, depthPt?, fontSizePt?, fontName?, color? }` — an Insert > Equation image is the app's PDF rendering of `source` (LaTeX, or MathML when the text starts with `<math`; `format` is inferred from the text). `depthPt` is the baseline depth for inline placement. The text/markdown dumpers emit `source` in place of the image. Added 2026-09-05; fixture: atnf Bayesian deck 0ddd627b (55 equations, all LaTeX) |
 | `TSD.MovieArchive` | `MovieDrawable` (+ `remoteUrl` for linked movies) |
 | `TSD.GroupArchive` children | `GroupDrawable.children` embedded |
-| `TSD.ConnectionLineArchive` endpoints (TSP.References) | anchors resolved; path baked as curves |
+| `TSD.ConnectionLineArchive` endpoints (TSP.References) | anchors resolved; path baked as curves. Quadratic routing (`ConnectionLinePathSourceArchive.type` 0, the default) stores move+line+line whose middle point is ON the curve and whose ends are the connected shapes' centres; the converter emits the equivalent `move` + `quad` (control = 2·mid − (p0+p2)/2), re-anchored to the shapes' current centres and cut back to where the curve leaves each shape's outline (so a shape moved after baking still gets its line). Free ends (no `connected_from`/`to`) stay where stored. Fixture: kcsrk deck 121be18d slide 8 [inferred from Keynote's export, measured] |
 | `TST.TableInfoArchive` → `TableModelArchive` | `TableDrawable { common, table }` |
 | `TSCH.ChartDrawableArchive` (unity ext 10000) | `ChartDrawable { common, chart }` |
 | `TP.PlaceholderArchive` [7] / `KN.PlaceholderArchive` [7,12] | any drawable with `placeholder: { role, inherited }` |
@@ -426,7 +434,7 @@ storage is identified.
 | Themes' preset catalogs (`TSWP./TSD./TSA.ThemePresetsArchive`, color presets, fill sets) | UI affordances; resolved styles already bake in what's used |
 | `VersionedStyles` snapshots in stylesheets (styles_for_10_0 …) | per-release style caches |
 | Custom format list beyond what cells reference | unused formats are dead weight |
-| `TSD.StrokePatternArchive` "smart stroke" parameter dictionaries | decorative stroke textures beyond dash pattern |
+| `TSD.SmartStrokeArchive` parameter dictionaries | decorative stroke textures beyond dash pattern; the preset NAME survives as `Stroke.smartStroke` ("Pencil", "Dry Brush", "Feathered Brush", "Chalk2", "Crayon", "Pen" in the corpus, added 2026-09-05) so a consumer knows the line is a hand-drawn style |
 | iWork '08/'09 legacy content | out of scope entirely (docs/format/legacy.md) |
 
 Anything else the converter meets and cannot model becomes `UnknownDrawable`
