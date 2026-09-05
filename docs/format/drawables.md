@@ -166,6 +166,21 @@ legacy files use `TSP.Reference` into the object graph:
   `background_removed = 22`, `should_trace_pdf_content = 21`,
   `interpretsUntaggedImageDataAsGeneric = 18`. [proto]
 
+Equation images. Insert > Equation stores a `TSD.ImageArchive` whose data is
+a PDF (`equation-N.pdf`, Quartz-rendered, no raster twin) plus
+`TSWP.EquationInfoArchive` extension fields on the ImageArchive
+(TSWPArchives.proto: `extend .TSD.ImageArchive`): `equation_source_old = 100`
+(string), `equation_text_properties = 101`
+(`TSWP.CharacterStylePropertiesArchive`, inline: font_size 3, font_name 5,
+font_color 7), `equation_depth = 102` (float), `equation_source_text = 103`
+(string). [proto] The source text is the expression as typed — LaTeX in every
+corpus deck sampled (52 of 484 Keynote decks carry equation members; e.g.
+`P(T \cap C) = P(C)P(T|C)`), MathML being the other input Keynote accepts;
+100 and 103 are identical when both are present, older files carry only
+100. `equation_depth` is the baseline depth in points for inline placement
+(the image's bottom edge sits that far below the text baseline).
+[fixture-verified: atnf 0ddd627b, kcsrk-adjacent decks in the survey]
+
 Per-data metadata rides on the data object itself:
 `TSD.ImageDataAttributes` (lines 414-425) extends `TSP.DataAttributes` via
 extension field 100 with `pixel_size`, `image_is_srgb`,
@@ -300,3 +315,33 @@ effects (`KN.TransitionAttributesArchive.custom_motion_blur` +
 `custom_blur_amount`, KNArchives.proto:54-57,174-184; `KNArchives.sos.proto`
 carries `blur`/`color_blur_sigma` SOS spec values). Converters must not
 invent a static blur; the pnk model carries motion blur only on builds.
+
+## Connection lines: TSD.ConnectionLineArchive routing
+
+`TSD.ConnectionLineArchive { super = 1 (ShapeArchive), connected_from = 2,
+connected_to = 3, connected_to_uuid = 4, connected_from_uuid = 5 }`; the
+shape's `pathsource.connection_line_path_source = 7` is
+`TSD.ConnectionLinePathSourceArchive { super = 1 (BezierPathSourceArchive),
+type = 2 (kTSDConnectionLineTypeQuadratic = 0, kTSDConnectionLineTypeOrthogonal
+= 1), outset_from = 3, outset_to = 4 }`. [proto] An end with no
+`connected_from`/`connected_to` (both the reference and the UUID absent) is a
+free end drawn where the stored path puts it. [fixture-verified: kcsrk
+121be18d slide 8, lines 2892605/2892690 lack field 2]
+
+Quadratic type: the stored `TSP.Path` is moveTo + lineTo + lineTo, in the
+line's local frame (origin = the drawable's geometry position). The end
+points are the connected shapes' CENTRES; the middle point is ON the drawn
+curve (not a Bezier control point), and the drawable's geometry is the
+bounding box of the part outside both shapes. Keynote's export draws the
+quadratic through the middle point, center to center, clipped at each
+shape's outline. [inferred; measured on the export: line 2892641 stores
+(−35.78, 42.43)→(57.64, 0)→(151.05, 42.43) at position (761.70, 334.80),
+which are the centres of the two 71.56pt-wide boxes; the exported curve
+peaks at y ≈ 335 and meets the boxes at y ≈ 351, which only a curve through
+the middle point produces]
+
+Stroke dash units: `TSD.StrokePatternArchive.pattern` (repeated float,
+padded to six entries, `count = 3` real ones) is in multiples of the stroke
+width, not points — the "dotted" preset stores `[1, 1]` on a 2pt stroke and
+exports as 2pt on / 2pt off. [fixture-verified: same slide, 150dpi export,
+measured on/off 2.4/1.44pt with anti-aliasing]

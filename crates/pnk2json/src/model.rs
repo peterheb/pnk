@@ -914,6 +914,10 @@ pub enum Drawable {
         mask: Option<ImageMask>,
         #[serde(skip_serializing_if = "Option::is_none")]
         adjustments: Option<ImageAdjustments>,
+        /// Set when the image is a rendered equation: `image` is the app's
+        /// PDF of `equation.source`. [proto: TSWP.EquationInfoArchive]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        equation: Option<EquationInfo>,
     },
     Movie {
         common: DrawableCommon,
@@ -984,6 +988,35 @@ pub struct TextInsets {
     pub bottom: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub right: Option<f64>,
+}
+
+/// The expression behind an equation image. [proto: TSWP.EquationInfoArchive
+/// extension fields on TSD.ImageArchive: equation_source_text = 103,
+/// equation_source_old = 100, equation_depth = 102,
+/// equation_text_properties = 101]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct EquationInfo {
+    /// LaTeX, or MathML markup, as the author typed it.
+    pub source: String,
+    /// "mathml" when the source starts with a `<math` element, else "latex".
+    pub format: EquationFormat,
+    /// Baseline depth in points for inline placement.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub depth_pt: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub font_size_pt: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub font_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<HexColor>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum EquationFormat {
+    Latex,
+    Mathml,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
