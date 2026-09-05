@@ -1056,6 +1056,16 @@ fn connection_line_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
 
     let from_anchor = m.reference(2).and_then(|aid| anchor_shape(ctx, aid));
     let to_anchor = m.reference(3).and_then(|aid| anchor_shape(ctx, aid));
+    // A content-sized text box stores a 0x0 frame (Keynote lays it out at
+    // display time), so its centre and outline are unknown here: such an
+    // end keeps the stored endpoint, which Keynote baked at the text's
+    // edge (kcsrk slide 6: label boxes connected to code highlights).
+    fn sized(a: &Option<Anchor>) -> Option<&Anchor> {
+        a.as_ref()
+            .filter(|a| a.size.width > 0.0 && a.size.height > 0.0)
+    }
+    let from_geo_anchor = sized(&from_anchor);
+    let to_geo_anchor = sized(&to_anchor);
 
     let facts = |a: &Option<Anchor>| {
         a.as_ref().map(|a| AnchorFacts {
@@ -1096,16 +1106,16 @@ fn connection_line_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
             } else {
                 ((s0.0 + s2.0) / 2.0, (s0.1 + s2.1) / 2.0)
             };
-            let p0 = from_anchor.as_ref().map(|a| a.center()).unwrap_or(s0);
-            let p2 = to_anchor.as_ref().map(|a| a.center()).unwrap_or(s2);
+            let p0 = from_geo_anchor.map(|a| a.center()).unwrap_or(s0);
+            let p2 = to_geo_anchor.map(|a| a.center()).unwrap_or(s2);
             let mid = similarity_map(sm, s0, s2, p0, p2);
             let ctrl = (2.0 * mid.0 - (p0.0 + p2.0) / 2.0, 2.0 * mid.1 - (p0.1 + p2.1) / 2.0);
             let (path, bb_min, bb_max) = trimmed_quad(
                 p0,
                 ctrl,
                 p2,
-                from_anchor.as_ref().map(|a| (a, outset_from)),
-                to_anchor.as_ref().map(|a| (a, outset_to)),
+                from_geo_anchor.map(|a| (a, outset_from)),
+                to_geo_anchor.map(|a| (a, outset_to)),
             );
             let mut path = path;
             offset_curve_path(&mut path, -bb_min.0, -bb_min.1);
@@ -1136,7 +1146,7 @@ fn connection_line_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
     // contributes its SHAPE (elbows) via a similarity map from its endpoints
     // onto the recomputed ones.
     let mut path = stored;
-    if let (Some(fa), Some(ta)) = (&from_anchor, &to_anchor) {
+    if let (Some(fa), Some(ta)) = (from_geo_anchor, to_geo_anchor) {
         let c1 = fa.center();
         let c2 = ta.center();
         let (dx, dy) = (c2.0 - c1.0, c2.1 - c1.1);
