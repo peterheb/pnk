@@ -10,6 +10,7 @@
 
 import { isPdfBytes, pdfMediaEl } from "./pdfmedia";
 import type {
+  CurvePath,
   ChartModel,
   ChartNumberFormat,
   CurveElement,
@@ -51,6 +52,22 @@ export function fillToCss(f: Fill | undefined): string | undefined {
   // A tinted image fill (tile/pattern textures): the tint is the visible
   // color modulating a near-white texture — paint it when bytes are absent.
   return f.tint ?? "#d9d9de";
+}
+
+/** A CurvePath (any coordinate space) -> SVG path data, scaled by sx/sy. */
+function curvePathToD(path: CurvePath, sx: number, sy: number): string {
+  const f = (v: number) => (Math.round(v * 100) / 100).toString();
+  const parts: string[] = [];
+  for (const e of path.elements) {
+    if (e.type === "close") { parts.push("Z"); continue; }
+    const p = e.points;
+    const xy = (i: number) => `${f(p[i] * sx)} ${f(p[i + 1] * sy)}`;
+    if (e.type === "move" && p.length >= 2) parts.push(`M ${xy(0)}`);
+    else if (e.type === "line" && p.length >= 2) parts.push(`L ${xy(0)}`);
+    else if (e.type === "quad" && p.length >= 4) parts.push(`Q ${xy(0)} ${xy(2)}`);
+    else if (e.type === "cubic" && p.length >= 6) parts.push(`C ${xy(0)} ${xy(2)} ${xy(4)}`);
+  }
+  return parts.length ? parts.join(" ") : "";
 }
 
 function svgStrokeAttrs(e: SVGElement, stroke: Stroke | undefined, scale: number): void {
@@ -1523,6 +1540,14 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
     }
   } else if (d.type === "image") {
     const img = imageEl(d.image.dataId, d.image.preferredFileName ?? d.image.fileName, ctx, d.image.preferredFileName, d.thumbnail, { width: w, height: h });
+    // Instant Alpha: clip the image to the kept region (naturalSize space,
+    // scaled to the box). Keynote's export draws only the inside of that
+    // path; without the clip a cut-out photo shows its original rectangle
+    // (icecube c3582f31 slide 1: a map on a white screenshot).
+    if (d.instantAlphaPath && d.naturalSize?.width && d.naturalSize?.height) {
+      const dPath = curvePathToD(d.instantAlphaPath, w / d.naturalSize.width, h / d.naturalSize.height);
+      if (dPath) img.style.clipPath = `path("${dPath}")`;
+    }
     const m = d.mask?.common;
     if (m?.position && m.size && m.size.width > 0 && m.size.height > 0) {
       // TSD.ImageArchive.mask: the mask frame is in the image drawable's own

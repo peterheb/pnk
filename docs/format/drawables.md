@@ -160,7 +160,14 @@ legacy files use `TSP.Reference` into the object graph:
   displayed natural size [inferred: naming convention]. [proto]
 - `mask = 5` — `TSP.Reference` to a `TSD.MaskArchive` (drawable with a
   `pathsource`), cropping the image to a path. [proto]
-- `instantAlphaPath = 10`, `traced_path = 19` (`TSP.Path`), `flags = 7`,
+- `instantAlphaPath = 10` (`TSP.Path`): the region that stays visible after
+  Instant Alpha, a closed path (several subpaths for islands) in
+  `naturalSize` pixel space — icecube c3582f31 stores 1 move, 18 lines and
+  313 cubics spanning 37-766 x 0-1285 on a 768x1284 image, and Keynote's
+  export draws only the inside. pnk2json emits it as
+  `ImageDrawable.instantAlphaPath`. [proto for the field; inferred for the
+  space and the keep-inside semantics, one deck, 2026-09-05]
+- `traced_path = 19` (`TSP.Path`), `flags = 7`,
   `imageAdjustments = 14` (`TSD.ImageAdjustmentsArchive`, lines 252-267:
   exposure/saturation/contrast/... gamma), `attribution = 20`,
   `background_removed = 22`, `should_trace_pdf_content = 21`,

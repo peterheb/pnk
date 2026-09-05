@@ -931,6 +931,11 @@ pub enum Drawable {
         /// PDF of `equation.source`. [proto: TSWP.EquationInfoArchive]
         #[serde(skip_serializing_if = "Option::is_none")]
         equation: Option<EquationInfo>,
+        /// Instant Alpha: the region of the image that stays visible, as a
+        /// closed path in `natural_size` space; everything outside it is
+        /// transparent. [proto: TSD.ImageArchive.instantAlphaPath = 10]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        instant_alpha_path: Option<CurvePath>,
     },
     Movie {
         common: DrawableCommon,

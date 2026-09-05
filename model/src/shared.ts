@@ -428,6 +428,17 @@ export interface ImageDrawable {
    * content. [proto: TSWP.EquationInfoArchive extends TSD.ImageArchive]
    */
   equation?: EquationInfo;
+  /**
+   * Instant Alpha (background removal): the part of the image that stays
+   * visible, as a closed path (possibly several subpaths) in `naturalSize`
+   * space; everything outside it is transparent. A viewer clips the image
+   * to it, scaling naturalSize -> the drawable's size. Absent when the image
+   * has no background removed. [proto: TSD.ImageArchive.instantAlphaPath =
+   * 10 (TSP.Path); fixture: icecube c3582f31 slide 1, a 768x1284 map whose
+   * path spans x 37-766, y 0-1285 and whose export shows the cut-out map
+   * with no white rectangle]
+   */
+  instantAlphaPath?: CurvePath;
 }
 
 /**

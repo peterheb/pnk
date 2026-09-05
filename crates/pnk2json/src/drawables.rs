@@ -765,6 +765,15 @@ fn image_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
         brightness: None,
     });
     let equation = equation_info(ctx, m);
+    // Instant Alpha (field 10, TSP.Path): the kept region in naturalSize
+    // (pixel) space. Keynote's export draws only what lies inside it —
+    // icecube c3582f31 slide 1: a 624x982 screenshot whose crop window shows
+    // a legend that the alpha path excludes, so the export shows nothing
+    // there, and a 768x1284 map drawn without its white rectangle.
+    let instant_alpha_path = m
+        .msg(10)
+        .and_then(|p| crate::tsd::tsp_path(&p))
+        .filter(|p| p.elements.len() >= 2);
     Drawable::Image {
         common,
         image,
@@ -775,6 +784,7 @@ fn image_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
         mask,
         adjustments,
         equation,
+        instant_alpha_path,
     }
 }
 
