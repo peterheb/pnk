@@ -1093,6 +1093,9 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
     // formatted cell goes quadratic when a document carries many distinct
     // formats. Pool order stays first-appearance, so output is unchanged.
     let mut format_index: HashMap<String, u32> = HashMap::new();
+    let header_rows = m.varint(9).unwrap_or(0) as u32;
+    let header_cols = m.varint(10).unwrap_or(0) as u32;
+    let footer_start = row_count.saturating_sub(m.varint(11).unwrap_or(0) as u32);
     for (row, col, mut cell, format) in cells {
         if cell.cell_style_index.is_none() {
             if let Some(s) = row_styles.get(&row).or_else(|| col_styles.get(&col)) {
@@ -1106,6 +1109,35 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
                 .unwrap_or_default();
             merge_borders(&mut s, b);
             cell.cell_style_index = cell_pool.intern(s);
+        }
+        // Wrap resolves through the SECTION default when the cell's own
+        // style chain is silent: 90fbb6c53674 stores per-cell styles
+        // without text_wrap over a wrapping body style, and Numbers wraps
+        // ("Portes en Valdaine" on two lines). A cell style that sets
+        // wrap=false keeps it (stripped to absent at emission = one line).
+        if let Some(i) = cell.cell_style_index {
+            let unset = cell_pool
+                .items
+                .get(i as usize)
+                .is_some_and(|s| s.text_wrap.is_none());
+            if unset {
+                let section = style.as_ref().and_then(|ts| {
+                    if row < header_rows {
+                        ts.header_row_cell_style.as_ref()
+                    } else if col < header_cols {
+                        ts.header_column_cell_style.as_ref()
+                    } else if row >= footer_start {
+                        ts.footer_row_cell_style.as_ref()
+                    } else {
+                        ts.body_cell_style.as_ref()
+                    }
+                });
+                if section.and_then(|s| s.text_wrap) == Some(true) {
+                    let mut s2 = cell_pool.items[i as usize].clone();
+                    s2.text_wrap = Some(true);
+                    cell.cell_style_index = cell_pool.intern(s2);
+                }
+            }
         }
         if let Some(f) = format {
             let key = serde_json::to_string(&f).unwrap_or_default();
