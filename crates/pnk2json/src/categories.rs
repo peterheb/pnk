@@ -263,7 +263,11 @@ pub fn extract(ctx: &Ctx, m: &Msg, model_id: u64) -> Option<TableGrouping> {
         .msgs(5)
         .iter()
         .filter_map(|a| {
-            let col = a.msg(1).as_ref().and_then(uuid_u128).and_then(|u| col_index.get(&u).copied())?;
+            let col = a
+                .msg(1)
+                .as_ref()
+                .and_then(uuid_u128)
+                .and_then(|u| col_index.get(&u).copied())?;
             Some(GroupAggregate {
                 column: col,
                 rule: a.varint(3).unwrap_or(0) as u32,
@@ -275,7 +279,11 @@ pub fn extract(ctx: &Ctx, m: &Msg, model_id: u64) -> Option<TableGrouping> {
         .msgs(4)
         .iter()
         .filter_map(|a| {
-            let column = a.msg(1).as_ref().and_then(uuid_u128).and_then(|u| col_index.get(&u).copied())?;
+            let column = a
+                .msg(1)
+                .as_ref()
+                .and_then(uuid_u128)
+                .and_then(|u| col_index.get(&u).copied())?;
             let mut by_coord = HashMap::new();
             if let Some(root) = a.msg(2) {
                 flatten_agg(&root, &mut by_coord);
@@ -283,9 +291,11 @@ pub fn extract(ctx: &Ctx, m: &Msg, model_id: u64) -> Option<TableGrouping> {
             Some(Aggregator { column, by_coord })
         })
         .collect();
-    let root = group_by
-        .msg(3)
-        .or_else(|| group_by.reference(18).and_then(|r| ctx.loaded.msg(r).cloned()))?;
+    let root = group_by.msg(3).or_else(|| {
+        group_by
+            .reference(18)
+            .and_then(|r| ctx.loaded.msg(r).cloned())
+    })?;
     let walk = Walk {
         ctx,
         lookup: &lookup,

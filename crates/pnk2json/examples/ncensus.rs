@@ -12,7 +12,9 @@ fn header_hidden(loaded: &pnk2json::loader::Loaded, hs: Option<Msg>) -> (usize, 
         if f.number != 2 {
             continue;
         }
-        let iwadump::proto::Value::Bytes(b) = &f.value else { continue };
+        let iwadump::proto::Value::Bytes(b) = &f.value else {
+            continue;
+        };
         let Some(inner) = Msg::parse(b) else { continue };
         let bucket = if inner.fields.len() == 1 {
             inner.varint(1).and_then(|id| loaded.msg(id).cloned())
@@ -31,7 +33,9 @@ fn header_hidden(loaded: &pnk2json::loader::Loaded, hs: Option<Msg>) -> (usize, 
 }
 
 fn list_len(loaded: &pnk2json::loader::Loaded, id: Option<u64>) -> usize {
-    id.and_then(|i| loaded.msg(i)).map(|m| m.msgs(3).len()).unwrap_or(0)
+    id.and_then(|i| loaded.msg(i))
+        .map(|m| m.msgs(3).len())
+        .unwrap_or(0)
 }
 
 fn main() {
@@ -51,7 +55,10 @@ fn main() {
             .iter()
             .filter(|r| r.msg.as_ref().and_then(|m| m.boolean(25)) == Some(true))
             .count();
-        println!("{short}\tDOC\tsheets={}\thidden_sheets={hidden_sheets}", sheets.len());
+        println!(
+            "{short}\tDOC\tsheets={}\thidden_sheets={hidden_sheets}",
+            sheets.len()
+        );
         // TableInfo -> summary model, per model id
         let mut summary: std::collections::HashMap<u64, u64> = Default::default();
         for r in loaded.records.values() {
@@ -72,7 +79,10 @@ fn main() {
             let (rows, rows_hidden) = header_hidden(&loaded, store.as_ref().and_then(|s| s.msg(1)));
             let (cols, cols_hidden) = header_hidden(
                 &loaded,
-                store.as_ref().and_then(|s| s.reference(2)).and_then(|id| loaded.msg(id).cloned()),
+                store
+                    .as_ref()
+                    .and_then(|s| s.reference(2))
+                    .and_then(|id| loaded.msg(id).cloned()),
             );
             let sort = m.msg(44).map(|s| s.msgs(2).len()).unwrap_or(0);
             let mut user_hidden = 0;
@@ -92,7 +102,8 @@ fn main() {
                         }
                         if let Some(fs) = ext.reference(8).and_then(|id| loaded.msg(id)) {
                             filter_rules += fs.msgs(7).len() + fs.msgs(3).len();
-                            filter_enabled |= fs.boolean(2) != Some(false) && !(fs.msgs(7).is_empty() && fs.msgs(3).is_empty());
+                            filter_enabled |= fs.boolean(2) != Some(false)
+                                && !(fs.msgs(7).is_empty() && fs.msgs(3).is_empty());
                         }
                     }
                 }
@@ -106,8 +117,23 @@ fn main() {
                 .and_then(|id| loaded.msg(*id))
                 .and_then(|sm| sm.f64v(10));
             let cat = m.reference(86).is_some();
-            let interesting = rows_hidden + cols_hidden + sort + user_hidden + filtered + filter_rules + comments + controls + conds + choices > 0
-                || m.varint(14).unwrap_or(0) + m.varint(15).unwrap_or(0) + m.varint(40).unwrap_or(0) + m.varint(41).unwrap_or(0) + m.varint(42).unwrap_or(0) > 0
+            let interesting = rows_hidden
+                + cols_hidden
+                + sort
+                + user_hidden
+                + filtered
+                + filter_rules
+                + comments
+                + controls
+                + conds
+                + choices
+                > 0
+                || m.varint(14).unwrap_or(0)
+                    + m.varint(15).unwrap_or(0)
+                    + m.varint(40).unwrap_or(0)
+                    + m.varint(41).unwrap_or(0)
+                    + m.varint(42).unwrap_or(0)
+                    > 0
                 || sm_width.is_some();
             if !interesting {
                 continue;

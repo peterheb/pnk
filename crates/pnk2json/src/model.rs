@@ -2361,6 +2361,9 @@ pub struct TocEntry {
     pub paragraph_index: Option<u32>,
 }
 
+// One value per converted document: the variant size difference has no
+// cost worth an API-changing Box.
+#[allow(clippy::large_enum_variant)]
 /// The converter output: exactly one of the three document flavors.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]

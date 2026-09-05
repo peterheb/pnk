@@ -37,7 +37,10 @@ impl FormulaNames {
     /// The base-owner uuid a table model's haunted uid maps to (itself when
     /// the document has no HAUNTED_OWNER mapping — older files).
     pub fn base_uid(&self, haunted: u128) -> u128 {
-        self.base_of_haunted.get(&haunted).copied().unwrap_or(haunted)
+        self.base_of_haunted
+            .get(&haunted)
+            .copied()
+            .unwrap_or(haunted)
     }
 
     pub fn sheet_of(&self, base: u128) -> Option<&str> {
@@ -78,7 +81,9 @@ pub fn names(ctx: &mut Ctx) -> Rc<FormulaNames> {
     for sheet in sheets {
         let sheet_name = sheet.string(1).unwrap_or_default();
         for info_id in sheet.references(2) {
-            let Some(info) = ctx.loaded.records.get(&info_id) else { continue };
+            let Some(info) = ctx.loaded.records.get(&info_id) else {
+                continue;
+            };
             if !matches!(info.type_id, 6000 | 6007) {
                 continue;
             }
@@ -102,7 +107,12 @@ pub fn names(ctx: &mut Ctx) -> Rc<FormulaNames> {
                 out.tables.insert(u, entry.clone());
                 keyed = true;
             }
-            if let Some(haunted) = model.msg(84).and_then(|h| h.msg(1)).as_ref().and_then(uuid_u128) {
+            if let Some(haunted) = model
+                .msg(84)
+                .and_then(|h| h.msg(1))
+                .as_ref()
+                .and_then(uuid_u128)
+            {
                 let base = out.base_uid(haunted);
                 out.tables.insert(base, entry.clone());
                 out.tables.insert(haunted, entry.clone());
@@ -118,7 +128,10 @@ pub fn names(ctx: &mut Ctx) -> Rc<FormulaNames> {
             "formula names: {} tables, {} haunted mappings: {:?}",
             out.tables.len(),
             out.base_of_haunted.len(),
-            out.tables.iter().map(|(k, v)| format!("{k:032x}={}/{}", v.0, v.1)).collect::<Vec<_>>()
+            out.tables
+                .iter()
+                .map(|(k, v)| format!("{k:032x}={}/{}", v.0, v.1))
+                .collect::<Vec<_>>()
         );
     }
     let rc = Rc::new(out);
@@ -140,7 +153,14 @@ pub fn uuid_from_string(s: &str) -> Option<u128> {
     for (i, b) in bytes.iter_mut().enumerate() {
         *b = u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).ok()?;
     }
-    let w = |i: usize| u32::from_le_bytes([bytes[4 * i], bytes[4 * i + 1], bytes[4 * i + 2], bytes[4 * i + 3]]) as u128;
+    let w = |i: usize| {
+        u32::from_le_bytes([
+            bytes[4 * i],
+            bytes[4 * i + 1],
+            bytes[4 * i + 2],
+            bytes[4 * i + 3],
+        ]) as u128
+    };
     Some((w(3) << 96) | (w(2) << 64) | (w(1) << 32) | w(0))
 }
 
@@ -422,7 +442,10 @@ pub fn decode(scope: &TableScope, formula: &Msg, row: u32, col: u32) -> Result<S
     }
     fn popn(stack: &mut Vec<String>, n: usize) -> Result<Vec<String>, String> {
         if stack.len() < n {
-            return Err(format!("{n} arguments requested, {} on the stack", stack.len()));
+            return Err(format!(
+                "{n} arguments requested, {} on the stack",
+                stack.len()
+            ));
         }
         Ok(stack.split_off(stack.len() - n))
     }
@@ -471,7 +494,8 @@ pub fn decode(scope: &TableScope, formula: &Msg, row: u32, col: u32) -> Result<S
                     )
                 } else {
                     (
-                        node.string(17).ok_or("unknown-function node without a name")?,
+                        node.string(17)
+                            .ok_or("unknown-function node without a name")?,
                         node.varint(18).unwrap_or(0) as usize,
                     )
                 };
@@ -480,10 +504,20 @@ pub fn decode(scope: &TableScope, formula: &Msg, row: u32, col: u32) -> Result<S
             }
             17 => stack.push(number_text(node)),
             18 => stack.push(
-                if node.boolean(5).unwrap_or(false) { "TRUE" } else { "FALSE" }.into(),
+                if node.boolean(5).unwrap_or(false) {
+                    "TRUE"
+                } else {
+                    "FALSE"
+                }
+                .into(),
             ),
             23 => stack.push(
-                if node.boolean(10).unwrap_or(false) { "TRUE" } else { "FALSE" }.into(),
+                if node.boolean(10).unwrap_or(false) {
+                    "TRUE"
+                } else {
+                    "FALSE"
+                }
+                .into(),
             ),
             19 => {
                 let s = node.string(6).unwrap_or_default().replace('"', "\"\"");
@@ -549,14 +583,23 @@ mod tests {
 
     #[test]
     fn table_id_string_matches_cfuuid_words() {
-        let from_words = ((0x974c36f4u128) << 96) | ((0x4d58ba8cu128) << 64) | ((0x4444291eu128) << 32) | 0x7dae6bbfu128;
-        assert_eq!(uuid_from_string("BF6BAE7D-1E29-4444-8CBA-584DF4364C97"), Some(from_words));
+        let from_words = ((0x974c36f4u128) << 96)
+            | ((0x4d58ba8cu128) << 64)
+            | ((0x4444291eu128) << 32)
+            | 0x7dae6bbfu128;
+        assert_eq!(
+            uuid_from_string("BF6BAE7D-1E29-4444-8CBA-584DF4364C97"),
+            Some(from_words)
+        );
     }
 
     #[test]
     fn range_prefix_hoisting() {
         assert_eq!(join_range("A1".into(), "B2".into()), "A1:B2");
         assert_eq!(join_range("T::A1".into(), "T::B2".into()), "T::A1:B2");
-        assert_eq!(join_range("S::T::A1".into(), "S::T::B2".into()), "S::T::A1:B2");
+        assert_eq!(
+            join_range("S::T::A1".into(), "S::T::B2".into()),
+            "S::T::A1:B2"
+        );
     }
 }

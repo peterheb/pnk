@@ -439,10 +439,7 @@ pub fn stroke_of(ctx: &mut Ctx, m: &Msg) -> Option<Stroke> {
     });
     // Smart ("hand-drawn") strokes: the preset name is all a consumer can
     // use; the brush parameters (a reference dictionary) stay dropped.
-    let smart_stroke = m
-        .msg(7)
-        .and_then(|s| s.string(2))
-        .filter(|n| !n.is_empty());
+    let smart_stroke = m.msg(7).and_then(|s| s.string(2)).filter(|n| !n.is_empty());
     Some(Stroke {
         color,
         width_pt,

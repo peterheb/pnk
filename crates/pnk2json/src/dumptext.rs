@@ -46,9 +46,10 @@ pub(crate) fn para_plain(p: &Paragraph) -> String {
             // An inline equation image carries its source expression; any
             // other attached object is a placeholder space.
             ParagraphItem::InlineObject {
-                drawable: Drawable::Image {
-                    equation: Some(eq), ..
-                },
+                drawable:
+                    Drawable::Image {
+                        equation: Some(eq), ..
+                    },
                 ..
             } => s.push_str(&eq.source),
             ParagraphItem::InlineObject { .. } => s.push(' '), // object placeholder
@@ -95,9 +96,10 @@ fn para_markdown(p: &Paragraph, char_styles: &[CharStyle]) -> String {
                 }
             }
             ParagraphItem::InlineObject {
-                drawable: Drawable::Image {
-                    equation: Some(eq), ..
-                },
+                drawable:
+                    Drawable::Image {
+                        equation: Some(eq), ..
+                    },
                 ..
             } => s.push_str(&equation_markdown(eq)),
             ParagraphItem::InlineObject { .. } => s.push(' '),
@@ -238,11 +240,13 @@ fn slide_title_and_bullets(
             _ => None,
         };
         let Some(text) = text else { continue };
-        if role.as_deref() == Some("title") && title.is_some() && !title_seen {
-            if !styled_plain(text).is_empty() {
-                title_seen = true;
-                continue;
-            }
+        if role.as_deref() == Some("title")
+            && title.is_some()
+            && !title_seen
+            && !styled_plain(text).is_empty()
+        {
+            title_seen = true;
+            continue;
         }
         for p in &text.paragraphs {
             let line = para_plain(p);
@@ -374,8 +378,19 @@ fn pages_body_md(body: &StyledText, styles: &StylePools, out: &mut String) {
 fn list_label(n: u32, kind: Option<NumberKind>) -> String {
     fn roman(mut n: u32) -> String {
         let pairs = [
-            (1000, "M"), (900, "CM"), (500, "D"), (400, "CD"), (100, "C"), (90, "XC"),
-            (50, "L"), (40, "XL"), (10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I"),
+            (1000, "M"),
+            (900, "CM"),
+            (500, "D"),
+            (400, "CD"),
+            (100, "C"),
+            (90, "XC"),
+            (50, "L"),
+            (40, "XL"),
+            (10, "X"),
+            (9, "IX"),
+            (5, "V"),
+            (4, "IV"),
+            (1, "I"),
         ];
         let mut out = String::new();
         for (v, sym) in pairs {
@@ -515,7 +530,11 @@ fn pages_md(d: &PagesDocument, out: &mut String) {
                             ChangeKind::Deletion => "deleted",
                         };
                         let who = c.author.as_deref().unwrap_or("unknown author");
-                        let when = c.date.as_deref().map(|d| format!(" on {d}")).unwrap_or_default();
+                        let when = c
+                            .date
+                            .as_deref()
+                            .map(|d| format!(" on {d}"))
+                            .unwrap_or_default();
                         out.push_str(&format!(
                             "- paragraph {}: {kind} by {who}{when}: {:?}\n",
                             c.paragraph_index + 1,
