@@ -150,6 +150,7 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
     let mut table_of_contents = None;
     let mut comments = None;
     let mut bookmarks = None;
+    let mut changes = None;
     if let Some(bsid) = root.reference(4) {
         if let Some(ex) = crate::text::extract(ctx, bsid) {
             if !ex.toc_entries.is_empty() {
@@ -168,6 +169,9 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
             }
             if !ex.bookmarks.is_empty() {
                 bookmarks = Some(ex.bookmarks);
+            }
+            if !ex.changes.is_empty() {
+                changes = Some(ex.changes);
             }
             let non_empty = ex.text.paragraphs.iter().any(|p| {
                 p.items
@@ -375,6 +379,7 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
         table_of_contents,
         comments,
         bookmarks,
+        changes,
     }
     .with_locale(locale)
 }
@@ -598,6 +603,7 @@ fn tag_drawable(d: Drawable, tag: &str) -> Drawable {
             text_insets,
             text_fit,
             natural_size,
+            flow,
         } => {
             let mut common = common;
             common.placeholder = Some(PlaceholderInfo {
@@ -611,6 +617,7 @@ fn tag_drawable(d: Drawable, tag: &str) -> Drawable {
                 text_insets,
                 text_fit,
                 natural_size,
+                flow,
             }
         }
         other => other,

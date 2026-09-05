@@ -301,6 +301,10 @@ const { chromium } = require(process.env.PW_MODULE);
       await frame.scrollIntoViewIfNeeded();
       await page.waitForTimeout(100);
       await frame.screenshot({ path: `${shotDir}page-${i + 1}.png` });
+      // the page's text, for judge.py --align-content (pairs each export
+      // page with the viewer page whose text overlaps it most)
+      const text = await frame.evaluate((el) => el.innerText);
+      fs.writeFileSync(`${shotDir}page-${i + 1}.txt`, text);
     }
   }
 
@@ -426,6 +430,12 @@ def render_ours(fixture: Path, work: Path, base_url: str, log) -> tuple[Path, di
 
     shot = work / "ours" / "render.png"
     bbox_path = work / "ours" / "bboxes.json"
+    # per-page/slide shots of an earlier run would pair with Apple's pages
+    # past the end of a shorter render (a 24-page render after a 25-page one
+    # kept a stale page-25.png and a 25th composite)
+    for stale in list((work / "ours").glob("page-*.png")) + list((work / "ours").glob("page-*.txt")) \
+            + list((work / "ours").glob("slide-*.png")):
+        stale.unlink()
     js = work / "render.js"
     js.write_text(RENDER_JS)
     r = subprocess.run(

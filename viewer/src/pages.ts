@@ -163,11 +163,25 @@ function floatGeometry(boxes: AnchorBox[], contentW: number): FloatGeom {
   return { side, width, height, insetTop };
 }
 
-function anchorFloat(anchors: Anchor[], hdoc: HydratedDoc, ctx: ViewerCtx, contentW: number): HTMLElement {
+function anchorFloat(anchors: Anchor[], hdoc: HydratedDoc, ctx: ViewerCtx, contentW: number, contentH: number): HTMLElement {
   const fl = document.createElement("div");
   fl.className = "pages-anchor";
   const boxes = anchorBoxes(anchors);
-  const { side, width, height, insetTop } = floatGeometry(boxes, contentW);
+  let { side, width, height, insetTop } = floatGeometry(boxes, contentW);
+  // A "Move with Text" object that leaves no room on its page — the full
+  // column width and down to the printable bottom — excludes nothing: the
+  // text flows over it. Pages cannot push the anchor paragraph off the
+  // page without taking the object along, so it drops the wrap instead.
+  // f82b2fa4's covers (524×810 and 545×842 on a 576×774 printable area,
+  // wrap "largest") carry the title inside the frame in Pages' export; a
+  // bounding-box exclusion pushed it to the next page, and every later
+  // page compared different content. [inferred: one fixture, two objects]
+  const noRoom = width >= contentW && height >= contentH - 14;
+  if (noRoom) {
+    width = 0;
+    height = 0;
+    insetTop = 0;
+  }
   fl.style.cssFloat = side;
   fl.style.width = `${width.toFixed(2)}px`;
   // Geometry is relative to the ANCHOR PARAGRAPH's top; the float sits after
@@ -185,6 +199,9 @@ function anchorFloat(anchors: Anchor[], hdoc: HydratedDoc, ctx: ViewerCtx, conte
     el.style.top = `${b.y.toFixed(2)}px`;
     fl.appendChild(el);
   }
+  // text flows over the object: the float (a stacking context above the
+  // text, z-index 1) goes behind the paragraphs, as Pages prints the cover
+  if (noRoom) fl.style.zIndex = "-1";
   return fl;
 }
 
@@ -644,6 +661,51 @@ function splitOverflow(
   return row;
 }
 
+/**
+ * Linked text boxes (TextboxDrawable.flow): the chain's text is emitted on
+ * its first box; once the canvases are attached, the lines that do not fit
+ * a box move to the next box in the chain, which re-wraps them at its own
+ * width. Paragraphs break between lines (splitOverflow, one line minimum on
+ * each side: Pages applies no widow control inside a chain — 26a356dc's
+ * "Who Are We?" list breaks after its fourth line). Runs before the text-fit
+ * measurement pass so the last box, which may grow, sees its final content.
+ */
+function flowLinkedText(root: HTMLElement): void {
+  const chains = new Map<string, HTMLElement[]>();
+  for (const box of root.querySelectorAll<HTMLElement>("[data-flow-id]")) {
+    const key = box.dataset.flowId ?? "";
+    const list = chains.get(key) ?? [];
+    list.push(box);
+    chains.set(key, list);
+  }
+  for (const chain of chains.values()) {
+    chain.sort((a, b) => Number(a.dataset.flowIndex) - Number(b.dataset.flowIndex));
+    for (let i = 0; i + 1 < chain.length; i++) {
+      const layer = chain[i].querySelector<HTMLElement>(":scope > .drawable-text");
+      const src = layer?.querySelector<HTMLElement>(".styled-text");
+      const dst = chain[i + 1].querySelector<HTMLElement>(":scope > .drawable-text .styled-text");
+      if (!layer || !src || !dst) continue;
+      const frame = layer.getBoundingClientRect();
+      const limit = frame.height;
+      const blocks = Array.from(src.children) as HTMLElement[];
+      const moved: HTMLElement[] = [];
+      for (let k = 0; k < blocks.length; k++) {
+        const r = blocks[k].getBoundingClientRect();
+        if (r.bottom - frame.top <= limit + 0.5) continue;
+        // block k crosses the box bottom: keep the lines that fit, when any
+        const rest = r.top - frame.top < limit - 1 ? splitOverflow(blocks[k], layer, limit, 1) : null;
+        if (rest) moved.push(rest);
+        else moved.push(blocks[k]);
+        moved.push(...blocks.slice(k + 1));
+        break;
+      }
+      if (!moved.length) continue;
+      for (const m of moved) dst.appendChild(m);
+      (moved[0] as HTMLElement).style.marginTop = "0";
+    }
+  }
+}
+
 /** Printable-area geometry in points, from the document archive
  *  (TP.DocumentArchive page_width/height 30/31, margins 32-35 [proto]). */
 interface PageGeom {
@@ -741,7 +803,7 @@ function paginatedBody(
   body.paragraphs.forEach((p0, i) => {
     const { para: p, anchors } = splitAnchors(p0);
     if (anchors.length) {
-      anchorEls.set(i, anchorFloat(anchors, hdoc, ctx, g.contentW));
+      anchorEls.set(i, anchorFloat(anchors, hdoc, ctx, g.contentW, g.contentH));
       const visible = p.items.some((it) =>
         typeof it === "string" ? it.length > 0 : "type" in it ? true : it.text.length > 0,
       );
@@ -1235,6 +1297,7 @@ export function renderPages(doc: PagesDocument, hdoc: HydratedDoc, ctx: ViewerCt
     paginatedBody(doc, hdoc, ctx, view);
     if (doc.footnotePlacement) appendFootnotes(doc, hdoc, ctx, view);
     mount.appendChild(view);
+    flowLinkedText(view);
     // page containers lay the floats out afresh: re-pin them once attached
     fixAnchorDrift(view);
     // Positioned tab stops outside the body flow — headers, footers, table
@@ -1268,6 +1331,7 @@ export function renderPages(doc: PagesDocument, hdoc: HydratedDoc, ctx: ViewerCt
     floatingSection(doc, hdoc, ctx, view, trailing, "Floating objects");
   }
   mount.appendChild(view);
+  flowLinkedText(view);
   // measurement pass (attached): bounded shrink absorbs font-metric drift
   layoutTabs(view);
   applyTextFit(view);

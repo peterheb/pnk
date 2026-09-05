@@ -289,6 +289,21 @@ export interface DrawableCommon {
   textWrap?: {
     kind: "none" | "around" | "above-below" | "left" | "right" | "largest";
     marginPt?: number;
+    /**
+     * Where the wrap outline comes from. Absent = "alpha": the object's
+     * visible contour — an image's opaque pixels (see `alphaThreshold`), a
+     * shape's path — which is the app default (`fit_type` 1 on 99% of the
+     * corpus' wraps in all three apps); "bounding-box" = the object's frame
+     * (`fit_type` 0). [inferred 2026-09-05: f82b2fa4's cover, a PNG frame
+     * with a transparent interior that Pages fills with the title, stores 1]
+     */
+    fit?: "bounding-box" | "alpha";
+    /**
+     * Alpha above which an image pixel is inside the contour, 0..1. Absent
+     * = 0.5, the app default; the corpus otherwise stores 0.0.
+     * [proto: alpha_threshold]
+     */
+    alphaThreshold?: number;
   };
   /** Visual styling (resolved; undefined = no styling specified). */
   style?: DrawableStyle;
@@ -353,6 +368,26 @@ export interface TextboxDrawable {
   naturalSize?: Size;
   /** See ShapeDrawable.textFit — absent = fixed box, viewer clips. */
   textFit?: "grow" | "shrink";
+  /**
+   * Linked text boxes (Pages "Thread" boxes): this box is one of `count`
+   * boxes sharing one storage [proto: TSWP.FlowInfoArchive { text_storage,
+   * textboxes }; `id` = user_interface_identifier, the number on the box's
+   * link handles]. `text` is emitted ONCE, on the box with `index` 0 (in
+   * paint order it may come after its continuations); every later box in
+   * the chain has an empty `text` and shows the overflow of the box before
+   * it: a renderer lays the index-0 text out at that box's frame and moves
+   * the lines that do not fit to index 1, and so on. Absent = an ordinary
+   * box. Corpus 2026-09-05: two documents, one chain of two boxes each
+   * (26a356dc "Who Are We?", 277d7233 "GREAT MEMORIALS…").
+   */
+  flow?: TextFlowLink;
+}
+
+/** See TextboxDrawable.flow. */
+export interface TextFlowLink {
+  id: number;
+  index: number;
+  count: number;
 }
 
 /**

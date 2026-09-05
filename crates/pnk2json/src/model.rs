@@ -817,12 +817,43 @@ pub struct Flips {
     pub vertical: Option<bool>,
 }
 
+/// Membership of a text box in a chain of linked text boxes
+/// (`TSWP.FlowInfoArchive`: one `text_storage`, ordered `textboxes`). The
+/// text is emitted ONCE, on the box with `index` 0; boxes with a higher
+/// index carry an empty `text` and receive the overflow of the box before
+/// them when laid out. `id` is the flow's `user_interface_identifier` (the
+/// number Pages shows on the box's link handles), unique per document.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TextFlowLink {
+    pub id: u32,
+    pub index: u32,
+    pub count: u32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TextWrap {
     pub kind: TextWrapKind,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub margin_pt: Option<f64>,
+    /// How the wrap outline is found: absent = "alpha" (the object's
+    /// visible contour: an image's opaque pixels, a shape's path), the app
+    /// default; "bounding-box" = its frame. [TSD.ExteriorTextWrapArchive
+    /// fit_type: 1 / 0]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fit: Option<TextWrapFit>,
+    /// Alpha above which an image pixel counts as opaque for the contour
+    /// (0..1). Absent = 0.5, the app default. [fit_type alpha_threshold (5)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alpha_threshold: Option<f64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TextWrapFit {
+    BoundingBox,
+    Alpha,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -911,6 +942,10 @@ pub enum Drawable {
         /// the box to its text; this is the size the box had when created.
         #[serde(skip_serializing_if = "Option::is_none")]
         natural_size: Option<Size>,
+        /// Linked text boxes (Pages): this box is one of several sharing a
+        /// storage (TSWP.FlowInfoArchive with 2+ textboxes). See TextFlowLink.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        flow: Option<TextFlowLink>,
     },
     Image {
         common: DrawableCommon,
@@ -2221,6 +2256,34 @@ pub struct PagesDocument {
     /// Bookmark anchors in the body; a run `hyperlink` of `#<id>` targets one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bookmarks: Option<Vec<Bookmark>>,
+    /// Tracked-change markup of the body; `body` itself is the accepted view.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub changes: Option<Vec<TrackedChange>>,
+}
+
+/// One tracked change. [proto: TSWP.StorageArchive table_insertion (21) /
+/// table_deletion (22) → TSWP.ChangeArchive { kind = 1, session = 2, date = 3 };
+/// session → TSWP.ChangeSessionArchive { author = 2, date = 3 }; author →
+/// TSK.AnnotationAuthorArchive.name]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TrackedChange {
+    pub kind: ChangeKind,
+    /// Index into `body.paragraphs` where the changed range starts.
+    pub paragraph_index: u32,
+    /// The inserted text (present in `body`) or the deleted text (absent).
+    pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub date: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ChangeKind {
+    Insertion,
+    Deletion,
 }
 
 /// A comment thread anchored at a body position. [proto: TSWP.StorageArchive

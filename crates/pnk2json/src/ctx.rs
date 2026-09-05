@@ -112,11 +112,13 @@ pub fn strip_cell_defaults(mut s: TableCellStyle) -> TableCellStyle {
     s
 }
 
-/// Strip documented defaults from a resolved CharStyle.
+/// Strip documented defaults from a resolved CharStyle. The font size is
+/// NOT stripped: model-design §1.5 says fontSizePt has no format default
+/// (absent = the viewer picks), and dropping a resolved 12pt left every
+/// 12pt run in a text box at the viewer's 15px chrome size (7b8e38ed's
+/// page-2 box, 1.25x too large; the runs inherit 12pt Arial from their
+/// paragraph style). Pooled styles make the field cost nothing per run.
 pub fn strip_char_defaults(mut s: CharStyle) -> CharStyle {
-    if s.font_size_pt == Some(12.0) {
-        s.font_size_pt = None;
-    }
     // bold / italic stay tri-state: an EXPLICIT false is information. Pages
     // honours a weight-suffixed face name ("HelveticaNeue-Light") when the
     // archive carries no bold field (10a06959: Light 47pt, Thin 10pt drawn as

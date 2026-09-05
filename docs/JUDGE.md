@@ -81,6 +81,17 @@ a single one. `--max-pages N` caps pages per document. Results append to
 `judge-out/judgments.jsonl`; a second invocation sends only requests that
 have no successful result yet, so judges can be added one at a time.
 
+`--align-content` (Pages runs only; add `--with pymupdf` to the `uv run`)
+pairs each export page with the viewer page whose text overlaps it most
+instead of page N with page N: the export's text comes from
+`apple/export.pdf`, the viewer's from the `ours/page-N.txt` dumps that
+visual_diff writes next to each screenshot (runs made before 2026-09-05
+have none and keep the default pairing). Overlap is shared words over the
+smaller page's words; a page with fewer than 8 words on either side keeps
+its own number. The record's `candidate_page` says which viewer page was
+scored. Use it to score the render itself when the viewer's pagination
+drifts from the app's; the default pairing scores pagination too.
+
 A judge is `--judge name=<spec>`:
 
 | spec | meaning |
@@ -1081,10 +1092,156 @@ What remains, in the order the judge names it:
 4. Hand-drawn strokes: the filter approximates the look; the brush
    parameters are still not read.
 
+### Pages, round 2 (2026-09-05, Qwen thinking off, two pages per document)
+
+The 23 round-1 documents, scored on the same exports as round 1 (round
+1's final scores are the "before" column), plus 277d7233 (salemub.org, a
+church bulletin), the second corpus document with linked text boxes,
+exported fresh. Mean 6.27 to 6.95 over the 41 comparable pairs; score
+counts after: 0 ×1, 2 ×2, 4 ×2, 5 ×2, 6 ×10, 7 ×3, 8 ×7, 9 ×14. Four
+documents moved by two points or more (f82b2fa4 1.0 to 9.0, 7b8e38ed 5.5
+to 9.0, 26a356dc 4.0 to 6.0, 77890685 6.0 to 8.0, eb2a7cde 7.0 to 9.0);
+the largest drop is one point (cf4b76a33f5a, 4.5 to 3.5: pages 1 and 2
+render as before, the page-2 verdict moved from 4 to 2).
+
+Defects fixed, with cause and fix:
+
+| defect | documents | cause | fix |
+| --- | --- | --- | --- |
+| every text box backed by a `text_flow` came out empty: the two linked chains, and 14 single boxes in 8 documents | 26a356dc ("Who Are We?"), 277d7233 (two-column announcements), 3c73e668, 494113af, 619804f0, 7629eb7b, 77890685, 806df50f, ab78e6eb, bdbcfdc2 | the converter preferred `owned_storage` (empty beside a flow) and read `text_flow` through the TSP.Reference wrapper, which never resolved | converter: the flow's `text_storage` wins; a flow with 2+ boxes emits `TextboxDrawable.flow { id, index, count }` with the text on index 0; viewer: after layout the lines that do not fit a box move to the next box in the chain |
+| cover title on page 2, 25 pages against Pages' 24, every later pair off by one | f82b2fa4 | a "Move with Text" image filling the page (524×810 on a 576×774 printable area) excluded the body; Pages flows the text over such an object, since the anchor paragraph cannot leave the page without it | viewer: an anchored object that leaves no room (full column width, reaching the printable bottom) excludes nothing and paints behind the text |
+| text-box text 1.25× too large | 7b8e38ed page 2, and every 12pt run in a text box | `strip_char_defaults` dropped a resolved `fontSizePt` of 12 (model-design §1.5 gives the field no default), so the viewer used its 15px chrome size | converter: the size is kept (pooled styles, no per-run cost); goldens G1/G2 re-synced after a visual check, four `fontSizePt: 12` lines |
+| a 66pt title box grew to 200pt and covered the box below it | 7b8e38ed page 1 | "grow" text boxes had no ceiling; the box ends with five empty 24pt paragraphs Pages clips | viewer: growth is capped at 1.5× the stored height |
+| Arabic paragraphs laid out left-to-right with right alignment: markers on the left, periods at the wrong end, justified last lines at the left | 77890685, ae1cc13b | `writing_direction` was not read; and the documents store the "natural" default, which Pages resolves from the first strong character | converter reads `ParagraphStylePropertiesArchive.writing_direction` (38); viewer derives a natural direction from the first strong character and sets it on the paragraph and its list row |
+| a shorter render kept a stale 25th page shot and composite | harness | `visual_diff` never deleted an earlier run's `ours/page-N.png` | deleted before each render |
+
+| document | host | judged | before | after |
+| --- | --- | ---: | ---: | ---: |
+| f82b2fa40fd4 | apostlesonline.org | 2 | 1.0 | 9.0 |
+| ae1cc13b298f | rustedradishes.com | 2 | 2.5 | 2.0 |
+| 26a356dc8651 | strokeinformation.co.uk | 2 | 4.0 | 6.0 |
+| cf4b76a33f5a | johnwheeldonacademy.co.uk | 2 | 4.5 | 3.5 |
+| 7b8e38edb184 | immobilienundleben.de | 2 | 5.5 | 9.0 |
+| 77890685af37 | sa-uc.edu.iq | 1 | 6.0 | 8.0 |
+| cace32e1ed60 | bdrp.ch | 2 | 6.0 | 6.0 |
+| d88d9139e2f5 | img.lucensoftware.com | 2 | 6.0 | 5.5 |
+| e2e0bff371c1 | financialplanningindubai.com | 2 | 6.0 | 6.0 |
+| f43d849f63dd | likvi.de | 1 | 6.0 | 6.0 |
+| 4047e81b0665 | bcss.org | 2 | 6.5 | 7.5 |
+| 44d11ec89c32 | canineassistants.org | 2 | 7.0 | 6.5 |
+| eb2a7cde90d6 | paadopt.org | 2 | 7.0 | 9.0 |
+| 27254104743d | thelastamericanvagabond.com | 2 | 7.5 | 7.5 |
+| 48f5f124cdd9 | schule-schlotheim.net | 2 | 7.5 | 7.5 |
+| 806df50f6150 | chemiedidaktik.uni-wuppertal.de | 2 | 7.5 | 8.0 |
+| 87560fc1b5b0 | nfgymcheer.com | 2 | 7.5 | 7.5 |
+| 904cec1c6651 | pearlpirie.com | 2 | 7.5 | 7.0 |
+| 38a7da366cc3 | lakecitypresbyterian.org | 2 | 8.0 | 8.0 |
+| 964b85d1b8b9 | i-campus.hokkyodai.ac.jp | 1 | 8.0 | 7.0 |
+| 9a3616c756a7 | easy4me.info | 1 | 8.0 | 7.0 |
+| bc5e6bd19210 | kobysh.com | 2 | 8.5 | 8.5 |
+| 1bd116a4fa8f | domaukcyjnyiglica.pl | 1 | 9.0 | 9.0 |
+| all | 23 documents | 41 | 6.27 | 6.95 |
+
+277d7233 (new this round, 2 pages): 6 and 8; its page 1 is the
+two-column chain, where our column break falls one heading later than
+Pages' because of font metrics.
+
+Content-aligned pairing (`judge.py --align-content`, added this round):
+at two pages per document it changes nothing, since the drift is
+fractional there. At four pages it re-pairs 5 of 74 pairs and moves the
+mean by 0.02 (6.43 to 6.45): where an export page straddles two viewer
+pages, neither pairing compares the same content. It matters once the
+offset is a whole page: over the first 12 pages of the two long
+documents, cf4b76a33f5a scores 2.17 with the default pairing and 4.0
+aligned (viewer pages 8–13 stand in for export pages 7–12), eb2a7cde90d6
+3.25 and 5.5. Those are the numbers that describe the render rather than
+the pagination.
+
+What remains, in the order the judge names it:
+
+1. Pagination against Pages' line breaks: cf4b76a (32/35 pages) and
+   eb2a7cde (61/67) still diverge from page 7 and page 6; the aligned
+   pairing measures around whole-page offsets only. cf4b76a also
+   substitutes Helvetica for Calibri, which changes every line break.
+2. Page-layout headers take the wrong master: 26a356dc page 2 prints the
+   template's placeholder text ("6 JANUARY 2026", "CURABITUR LEO") where
+   Pages prints the section's "JUN /JUL 26", "ISSUE 3".
+3. Box strokes Pages does not draw: a rectangle around 26a356dc's
+   "NEWSLETTER" box; a dashed box around e2e0bff3's "CHECKLIST" where
+   Pages draws a dotted rule under it.
+4. cf4b76a page 1: the paragraph after an inline table paints over the
+   table, and the table's last row lands on page 2.
+5. ae1cc13b page 2 (0 both rounds): tighter line spacing puts more of
+   the article on page 1; the dotted rule under the byline sits 180pt
+   lower than Pages draws it.
+6. Anchored objects in right-to-left paragraphs: 77890685's photo sits
+   about 30pt right of Pages' position; the horizontal offset may be
+   measured from the other edge.
+
+#### Schema and converter findings
+
+Data that was in the archives and absent or wrong in the JSON, and what
+was done (proof fixtures in parentheses):
+
+- Text boxes with a `text_flow`: the flow's storage holds the text and
+  the `owned_storage` beside it is empty — in all 19 such boxes across
+  the corpus (9 documents, Pages only; no Keynote or Numbers fixture has
+  a `text_flow`). The converter emitted the empty storage. Now the flow
+  storage wins, and a flow with 2+ textboxes is a chain:
+  `TextboxDrawable.flow { id, index, count }`, text on index 0,
+  continuation boxes empty (26a356dc, 277d7233). docs/format/text.md
+  records the survey.
+- `ExteriorTextWrapArchive.fit_type` and `alpha_threshold` were dropped.
+  Now `TextWrap.fit` ("bounding-box" when stored 0; absent = 1, the
+  contour fit, which 99% of wraps in all three apps store) and
+  `TextWrap.alphaThreshold` (absent = 0.5). The naming is inferred: no
+  fixture proves it, because f82b2fa4's cover — the document behind the
+  round-1 proposal — is an opaque PNG, and Pages puts its title inside the
+  frame for a different reason (the no-room rule above).
+- Tracked changes: `PagesDocument.changes[] { kind, paragraphIndex, text,
+  author, date }` from `TSWP.ChangeArchive` and its session's
+  `TSK.AnnotationAuthorArchive`; the body stays the accepted view; the
+  round-1 warning is gone; the markdown dump lists them (55d37c2b: 3
+  insertions — two attachments and a paragraph break — and 1 deletion by
+  "Maria V", 2025-12-08).
+- Comments outside the body: none in the corpus. The 18
+  `TSD.CommentStorageArchive`s in the five commented Pages documents are
+  all body highlights. Cell comments would come from
+  `TST.TableModelArchive.commentStorageTable` (19) / cell
+  `comment_storage` (10), shape comments from `TSWP.CommentInfoArchive`;
+  neither occurs in a fixture, so they stay unmodeled.
+- `ParagraphStylePropertiesArchive.writing_direction` (38) was not read;
+  it is now, though no corpus document stores it — Arabic documents keep
+  the "natural" default, so the viewer resolves the direction from the
+  text (77890685, ae1cc13b).
+- `fontSizePt` of 12 was stripped from resolved character styles against
+  the model's stated contract; kept now (G1: 1 pooled style, G2: 3).
+- Wrap type 5 is "largest" (Pages' Automatic), confirmed on
+  4047e81b0665, where Pages flows the body beside a type-5 text box;
+  f82b2fa4's type-5 cover is not wrapped because it fills the page.
+
+Proposals not implemented:
+
+- Alpha-fit wrap rendering. Design: decode the image once (before the
+  document renders), take per 3pt row slab the widest transparent run,
+  and turn the slabs into stacked floats — a full-width float for a
+  closed slab, a left and a right float leaving the gap for an open one
+  — in place of the rectangular band. It was written and then removed:
+  no corpus document has a wide wrapping image with transparency, so
+  nothing could verify it.
+- Pages text boxes are marked `textFit: "grow"` like Keynote's; Pages
+  keeps the stored frame and clips (7b8e38ed's title box). Emitting
+  "grow" only for Keynote, or an explicit "clip" for Pages, would let the
+  viewer drop the 1.5× cap.
+- Comments in text boxes and table cells (above): the model hooks would
+  be `TextboxDrawable.comments` and `TableCell.comments`, once a fixture
+  exists.
+
 ### Next
 
 Numbers: grouped shapes placed beside the wrong table (181f2b199bd3), zero-height line shapes, chart legend markers; then the locale question for number formatting.
 Keynote: text position drift of a few points (measure RIPE 82's footer and greenberg's title first), chart markers and hidden legends on slides (Numbers-owned), then wrap differences from fallback faces.
-Pages: linked text boxes, then table row heights and cell wrapping. Score more of the corpus, one or two pages per document, with Qwen; use
+Pages: the page-layout header master choice (26a356dc), box strokes Pages does not draw, the paragraph painting over an inline table (cf4b76a), then fonts; score the long documents with `--align-content` so pagination drift stops hiding the render.
+Score more of the corpus, one or two pages per document, with Qwen; use
 the ranked list to choose fidelity work; add a reference re-run with
 Claude when the prompt changes again.

@@ -506,6 +506,25 @@ fn pages_md(d: &PagesDocument, out: &mut String) {
                     }
                 }
             }
+            if let Some(changes) = &d.changes {
+                if !changes.is_empty() {
+                    out.push_str("## Tracked changes\n\n");
+                    for c in changes {
+                        let kind = match c.kind {
+                            ChangeKind::Insertion => "inserted",
+                            ChangeKind::Deletion => "deleted",
+                        };
+                        let who = c.author.as_deref().unwrap_or("unknown author");
+                        let when = c.date.as_deref().map(|d| format!(" on {d}")).unwrap_or_default();
+                        out.push_str(&format!(
+                            "- paragraph {}: {kind} by {who}{when}: {:?}\n",
+                            c.paragraph_index + 1,
+                            c.text
+                        ));
+                    }
+                    out.push('\n');
+                }
+            }
         }
         PagesFlavor::PageLayout => {
             for (i, page) in d.floating.iter().enumerate() {

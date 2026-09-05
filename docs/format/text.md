@@ -12,6 +12,14 @@ A storage is referenced by the object that owns the text:
   — `.scratch/otorp/Keynote/TSWPArchives.proto → TSWP.FlowInfoArchive`. Reachable
   from `TSWP.ShapeInfoArchive { super = 1 (TSD.ShapeArchive), text_flow = 3,
   owned_storage = 4, is_text_box = 6 }` (same file, `TSWP.ShapeInfoArchive`).
+  A box that has a `text_flow` keeps an EMPTY `owned_storage` beside it and its
+  text lives in the flow's `text_storage`; `textboxes` (repeated, in reading
+  order) lists the linked boxes sharing that storage, and
+  `user_interface_identifier = 3` is the number Pages shows on the link
+  handles [fixture-verified 2026-09-05: all 964 corpus fixtures — `text_flow`
+  occurs only in Pages, 19 boxes in 9 documents, owned storage empty in every
+  one; 26a356dc and 277d7233 each chain two boxes]. `text_flow` does not occur
+  in any Keynote or Numbers fixture.
 - Keynote placeholders/text boxes: `KN.PlaceholderArchive` extends
   `TSWP.ShapeInfoArchive` (`.scratch/otorp/Keynote/KNArchives.proto → KN.PlaceholderArchive`),
   so slide text resolves `text_flow → TSWP.FlowInfoArchive.text_storage` (or the

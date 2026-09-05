@@ -161,9 +161,26 @@ fn drawable_common(_ctx: &mut Ctx, m: &Msg) -> Result<DrawableCommon, ()> {
             5 => TextWrapKind::Largest,
             _ => TextWrapKind::Around,
         };
+        // fit_type (3): 1 = the wrap follows the object's alpha (contour),
+        // 0 = its bounding box. Corpus 2026-09-05, all 964 fixtures: 1 on
+        // 99% of objects in all three apps (Pages 5,300 of 6,600 wraps) and
+        // f82b2fa4's cover, a PNG frame with a transparent interior that
+        // Pages fills with the title, stores 1 [inferred from that export].
+        // alpha_threshold (5) is 0.5 on all but ~300 Pages objects (0.0).
+        // Both are emitted only when they differ from those defaults.
+        let fit = match w.varint(3) {
+            Some(0) => Some(TextWrapFit::BoundingBox),
+            _ => None,
+        };
+        let alpha_threshold = w
+            .f32v(5)
+            .map(|v| v as f64)
+            .filter(|v| (v - 0.5).abs() > 1e-6);
         c.text_wrap = Some(TextWrap {
             kind,
             margin_pt: w.f32v(4).map(|v| v as f64),
+            fit,
+            alpha_threshold,
         });
         any = true;
     }
@@ -374,17 +391,49 @@ fn shape_info_drawable(
         _ => None,
     };
 
-    // Text: owned_storage (4) wins, else text_flow (3) → FlowInfo.text_storage (1),
-    // else deprecated_storage (2) — older docs (pre-flow) reference the
-    // StorageArchive there directly [proto: TSWPArchives.proto ShapeInfoArchive
-    // field 2, deprecated=true; fixture 5008407355… stores its template text so].
-    let storage_id = info
-        .reference(4)
-        .or_else(|| info.msg(3).and_then(|f| f.reference(1)))
+    // Text: text_flow (3) → TSWP.FlowInfoArchive.text_storage (1) wins;
+    // else owned_storage (4); else deprecated_storage (2) — older docs
+    // (pre-flow) reference the StorageArchive there directly [proto:
+    // TSWPArchives.proto ShapeInfoArchive field 2, deprecated=true; fixture
+    // 5008407355… stores its template text so]. The flow comes first because
+    // a Pages box that has one keeps an EMPTY owned_storage beside it: corpus
+    // survey 2026-09-05, all 964 fixtures — text_flow occurs only in Pages,
+    // on 19 boxes in 9 documents, and in every one the owned storage has no
+    // text while the flow storage has it (26a356dc's "Who Are We?" chain of
+    // two boxes, 277d7233's two-column "GREAT MEMORIALS" chain, and 14
+    // single-box flows in 8 documents that used to come out empty). The
+    // earlier code read the flow through `info.msg(3)`, a TSP.Reference,
+    // whose field 1 is the id, not a message, so it never resolved.
+    let flow = info
+        .reference(3)
+        .and_then(|fid| ctx.loaded.msg(fid).cloned());
+    let flow_link = flow.as_ref().and_then(|f| {
+        let boxes = f.references(2);
+        if boxes.len() < 2 {
+            return None;
+        }
+        let index = boxes.iter().position(|&b| b == id)?;
+        Some(TextFlowLink {
+            id: f.varint(3).unwrap_or(0) as u32,
+            index: index as u32,
+            count: boxes.len() as u32,
+        })
+    });
+    let storage_id = flow
+        .as_ref()
+        .and_then(|f| f.reference(1))
+        .or_else(|| info.reference(4))
         .or_else(|| info.reference(2));
-    let mut text = storage_id
-        .and_then(|sid| crate::text::extract(ctx, sid))
-        .map(|e| e.text);
+    // A linked chain's text is emitted once, on its first box; the
+    // continuation boxes show that text's overflow, so they carry none.
+    let continuation = flow_link.as_ref().is_some_and(|l| l.index > 0);
+    let mut text = if continuation {
+        Some(StyledText::default())
+    } else {
+        storage_id
+            .and_then(|sid| crate::text::extract(ctx, sid))
+            .map(|e| e.text)
+    };
     // Keynote placeholders and title/body shapes keep their look on the
     // referenced paragraph style (their storage char-style tables hold null
     // overrides), so runs without their own character style inherit the
@@ -427,6 +476,7 @@ fn shape_info_drawable(
             text_insets: None,
             text_fit,
             natural_size: None,
+            flow: flow_link,
         }
     } else {
         let mut d = shape_drawable(ctx, &shape, text, frame.vertical_alignment);

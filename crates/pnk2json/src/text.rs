@@ -28,6 +28,8 @@ pub struct ExtractedText {
     pub comments: Vec<Comment>,
     /// Bookmark anchors in the storage (table_bookmark).
     pub bookmarks: Vec<Bookmark>,
+    /// Tracked changes (table_insertion / table_deletion), in text order.
+    pub changes: Vec<TrackedChange>,
 }
 
 /// Side outputs of an attachment walk: footnote bodies and TOC entries.
@@ -253,20 +255,9 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
         .map(|(off, _)| *off)
         .collect();
 
-    // Tracked changes: emit the ACCEPTED view (insertions kept, deletions
-    // omitted) and say so once; the review markup itself is not modeled.
+    // Tracked changes: the text is the ACCEPTED view (insertions kept,
+    // deletions omitted); the markup goes to `changes` (see below).
     let deleted = change_ranges(ctx, &deletion_entries, 2);
-    let inserted = change_ranges(ctx, &insertion_entries, 1);
-    if !deleted.is_empty() || !inserted.is_empty() {
-        ctx.warn(
-            WarningCode::UnsupportedFeature,
-            format!(
-                "tracked changes: {} insertion(s) kept, {} deletion(s) omitted; text is the accepted view",
-                inserted.len(),
-                deleted.len()
-            ),
-        );
-    }
     let in_deleted = |off: usize| deleted.iter().any(|(a, b)| off >= *a && off < *b);
 
     // List membership + levels + item numbers (fixture-verified against
@@ -334,6 +325,44 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
             })
         })
         .collect();
+    // Tracked-change markup: each ChangeArchive entry opens a range the next
+    // entry closes; its session names the author and the change carries its
+    // own date (55d37c2b: 3 insertions and 1 deletion by one author; the
+    // deletion is a newline, which the accepted view drops).
+    let mut changes: Vec<TrackedChange> = Vec::new();
+    for (entries, kind) in [(&insertion_entries, ChangeKind::Insertion), (&deletion_entries, ChangeKind::Deletion)] {
+        for (i, e) in entries.iter().enumerate() {
+            let Some(oid) = e.object_id else { continue };
+            let Some(m) = ctx.loaded.msg(oid) else { continue };
+            let stored = m.varint(1).unwrap_or(0);
+            if stored != if kind == ChangeKind::Insertion { 1 } else { 2 } {
+                continue;
+            }
+            let end = entries.get(i + 1).map(|n| n.utf16_off).unwrap_or(e.utf16_off);
+            let a = u16_to_char_index(&map, e.utf16_off);
+            let b = u16_to_char_index(&map, end.max(e.utf16_off));
+            let changed: String = text.chars().skip(a).take(b.saturating_sub(a)).collect();
+            let session = m.reference(2).and_then(|sid| ctx.loaded.msg(sid));
+            let author = session
+                .and_then(|sm| sm.reference(2))
+                .and_then(|aid| ctx.loaded.msg(aid))
+                .and_then(|am| am.string(1))
+                .filter(|n| !n.is_empty());
+            let date = m
+                .msg(3)
+                .and_then(|d| d.f64v(1))
+                .or_else(|| session.and_then(|sm| sm.msg(3)).and_then(|d| d.f64v(1)))
+                .map(crate::colors::iso_from_apple_seconds);
+            changes.push(TrackedChange {
+                kind,
+                paragraph_index: para_at(e.utf16_off),
+                text: changed,
+                author,
+                date,
+            });
+        }
+    }
+    changes.sort_by_key(|c| c.paragraph_index);
     let mut comments: Vec<Comment> = Vec::new();
     for (i, e) in highlight_entries.iter().enumerate() {
         let Some(hid) = e.object_id else { continue };
@@ -760,6 +789,7 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
         toc_entries: side.toc,
         comments,
         bookmarks,
+        changes,
     })
 }
 

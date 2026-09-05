@@ -682,6 +682,17 @@ function applyTextFitMode(
     const storedH = div.style.height;
     div.style.height = "auto";
     if (storedH && storedH !== "auto") div.style.minHeight = storedH;
+    // ...but bounded: the growth absorbs font-metric drift, not content the
+    // app itself clips. 7b8e38ed's title box is stored 66pt tall with two
+    // lines and five empty 24pt paragraphs after them; Pages prints the
+    // 66pt box, and unbounded growth made it 200pt and covered the box
+    // below. Half again the stored height covers the metric drift seen
+    // across the corpus (Keynote boxes run 10-20% taller here).
+    const storedPx = parseFloat(storedH || "0");
+    if (storedPx > 0) {
+      div.style.maxHeight = `${(storedPx * 1.5).toFixed(2)}px`;
+      div.style.overflow = "hidden";
+    }
     div.style.display = "flex";
     div.style.flexDirection = "column";
     div.style.justifyContent = verticalAlignStyle({ verticalAlignment });
@@ -1520,13 +1531,23 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
     if (bg) div.style.background = bg;
     applyBoxStroke(div, c.style?.stroke);
     const layer = textLayer(d, doc, ctx);
+    // Linked text boxes (Pages): tag the chain for the post-attach pass that
+    // moves each box's overflow into the next one (pages.ts flowLinkedText).
+    // A box with a successor keeps its stored frame — the overflow belongs
+    // to the next box, not below this one — so it neither grows nor shrinks.
+    const flowLast = !d.flow || d.flow.index >= d.flow.count - 1;
+    if (d.flow) {
+      div.dataset.flowId = String(d.flow.id);
+      div.dataset.flowIndex = String(d.flow.index);
+    }
     if (layer) {
       // Zero-size textboxes (Keynote emits some badge labels at 0×0) carry
       // their text unclipped: let the content size the box instead.
       if (!c.size || (c.size.width === 0 && c.size.height === 0)) {
         anchorZeroSizeText(div, layer, d.text, d.verticalAlignment, doc, d.naturalSize);
       } else {
-        applyTextFitMode(div, layer, d.textFit, d.verticalAlignment);
+        applyTextFitMode(div, layer, flowLast ? d.textFit : undefined, d.verticalAlignment);
+        if (!flowLast) delete div.dataset.textFit;
         // A 0-height box with a real width is an anchor LINE: the text
         // wraps at the width and its vertical alignment is relative to the
         // stored y — "middle" centres the block on it, "bottom" stacks it
