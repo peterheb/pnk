@@ -292,22 +292,106 @@ fn keynote_md(d: &KeynoteDocument, out: &mut String) {
 // ---------------------------------------------------------------------------
 
 fn pages_body_md(body: &StyledText, styles: &StylePools, out: &mut String) {
+    // Tiered list labels need the numbers of the enclosing levels.
+    let mut level_numbers: Vec<u32> = Vec::new();
     for p in &body.paragraphs {
         let text = para_markdown(p, &styles.char);
         if text.is_empty() {
             continue;
         }
-        let level = p
-            .p_style
-            .and_then(|i| styles.para.get(i as usize))
-            .and_then(|s| s.outline_level)
-            .unwrap_or(0);
+        let style = p.p_style.and_then(|i| styles.para.get(i as usize));
+        let level = style.and_then(|s| s.outline_level).unwrap_or(0);
         if level > 0 {
             let hashes = "#".repeat((level as usize).clamp(1, 6));
             out.push_str(&format!("{hashes} {text}\n\n"));
-        } else {
-            out.push_str(&format!("{text}\n\n"));
+            continue;
         }
+        // List items: the converter's computed number (Paragraph.listNumber)
+        // or a bullet, indented two spaces per nesting level.
+        if let Some(list) = style.and_then(|s| s.list.as_ref()) {
+            if list.marker_kind != ListMarkerKind::None {
+                let lv = (list.level as usize).min(8);
+                let indent = "  ".repeat(lv);
+                let marker = match p.list_number {
+                    Some(n) => {
+                        level_numbers.truncate(lv + 1);
+                        if level_numbers.len() <= lv {
+                            level_numbers.resize(lv + 1, 1);
+                        }
+                        level_numbers[lv] = n;
+                        if list.tiered == Some(true) {
+                            let path: Vec<String> =
+                                level_numbers.iter().map(|n| n.to_string()).collect();
+                            format!("{}.", path.join("."))
+                        } else {
+                            format!("{}.", list_label(n, list.number_kind))
+                        }
+                    }
+                    None => "-".to_string(),
+                };
+                out.push_str(&format!("{indent}{marker} {text}\n\n"));
+                continue;
+            }
+        }
+        out.push_str(&format!("{text}\n\n"));
+    }
+}
+
+/// A list number in its scheme: "3", "III", "iii", "C", "c".
+fn list_label(n: u32, kind: Option<NumberKind>) -> String {
+    fn roman(mut n: u32) -> String {
+        let pairs = [
+            (1000, "M"), (900, "CM"), (500, "D"), (400, "CD"), (100, "C"), (90, "XC"),
+            (50, "L"), (40, "XL"), (10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I"),
+        ];
+        let mut out = String::new();
+        for (v, sym) in pairs {
+            while n >= v {
+                out.push_str(sym);
+                n -= v;
+            }
+        }
+        out
+    }
+    fn alpha(mut n: u32) -> String {
+        let mut out = String::new();
+        while n > 0 {
+            n -= 1;
+            out.insert(0, (b'A' + (n % 26) as u8) as char);
+            n /= 26;
+        }
+        out
+    }
+    match kind {
+        Some(NumberKind::RomanUpper) => roman(n),
+        Some(NumberKind::RomanLower) => roman(n).to_ascii_lowercase(),
+        Some(NumberKind::AlphaUpper) => alpha(n),
+        Some(NumberKind::AlphaLower) => alpha(n).to_ascii_lowercase(),
+        _ => n.to_string(),
+    }
+}
+
+/// One comment (and its replies, nested as blockquotes) for the markdown dump.
+fn comment_md(c: &Comment, depth: usize, out: &mut String) {
+    let quote = ">".repeat(depth + 1);
+    let who = match (&c.author, &c.date) {
+        (Some(a), Some(d)) => format!("{a}, {d}"),
+        (Some(a), None) => a.clone(),
+        (None, Some(d)) => d.clone(),
+        (None, None) => "comment".to_string(),
+    };
+    let on = c
+        .quoted_text
+        .as_deref()
+        .map(|q| format!(" on \"{}\"", q.trim()))
+        .unwrap_or_default();
+    out.push_str(&format!(
+        "{quote} **{who}** (paragraph {}){on}: {}\n\n",
+        c.anchor_paragraph_index + 1,
+        c.text.trim().replace('\n', " ")
+    ));
+    for r in c.replies.iter().flatten() {
+        comment_md(r, depth + 1, out);
     }
 }
 
@@ -378,6 +462,14 @@ fn pages_md(d: &PagesDocument, out: &mut String) {
                     for f in footnotes {
                         let t = styled_plain(&f.text);
                         out.push_str(&format!("^{}: {t}\n\n", f.anchor_paragraph_index + 1));
+                    }
+                }
+            }
+            if let Some(comments) = &d.comments {
+                if !comments.is_empty() {
+                    out.push_str("## Comments\n\n");
+                    for c in comments {
+                        comment_md(c, 0, out);
                     }
                 }
             }
