@@ -790,9 +790,141 @@ strip now happens at emission.
    category references, or the legacy handle-based reference nodes stays
    `"unparsed"`; none occur in the corpus.
 
+### Numbers, round 4 (2026-09-05, Qwen thinking off, up to 3 pages per document)
+
+Schema and converter first, per Peter's priority. A census of the 158
+Numbers fixtures (`crates/pnk2json/examples/ncensus.rs`, `ncharts.rs`,
+`nmeta.rs`) listed the spreadsheet metadata the JSON dropped; the round
+carried it, then fixed the round-3 regression and two rendering rules.
+Five documents from round 3 were re-rendered against the same Numbers
+exports and re-scored; twelve documents from hosts not judged before were
+exported and scored, two pages each.
+
+| defect | documents | cause | fix |
+| --- | --- | --- | --- |
+| Chart data bindings opaque | every table-bound chart (718 mediators in the corpus) | `dataBinding` was a placeholder, and only emitted when the chart had no cached grid, which Numbers charts always have | `TN.ChartMediatorArchive` formulas decoded through formulas.rs: `dataBinding.sourceText` = union of the series ranges, new `bindings { series, rowLabels, columnLabels }`; 4,170 of 4,170 binding formulas end in TSCE function id 175 (unknown to numbers-parser), printed as its argument list in chart scope (docs/format/calcengine.md §Chart bindings) |
+| Cell comments dropped | 16c9478d6d21 | storage flag 0x80000 not read | `TableCell.comment { text, author, date }` |
+| Controls dropped (pop-up menus, checkboxes, sliders) | 5 documents | flag 0x400 read and discarded | `TableModel.controls` pool + `TableCell.control`; pop-up option lists from `PopUpMenuModel` (eb299192a219: three pop-ups, nine unit models) |
+| Sort panel rules dropped | 6 documents | `sort_order` (f44) not read | `TableModel.sortRules [{ column, descending }]` |
+| Custom format identity | baabe23e067f, 4b5a7b9d32af | only the pattern was carried | `CellFormat.name` ("Plus/Minus Integer", "Custom Format 3") |
+| Conditional formatting silent | 12 documents | the fired rule was folded into the style with no trace | per-table `unsupported-feature` warning with cell and rule-set counts |
+| Grouped view's category column at a 30pt constant | 6914f46e51ab | `SummaryModelArchive.category_column_width` not carried | `TableGrouping.categoryColumnWidthPt` (50pt); group and label rows at the default row height |
+| Rich-text cell "Total Charge (minimum charge is 4kg)" clipped to one line | eb299192a219 | Round 3's `applyCellStyle` runs twice per cell (section, then cell) and added a wrap class each time without removing the other; `.cell-nowrap .styled-text { white-space: pre }` then won. Not viewer/src/text.ts as round 3 guessed | the later pass replaces the class (tables.ts) |
+| One-line cells clipped ("WHAT IS CAUSE VALIDATION MATRIX?", "Impact if Addressed") | c4b881955676, 5c152beb2a3b | Column widths are exact: 5c15's export grid lines sit at 72 + the stored cumulative widths, c4b8's header words at 72 + width + 2.5pt padding. The clip is a substitute font: Calibri Bold 9pt is 141.7pt wide in the export in a 159pt column; Calibri is not installed and Helvetica Neue runs about 10% wider | an unwrapped cell with no empty neighbor to spill into gets a bounded horizontal scale (down to 0.82) of its content, as `applyTextFit` does for shapes |
+| Value-axis top (0-24 where Numbers prints 0-21) | baabe23e067f | The stored axis archives of the 21 and 60 charts are byte-identical apart from titles; Numbers rounds the maximum, not the step, and labels top×k/N (5.25, 10.5, 15.75, 21; 4,750 steps in 5a89929253a1) | Numbers documents: the maximum rounds up to a multiple of 10^k (k = floor(log10 max)) when its leading digits are 2.7 or more, else to a multiple of 10^(k−1). 34 of 40 exported charts match (39 from baabe23e067f and 5a89929253a1 plus the two Keynote cases already in this file); the previous ladder rule matched 15. The six misses land one unit higher (1650→1800, 2097→2200, 22399→24000). Keynote keeps the ladder |
+
+Qwen scores on the same exports, before and after (the five touched documents):
+
+| document | page | before | after | what the judge still names |
+| --- | ---: | ---: | ---: | --- |
+| 5c152beb2a3b | 1 | 8 | 9 | Minor vertical spacing differences in the 'For Internal Use Only' section |
+| 5c152beb2a3b | 2 | 8 | 9 | Minor numerical rounding differences in totals ($8.48 vs $8.47) |
+| 5c152beb2a3b | 3 | 8 | 8 | Numerical values differ slightly in the 'Travel' column ($8.48 vs $8.47) |
+| 6914f46e51ab | 1 | 8 | 8 | Introductory paragraph text wraps differently (4 lines vs 3 lines) |
+| 6914f46e51ab | 2 | 6 | 6 | Data labels are placed outside the pie slices in the candidate |
+| baabe23e067f | 1 | 8 | 8 | Chart markers are hollow circles in the golden but solid dots in the candidate (the axis is no longer named) |
+| baabe23e067f | 2 | 8 | 8 | Chart legend markers are solid lines, hollow circles in the golden |
+| baabe23e067f | 3 | 8 | 8 | Chart legend markers changed from hollow circles to solid lines |
+| c4b881955676 | 1 | 8 | 8 | Header column 'Impact if Addressed (1-5)' wraps to two lines in the candidate |
+| c4b881955676 | 2 | 7 | 8 | Header column 'Impact if Addressed (1-5)' wraps to two lines in the candidate |
+| eb299192a219 | 1 | 7 | 8 | Number formatting differs (decimal comma in candidate vs decimal point in golden) |
+| eb299192a219 | 2 | 9 | 8 | Number formatting differs ('523.4' vs '523,4') |
+| eb299192a219 | 3 | 8 | 8 | Number formatting differs (decimal comma in candidate vs decimal point in golden) |
+
+Mean over the 13 pages: 7.77 before, 8.00 after. The eb299192a219 page-2
+drop names the same decimal-separator difference before and after (the
+document is locale it_IT and Numbers' export prints the machine's
+en locale); the render of that page did not change.
+
+Twelve more documents, one per origin host not judged before
+(`fixtures/success.tsv`), exported from Numbers and scored, two pages each
+(16 pages; 5401d297f316 failed to render in the harness — a sheet-tab
+click timed out — and was replaced by 021084ac7183):
+
+| document | host | pages | mean | what the judge names |
+| --- | --- | ---: | ---: | --- |
+| 17891b89da2f | itdtllc.com | 2 | 8.5 | footer section spacing compressed; empty grid rows at the bottom |
+| 181f2b199bd3 | tokyomusicrise.jp | 1 | 6 | the equipment diagram (KEYBOARD / BASS AMP / DRUM groups) drawn beside the song table instead of inside the set-list section; the QR code over the URL; date "1/11(日)" where the export prints "1/11(Sun)" |
+| 33499baadcc3 | cdnweb.fakturoid.cz | 1 | 8 | a header row wraps to two lines (one in the export), shifting everything below |
+| 3383a82d3b32 | twiki.di.uniroma1.it | 1 | 9 | row spacing, font hinting |
+| 4b5a7b9d32af | slaa-ontario.org | 1 | 7 | "$100.00" where the export prints "$100" (a custom "¤#,##0.00' ea.'" format); column widths; alignment |
+| 51c6da51390e | dvvfw3pu42z1e.cloudfront.net | 1 | 9 | cropping of the canvas |
+| 66ba951f59ea | www.hokudaicoach.com | 2 | 8 | callout wrapping; a box with only a top border; thinner gridlines |
+| 737c7eccbed4 | www.rotostreetjournal.com | 1 | 9 | anti-aliasing |
+| 9f9ef28d93d7 | www.mushroomcrew.com | 1 | 9 | faint gridlines |
+| dfdc8f8391b2 | www.democracyinaction.us | 1 | 9 | font rendering |
+| e8625984c6c3 | www.anam.mx | 2 | 4.5 | page 1 scores 9; page 2 of the export is a 30pt-wide strip (the sheet's overflow column), scored 0 as "corrupted" — a harness pairing artifact, not a rendering defect |
+| 021084ac7183 | eps-pedagogie.web.ac-grenoble.fr | 2 | 7 | a 1×1 pop-up table painted yellow where the export prints white (a pre-BNC fired-rule index, see findings); zero-height line shapes drawn as 32pt bars |
+
+Mean over the 16 pages 7.63; 8.13 without the strip page.
+
+#### Schema and converter findings
+
+- `ChartModel.dataBinding` is now decoded (`sourceText` = the series
+  ranges joined with ","); new `ChartModel.bindings` carries every binding
+  formula by role. Charts over grouped tables bind through category
+  references (node 66) and stay "unparsed" (6914f46e51ab). The binding was
+  never read before because the extraction was gated on "no inline grid".
+- `TableCell.comment`, `TableModel.controls` + `TableCell.control`,
+  `TableModel.sortRules`, `TableGrouping.categoryColumnWidthPt`,
+  `CellFormat.name`: all additive, documented in docs/model-design.md
+  §2.6/§2.7 and docs/format/tables.md.
+- Already carried and verified against the census: hidden rows and
+  columns (`rows[].hidden` agrees with the hidden-state extents on every
+  file, 534d58ee7d21: 15 rows + 7 columns), merged ranges, sheet order and
+  names and `hidden`, header row/column counts, cell hyperlinks (152 in
+  16c9478d6d21), number-format identity (kind, decimals, currency code,
+  grouping, accounting, pattern; now also the custom format's name).
+- Filters: every `FilterSetArchive` in the corpus has zero rules, so
+  nothing to carry yet; the archive path is documented for when one shows
+  up.
+- Conditional formatting: the rules are not modeled; the warning names
+  the count. On pre-BNC files the stored fired-rule index is not
+  reliable: 021084ac7183's 1×1 pop-up tables store rule 15 of 48- and
+  55-rule sets and the export paints them white where rule 15 is yellow.
+  Proposal: for v4 cells, drop the fired-rule overlay unless the rule set
+  has fewer rules than the stored index range seen on verified files
+  (cdrky: 0-2 of 2-3), or evaluate the predicate for the simple
+  "cell equals" kinds.
+- Group summary rule codes other than 2 (sum) remain unnamed; the request
+  is `fixtures/golden/G8-numbers-groups-checklist.md`.
+- Not a schema item but found on the way: the second run of a rich-text
+  cell whose char style carries no size (eb299192a219 "(minimum charge is
+  4kg)") renders at the cell's 26pt where Numbers draws it smaller; the
+  run's resolved style omits the size as a default (12pt), so the viewer
+  inherits the paragraph's. Pages-owned text.rs/text.ts; left as a
+  proposal.
+
+#### What remains (ranked)
+
+1. 181f2b199bd3: grouped shapes positioned about 100pt above where the
+   export draws them, beside the wrong table; the group positions in the
+   JSON (y 549-575) match the export's set-list section, so the viewer's
+   canvas placement is wrong for these groups, not the model. Keynote-owned
+   drawables.ts.
+2. Zero-height line shapes on Numbers sheets drawn at their 32pt natural
+   height (021084ac7183 page 2); drawables.ts.
+3. Chart legend markers: line charts draw a line segment where Numbers
+   draws hollow circles or diamonds (every baabe23e067f page); the marker
+   shape lives in the series style (`symbol` fields), not read.
+4. Number formatting with the document locale (eb299192a219, it_IT prints
+   "523,4" in the viewer; the export uses the machine locale): decide
+   which one is right for a viewer and make it a setting.
+5. The value-axis misses (six of 40 land one unit higher); a fixture with
+   twenty charts over maxima 1000-3000 would settle the threshold.
+6. Header text size in 33499baadcc3 and 16c9478d6d21 ("text larger /
+   smaller than the export"): the header-row text style's size versus the
+   per-cell style chain; check which archive the export follows.
+7. Custom currency formats with a suffix ("¤#,##0.00' ea.'" prints "$100"
+   in the export, "$100.00" here): the pattern's decimals apply only when
+   the value has them.
+8. 5401d297f316 does not render in the harness (a sheet-tab click times
+   out); check whether the 100×25 table with seven user-hidden rows hangs
+   the layout pass.
+
 ### Next
 
-Numbers: the value-axis top rule when no bound is pinned, then column widths behind the remaining "truncation" complaints.
+Numbers: grouped shapes placed beside the wrong table (181f2b199bd3), zero-height line shapes, chart legend markers; then the locale question for number formatting.
 Keynote: inline equation scale, lines ending at content-sized text boxes.
 Pages: linked text boxes, then table row heights and cell wrapping. Score more of the corpus, one or two pages per document, with Qwen; use
 the ranked list to choose fidelity work; add a reference re-run with
