@@ -400,6 +400,142 @@ What remains, in the order the judge names it:
 4. Wrap differences from fallback faces (Franklin Gothic, Gill Sans):
    one word per slide moving between lines.
 
+### Pages, round 1 (2026-09-05, Qwen thinking off, two pages per document)
+
+Pages had no judged round of its own; the 2026-09-02 calibration run
+scored 12 Pages documents. This round picked 23 more, one per origin
+host, chosen from a pnk2json feature survey of all 325 Pages fixtures so
+that they cover different things: docx/doc imports with lists and
+tables, page-layout newsletters, a two-column landscape bulletin, a
+Japanese form, two Arabic documents, a 61-page textbook with a table of
+contents, a 24-page service booklet, a 2013-era save, and a chart. All
+23 were exported from Pages; the first two pages of each were scored
+(41 pairs). Mean 5.46. Score counts: 0 ×3, 2 ×5, 4 ×5, 5 ×3, 6 ×9,
+7 ×6, 8 ×7, 9 ×3.
+
+| document | host | pages (Pages / ours) | judged | before | after |
+| --- | --- | ---: | ---: | ---: | ---: |
+AFTER_TABLE
+
+What the judge names most often across the 41 pages, in order:
+
+1. Content on the wrong page: text from the next page on this one, the
+   bottom of the page missing, or a cover page shared with the body
+   (eight documents). Some of this is the pagination difference noted
+   under problems below; the rest was the viewer ignoring the text wrap
+   of floating objects (a cover photo or a full-page text box pushes the
+   body to the next page in Pages) and pushing a table under an anchored
+   object.
+2. Headers and footers missing or drawn differently: absent on page-layout
+   canvases, absent where a section inherits them from the previous
+   section, and boxed or centred where Pages draws them plain (six
+   documents).
+3. List numbering: "1, 2, 3 … 16" where Pages prints tiered "1.1 … 4.4"
+   (one document, named on both pages).
+4. Tables: rows taller than Pages', text not wrapping in cells, borders
+   drawn where Pages draws none (four documents).
+5. Fonts: weight, a decorative face, an all-caps face (Bebas Neue) shown
+   in mixed case (three documents).
+6. Right-to-left layout: paragraph alignment and bullet placement in the
+   Arabic documents (two documents).
+7. One black page (a 0-height rule stored with an 8.9e-17pt natural
+   height scaled the stroke to 1.9e8pt).
+8. A Gantt chart drawn as stacked bars (Numbers agent's file, not
+   touched here).
+
+Defects fixed, with cause and fix:
+
+| defect | documents | cause | fix |
+| --- | --- | --- | --- |
+| table of contents shown as an "unmodeled TSWP.TOCAttachmentArchive" box | eb2a7cde, 55d37c2b, ee7036ce | attachment type 2241 not handled; the TOC is a ShapeInfo (TOCInfoArchive 2240) with its own laid-out storage | converter: the TOC becomes an inline text box (tab leaders and page numbers included) and `tableOfContents.entries` is filled from its TOCEntryInstanceArchives |
+| whole page black | 38a7da36 | a 0-height rule with an 8.9e-17pt natural height; the stroke scale divided by it | viewer: a natural axis under 1e-3pt is degenerate and does not scale the stroke |
+| body text on the cover page and every page after it one page early | eb2a7cde (61 pages) | floating objects that wrap the body (the cover photo, a full-page text box) did not push the flow | viewer: wide (≥60% of the text width) wrapping floating objects become full-width exclusion bands; a page they fill holds no body text |
+| 350pt gap before a form's table | 964b85d1 | two 38pt anchored seal boxes at the right margin; CSS moved the 493pt table below their float | viewer: a table pushed under an earlier anchor float collapses that float's exclusion and moves back up (Pages overlaps them) |
+| list numbered 1 … 16 instead of 1.1 … 4.4 | 48f5f124 | `tiered_numbers` (ListStyleArchive 25) not read; sub-levels never restarted | converter: `ListFormat.tiered` and a computed `Paragraph.listNumber` (restart at a stored number, else continue; deeper levels restart after a shallower item); viewer and markdown dump print the path |
+| footer missing on the second section's pages | 48f5f124 | `inheritPreviousHeaderFooter` ignored | viewer: a section whose masters carry no header/footer text takes the previous section's parity template |
+| page-layout header "JUN / JUL 26 · ISSUE 3 · ©" and page number missing | 26a356dc | (1) the document's field-48 template container is a type the registry does not know, and the page masters the sections reference were skipped; (2) layout canvases never drew headers/footers | converter: every TP.PageMasterArchive in the graph joins `pageTemplates`; viewer: layout canvases draw their section's headers/footers and page-number fields |
+| "en" language on every run of a document whose locale is en_US | (regression caught by the G2 golden) | table_language spans split runs even when the tag equals the locale | converter: run boundaries and `language` only where the emitted language changes |
+
+Qwen's scores for the same 41 pairs, same exports, before and after are
+in the table above. AFTER_SUMMARY
+
+#### Schema and converter findings
+
+Data that was in the archives and absent or wrong in the JSON, and what
+was done (proof fixtures in parentheses):
+
+- Table of contents: dropped as an unknown attachment. Now an inline
+  text box plus `tableOfContents.entries[] { text, pageNumber, level,
+  paragraphIndex }` (eb2a7cde: 82 entries; 55d37c2b: 65, deduplicated
+  across its seven per-section TOC boxes).
+- `TSWPTOCPageNumberAttachmentArchive` read field 3 (the bookmark name)
+  before field 2 (the page number); split from NumberAttachmentArchive.
+- Comments: `table_highlight` → HighlightArchive → TSD.CommentStorageArchive
+  was dropped. Now `comments[] { anchorParagraphIndex, text, author, date,
+  quotedText, replies }`; five corpus documents carry them (381bbbac: 9
+  comments by one author). Body storage only; comments in text boxes and
+  cells are not collected.
+- Tracked changes: `table_insertion` / `table_deletion` were ignored, so
+  deleted text was emitted as if present. The text is now the accepted
+  view (deletions omitted, insertions kept) with one warning carrying the
+  counts (55d37c2b: 3 insertions, 1 deletion). The markup itself
+  (author, date per change) is not modeled; one corpus document has it.
+- Bookmarks: `table_bookmark` was dropped although in-document hyperlinks
+  reference bookmarks as `#<uuid>`. Now `bookmarks[] { id, name,
+  paragraphIndex }` (eb2a7cde: 3; 55d37c2b: 117), and a run `hyperlink`
+  of `#<id>` resolves against them.
+- Run language: `table_language` (a string per span) was ignored. Now
+  the run's `CharStyle.language` when its primary subtag differs from the
+  document locale (964b85d1: en_US runs in a ja_JP form; 77890685: Arabic
+  runs in an en_US résumé). Apple's `__multilingual` marker is filtered
+  from both the table and the style property.
+- List numbering: only the marker style was emitted; numbers were
+  computed by the viewer with no sub-level restart and no tiered labels.
+  Now `Paragraph.listNumber` (computed) and `ListFormat.tiered`.
+- Page masters: only the objects behind DocumentArchive field 48 were
+  templates. In 26a356dc that field points at an object of type 0x2721
+  and the sections reference the masters directly; every
+  TP.PageMasterArchive in the graph is now a template. The corpus has
+  1,707 PageMasterArchives across all 323 documents and no
+  TP.PageTemplateArchive at all.
+- Section and page setup, headers and footers (three column storages
+  each), footnotes with anchors, tab stops (position, alignment,
+  leader), hyperlinks, inline versus anchored placement with wrap kind
+  and margin, tables in the body flow, section columns and gutter: present
+  and checked against real documents; no change.
+- Document title and author: Properties.plist carries only UUIDs and
+  the format version; the only author names in a Pages file are the
+  annotation authors. Nothing to extract; `meta.author` stays empty.
+
+Proposals not implemented:
+
+- Linked text boxes (`TSWP.FlowInfoArchive` with several `textboxes`):
+  the whole flow lands in the first box and the continuation boxes are
+  empty (26a356dc's "Who Are We? Ben, Dan, Mandy…" list). Two corpus
+  documents use them. Model: `TextboxDrawable.flow?: { id, index }`;
+  the viewer would lay the shared storage out across the chain.
+- Text wrap fit: `ExteriorTextWrapArchive.fit_type` and
+  `alpha_threshold` are dropped. f82b2fa4's cover is a transparent PNG
+  whose frame is opaque; Pages wraps the title into the transparent
+  interior, which needs the alpha channel. Carry `fit` and
+  `alphaThreshold` in `TextWrap` so a renderer can choose.
+- Tracked-change markup (author, date, kind per range) as a
+  `changes[]` list; one corpus document.
+- Comments inside text boxes and table cells.
+
+#### Problems in the image pairs
+
+- Pages paginates by line with its own font metrics; six of the 23
+  documents have a different page count in the export and in the viewer
+  (32/35, 61/63, 24/25, 9/8, 1/2, 1/2). From the first page where the
+  counts diverge, every pair compares different content and the judge
+  scores 0-2 for "a different page". The four documents scored 3.0 or
+  lower before the fixes are all of this kind, and the same exports are
+  scored after, so the before/after table shares the handicap.
+- The judge scores an all-caps display face (Bebas Neue) rendered in a
+  fallback font as a capitalization error; the JSON carries no
+  capitalization because the font, not the style, is uppercase.
+
 ### Next
 
 Numbers: row height from wrapped text, then the cached formula results.
