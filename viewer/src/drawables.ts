@@ -589,6 +589,17 @@ function applyTextFitMode(
     const storedH = div.style.height;
     div.style.height = "auto";
     if (storedH && storedH !== "auto") div.style.minHeight = storedH;
+    // ...but bounded: the growth absorbs font-metric drift, not content the
+    // app itself clips. 7b8e38ed's title box is stored 66pt tall with two
+    // lines and five empty 24pt paragraphs after them; Pages prints the
+    // 66pt box, and unbounded growth made it 200pt and covered the box
+    // below. Half again the stored height covers the metric drift seen
+    // across the corpus (Keynote boxes run 10-20% taller here).
+    const storedPx = parseFloat(storedH || "0");
+    if (storedPx > 0) {
+      div.style.maxHeight = `${(storedPx * 1.5).toFixed(2)}px`;
+      div.style.overflow = "hidden";
+    }
     div.style.display = "flex";
     div.style.flexDirection = "column";
     div.style.justifyContent = verticalAlignStyle({ verticalAlignment });

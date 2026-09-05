@@ -71,6 +71,7 @@
     "char": [
       {
         "fontName": "HelveticaNeue",
+        "fontSizePt": 12.0,
         "bold": false,
         "italic": false,
         "fontColor": "#000000"
@@ -105,12 +106,14 @@
       },
       {
         "fontName": "HelveticaNeue-Medium",
+        "fontSizePt": 12.0,
         "bold": false,
         "italic": false,
         "fontColor": "#000000"
       },
       {
         "fontName": "HelveticaNeue-Medium",
+        "fontSizePt": 12.0,
         "bold": false,
         "italic": false,
         "fontColor": "#ffffff"
