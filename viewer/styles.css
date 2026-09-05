@@ -548,3 +548,10 @@ table.sheet-table .acct { display: flex; justify-content: space-between; gap: 0.
 /* === agent N (2026-09-05, round 4): grouped rows at the default row height === */
 .sheet-table tr.group-row td.cell-group, .sheet-table tr.group-label-row td.cell-group { padding-top: 0; padding-bottom: 0; line-height: 1.1; }
 table.sheet-table .cell-fit { white-space: pre; display: inline-block; }
+
+/* === agent K (2026-09-05, round 3): shape SVGs are blocks === */
+/* An inline <svg> sits on its line box's baseline, so a shape shorter than
+   the strut's ascent (rules, bars, thin lines) was pushed down by the gap:
+   ecanja 2bf304c4's 6pt footer bars landed 9pt below their box, outside the
+   slide, and every divider line drew a few points low. */
+.canvas-drawable > svg { display: block; }
