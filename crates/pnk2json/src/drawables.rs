@@ -764,6 +764,7 @@ fn image_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
         shadows: adj.f32v(5).map(|v| v as f64),
         brightness: None,
     });
+    let equation = equation_info(ctx, m);
     Drawable::Image {
         common,
         image,
@@ -773,7 +774,37 @@ fn image_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
         natural_size,
         mask,
         adjustments,
+        equation,
     }
+}
+
+/// Equation images (Insert > Equation) are TSD.ImageArchives whose media is
+/// a PDF the app rendered from the typed expression, which rides along as
+/// TSWP.EquationInfoArchive extension fields: equation_source_text = 103
+/// (equation_source_old = 100 in older files, identical when both exist),
+/// equation_depth = 102 (baseline depth, pt), equation_text_properties =
+/// 101 (an inline TSWP.CharacterStylePropertiesArchive: font_size = 3,
+/// font_name = 5, font_color = 7). Fixture-verified on the atnf Bayesian
+/// deck (0ddd627b): 55 equations, all LaTeX, e.g. "P(T \cap C) = P(C)P(T|C)".
+fn equation_info(ctx: &mut Ctx, m: &Msg) -> Option<EquationInfo> {
+    let source = m.string(103).or_else(|| m.string(100))?;
+    let format = if source.trim_start().starts_with("<math") {
+        EquationFormat::Mathml
+    } else {
+        EquationFormat::Latex
+    };
+    let props = m.msg(101);
+    let font_size_pt = props.as_ref().and_then(|p| p.f32v(3)).map(|v| v as f64);
+    let font_name = props.as_ref().and_then(|p| p.string(5)).filter(|n| !n.is_empty());
+    let color = props.as_ref().and_then(|p| crate::tsd::color_of(ctx, p, 7));
+    Some(EquationInfo {
+        source,
+        format,
+        depth_pt: m.f32v(102).map(|v| v as f64),
+        font_size_pt,
+        font_name,
+        color,
+    })
 }
 
 fn movie_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
@@ -857,28 +888,139 @@ fn group_drawable(ctx: &mut Ctx, m: &Msg, depth: usize, visiting: &mut HashSet<u
     }
 }
 
-/// Geometry (position + size) of a connection anchor drawable, whatever its
-/// wrapper depth: TSD.ShapeArchive nests DrawableArchive once,
-/// TSWP.ShapeInfoArchive twice, KN/TP placeholders three times. Walk down
-/// `super = 1` until a level parses as DrawableArchive.geometry (a nested
-/// message whose field 1/2 decode as TSP.Point + TSP.Size).
-fn anchor_geometry(ctx: &Ctx, aid: u64) -> Option<(Point, Size)> {
+/// A connection anchor: the connected drawable's frame plus, when its
+/// path source decodes, its outline as a polygon in slide coordinates (used
+/// to trim the line where it leaves the shape).
+struct Anchor {
+    position: Point,
+    size: Size,
+    outline: Option<Vec<(f64, f64)>>,
+}
+
+impl Anchor {
+    fn center(&self) -> (f64, f64) {
+        (
+            self.position.x + self.size.width / 2.0,
+            self.position.y + self.size.height / 2.0,
+        )
+    }
+
+    /// Point-in-shape test: even-odd against the outline polygon when one
+    /// decoded, else the frame rectangle.
+    fn contains(&self, p: (f64, f64)) -> bool {
+        if let Some(poly) = &self.outline {
+            let mut inside = false;
+            let n = poly.len();
+            let mut j = n - 1;
+            for i in 0..n {
+                let (xi, yi) = poly[i];
+                let (xj, yj) = poly[j];
+                if (yi > p.1) != (yj > p.1) {
+                    let x = xj + (p.1 - yj) / (yi - yj) * (xi - xj);
+                    if p.0 < x {
+                        inside = !inside;
+                    }
+                }
+                j = i;
+            }
+            return inside;
+        }
+        p.0 >= self.position.x
+            && p.0 <= self.position.x + self.size.width
+            && p.1 >= self.position.y
+            && p.1 <= self.position.y + self.size.height
+    }
+}
+
+/// Geometry of a connection anchor drawable, whatever its wrapper depth:
+/// TSD.ShapeArchive nests DrawableArchive once, TSWP.ShapeInfoArchive twice,
+/// KN/TP placeholders three times. Walk down `super = 1` until a level
+/// parses as DrawableArchive.geometry (a nested message whose field 1/2
+/// decode as TSP.Point + TSP.Size); that level is the ShapeArchive, whose
+/// `pathsource = 3` gives the outline.
+fn anchor_shape(ctx: &Ctx, aid: u64) -> Option<Anchor> {
     let mut cur = ctx.loaded.msg(aid)?.clone();
     for _ in 0..4 {
         if let Some(g) = cur.msg(1) {
             if let (Some((x, y)), Some((w, h))) = (g.point(1), g.size(2)) {
-                return Some((
-                    Point { x, y },
-                    Size {
-                        width: w,
-                        height: h,
-                    },
-                ));
+                let position = Point { x, y };
+                let size = Size {
+                    width: w,
+                    height: h,
+                };
+                let outline = cur
+                    .msg(3)
+                    .map(|ps| crate::tsd::shape_geometry(&ps))
+                    .and_then(|geo| outline_polygon(&geo, &position, &size));
+                return Some(Anchor {
+                    position,
+                    size,
+                    outline,
+                });
             }
         }
         cur = cur.msg(1)?.clone();
     }
     None
+}
+
+/// Flatten a shape's explicit path (in its naturalSize space) into a slide-
+/// space polygon; presets (rounded rect, polygons) fall back to the frame.
+fn outline_polygon(geo: &ShapeGeometry, position: &Point, size: &Size) -> Option<Vec<(f64, f64)>> {
+    let path = geo.path.as_ref()?;
+    let nat = geo.natural_size.as_ref()?;
+    if nat.width <= 0.0 || nat.height <= 0.0 {
+        return None;
+    }
+    let sx = size.width / nat.width;
+    let sy = size.height / nat.height;
+    let map = |x: f64, y: f64| (position.x + x * sx, position.y + y * sy);
+    let mut poly: Vec<(f64, f64)> = Vec::new();
+    let mut cur = (0.0, 0.0);
+    for e in &path.elements {
+        match e {
+            CurveElement::Move { points } | CurveElement::Line { points } => {
+                if points.len() >= 2 {
+                    cur = (points[0], points[1]);
+                    poly.push(map(cur.0, cur.1));
+                }
+            }
+            CurveElement::Quad { points } if points.len() >= 4 => {
+                let (c, p2) = ((points[0], points[1]), (points[2], points[3]));
+                for i in 1..=8 {
+                    let t = i as f64 / 8.0;
+                    let u = 1.0 - t;
+                    let x = u * u * cur.0 + 2.0 * u * t * c.0 + t * t * p2.0;
+                    let y = u * u * cur.1 + 2.0 * u * t * c.1 + t * t * p2.1;
+                    poly.push(map(x, y));
+                }
+                cur = p2;
+            }
+            CurveElement::Cubic { points } if points.len() >= 6 => {
+                let (c1, c2, p3) = (
+                    (points[0], points[1]),
+                    (points[2], points[3]),
+                    (points[4], points[5]),
+                );
+                for i in 1..=8 {
+                    let t = i as f64 / 8.0;
+                    let u = 1.0 - t;
+                    let x = u * u * u * cur.0
+                        + 3.0 * u * u * t * c1.0
+                        + 3.0 * u * t * t * c2.0
+                        + t * t * t * p3.0;
+                    let y = u * u * u * cur.1
+                        + 3.0 * u * u * t * c1.1
+                        + 3.0 * u * t * t * c2.1
+                        + t * t * t * p3.1;
+                    poly.push(map(x, y));
+                }
+                cur = p3;
+            }
+            _ => {}
+        }
+    }
+    (poly.len() >= 3).then_some(poly)
 }
 
 /// Ellipse radius of the box inscribed in `s`, along unit direction (ux,uy):
@@ -905,7 +1047,7 @@ fn connection_line_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
         st.fill = None;
     }
     // Routing path: super(1).pathsource(3).connection_line_path_source(7)
-    //   .super(1).path(3)
+    //   .super(1).path(3); type = 2 (0 quadratic, 1 orthogonal).
     let cl_source = m
         .msg(1)
         .and_then(|shape| shape.msg(3))
@@ -919,29 +1061,111 @@ fn connection_line_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
         .unwrap_or(CurvePath {
             elements: Vec::new(),
         });
+    let quadratic = cl_source.as_ref().and_then(|cl| cl.varint(2)).unwrap_or(0) == 0;
     let outset_from = cl_source.as_ref().and_then(|cl| cl.f32v(3)).unwrap_or(0.0) as f64;
     let outset_to = cl_source.as_ref().and_then(|cl| cl.f32v(4)).unwrap_or(0.0) as f64;
 
-    let from_geo = m.reference(2).and_then(|aid| anchor_geometry(ctx, aid));
-    let to_geo = m.reference(3).and_then(|aid| anchor_geometry(ctx, aid));
+    let from_anchor = m.reference(2).and_then(|aid| anchor_shape(ctx, aid));
+    let to_anchor = m.reference(3).and_then(|aid| anchor_shape(ctx, aid));
+    // A content-sized text box stores a 0x0 frame (Keynote lays it out at
+    // display time), so its centre and outline are unknown here: such an
+    // end keeps the stored endpoint, which Keynote baked at the text's
+    // edge (kcsrk slide 6: label boxes connected to code highlights).
+    fn sized(a: &Option<Anchor>) -> Option<&Anchor> {
+        a.as_ref()
+            .filter(|a| a.size.width > 0.0 && a.size.height > 0.0)
+    }
+    let from_geo_anchor = sized(&from_anchor);
+    let to_geo_anchor = sized(&to_anchor);
 
-    // REBAKE from the live anchors. The stored baked path goes stale when the
-    // connected shapes are moved after baking (fixture-verified: kcsrk deck
-    // slide 22 stores fork-line endpoints (126.7, 39.0)pt away from where
-    // Apple's own PDF export draws them; the export's segments are exactly
-    // center-to-center, trimmed by each shape's border radius). The stored
-    // path still contributes its SHAPE (elbows, curvature) via a similarity
-    // map from its endpoints onto the recomputed ones.
+    let facts = |a: &Option<Anchor>| {
+        a.as_ref().map(|a| AnchorFacts {
+            position: Some(a.position),
+            size: Some(a.size),
+        })
+    };
+    let from = facts(&from_anchor);
+    let to = facts(&to_anchor);
+
+    // Quadratic routing (Keynote's default "curved" connection): the stored
+    // path is move + line + line whose middle point is ON the curve, and the
+    // ends are the connected shapes' CENTERS in the line's local frame
+    // (fixture-verified: kcsrk deck slide 8, line 2892641 stores (-35.78,
+    // 42.43)->(151.05, 42.43) at position (761.70, 334.80) = the centres of
+    // "bar" and "baz"; Keynote's export draws the curve through the middle
+    // point and clips it at each box's edge, peak measured at y=336 for a
+    // stored middle y of 334.8). Free ends (no connected_from/to) stay where
+    // stored; connected ends follow the shape's current centre, so a shape
+    // moved after the path was baked still gets its line (slide 8's "k" box).
+    if quadratic && !stored.elements.is_empty() {
+        let origin = common.position.unwrap_or(Point { x: 0.0, y: 0.0 });
+        let mut pts: Vec<(f64, f64)> = Vec::new();
+        for e in &stored.elements {
+            let p = match e {
+                CurveElement::Move { points } | CurveElement::Line { points } => points,
+                _ => continue,
+            };
+            if p.len() >= 2 {
+                pts.push((p[0] + origin.x, p[1] + origin.y));
+            }
+        }
+        if pts.len() == 2 || pts.len() == 3 {
+            let s0 = pts[0];
+            let s2 = pts[pts.len() - 1];
+            let sm = if pts.len() == 3 {
+                pts[1]
+            } else {
+                ((s0.0 + s2.0) / 2.0, (s0.1 + s2.1) / 2.0)
+            };
+            let p0 = from_geo_anchor.map(|a| a.center()).unwrap_or(s0);
+            let p2 = to_geo_anchor.map(|a| a.center()).unwrap_or(s2);
+            let mid = similarity_map(sm, s0, s2, p0, p2);
+            let ctrl = (2.0 * mid.0 - (p0.0 + p2.0) / 2.0, 2.0 * mid.1 - (p0.1 + p2.1) / 2.0);
+            let (path, bb_min, bb_max) = trimmed_quad(
+                p0,
+                ctrl,
+                p2,
+                from_geo_anchor.map(|a| (a, outset_from)),
+                to_geo_anchor.map(|a| (a, outset_to)),
+            );
+            let mut path = path;
+            offset_curve_path(&mut path, -bb_min.0, -bb_min.1);
+            common.position = Some(Point {
+                x: bb_min.0,
+                y: bb_min.1,
+            });
+            common.size = Some(Size {
+                width: bb_max.0 - bb_min.0,
+                height: bb_max.1 - bb_min.1,
+            });
+            common.angle_deg = None;
+            return Drawable::ConnectionLine {
+                common,
+                path,
+                from,
+                to,
+            };
+        }
+    }
+
+    // Orthogonal routing (and anything unexpected): REBAKE from the live
+    // anchors. The stored baked path goes stale when the connected shapes are
+    // moved after baking (fixture-verified: kcsrk deck slide 22 stores
+    // fork-line endpoints (126.7, 39.0)pt away from where Apple's own PDF
+    // export draws them; the export's segments are exactly center-to-center,
+    // trimmed by each shape's border radius). The stored path still
+    // contributes its SHAPE (elbows) via a similarity map from its endpoints
+    // onto the recomputed ones.
     let mut path = stored;
-    if let (Some((fp, fs)), Some((tp, ts))) = (&from_geo, &to_geo) {
-        let c1 = (fp.x + fs.width / 2.0, fp.y + fs.height / 2.0);
-        let c2 = (tp.x + ts.width / 2.0, tp.y + ts.height / 2.0);
+    if let (Some(fa), Some(ta)) = (from_geo_anchor, to_geo_anchor) {
+        let c1 = fa.center();
+        let c2 = ta.center();
         let (dx, dy) = (c2.0 - c1.0, c2.1 - c1.1);
         let dist = (dx * dx + dy * dy).sqrt();
         if dist > 1e-6 {
             let (ux, uy) = (dx / dist, dy / dist);
-            let t1 = border_trim(fs, ux, uy) + outset_from;
-            let t2 = border_trim(ts, ux, uy) + outset_to;
+            let t1 = border_trim(&fa.size, ux, uy) + outset_from;
+            let t2 = border_trim(&ta.size, ux, uy) + outset_to;
             if t1 + t2 < dist - 1.0 {
                 let start = (c1.0 + ux * t1, c1.1 + uy * t1);
                 let end = (c2.0 - ux * t2, c2.1 - uy * t2);
@@ -962,20 +1186,134 @@ fn connection_line_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
         }
     }
 
-    let facts = |g: &Option<(Point, Size)>| {
-        g.as_ref().map(|(p, s)| AnchorFacts {
-            position: Some(*p),
-            size: Some(*s),
-        })
-    };
-    let from = facts(&from_geo);
-    let to = facts(&to_geo);
     Drawable::ConnectionLine {
         common,
         path,
         from,
         to,
     }
+}
+
+/// Map point `p` by the 2D similarity (rotate + uniform scale + translate)
+/// that carries segment (s0, s2) onto (p0, p2); a pure translation when the
+/// source segment is degenerate.
+fn similarity_map(p: (f64, f64), s0: (f64, f64), s2: (f64, f64), p0: (f64, f64), p2: (f64, f64)) -> (f64, f64) {
+    let vs = (s2.0 - s0.0, s2.1 - s0.1);
+    let ls2 = vs.0 * vs.0 + vs.1 * vs.1;
+    if ls2 < 1e-9 {
+        return (p.0 - s0.0 + p0.0, p.1 - s0.1 + p0.1);
+    }
+    let vn = (p2.0 - p0.0, p2.1 - p0.1);
+    let a = (vn.0 * vs.0 + vn.1 * vs.1) / ls2;
+    let b = (vn.1 * vs.0 - vn.0 * vs.1) / ls2;
+    let (x, y) = (p.0 - s0.0, p.1 - s0.1);
+    (p0.0 + a * x - b * y, p0.1 + b * x + a * y)
+}
+
+/// The quadratic Bezier p0 -> ctrl -> p2, cut back to where it leaves the
+/// `from` shape and enters the `to` shape (each extended by its outset), as
+/// a move + quad path (move + line when the curve is straight), with its
+/// exact bounding box.
+fn trimmed_quad(
+    p0: (f64, f64),
+    ctrl: (f64, f64),
+    p2: (f64, f64),
+    from: Option<(&Anchor, f64)>,
+    to: Option<(&Anchor, f64)>,
+) -> (CurvePath, (f64, f64), (f64, f64)) {
+    let at = |t: f64| {
+        let u = 1.0 - t;
+        (
+            u * u * p0.0 + 2.0 * u * t * ctrl.0 + t * t * p2.0,
+            u * u * p0.1 + 2.0 * u * t * ctrl.1 + t * t * p2.1,
+        )
+    };
+    const N: usize = 512;
+    let samples: Vec<(f64, f64)> = (0..=N).map(|i| at(i as f64 / N as f64)).collect();
+    let dist = |a: (f64, f64), b: (f64, f64)| ((a.0 - b.0).powi(2) + (a.1 - b.1).powi(2)).sqrt();
+    // First sample outside the from-shape, then `outset` further along.
+    let mut t_in = 0.0;
+    if let Some((a, outset)) = from {
+        if let Some(i) = samples.iter().position(|p| !a.contains(*p)) {
+            let mut j = i;
+            let mut run = 0.0;
+            while run < outset && j + 1 < samples.len() {
+                run += dist(samples[j], samples[j + 1]);
+                j += 1;
+            }
+            t_in = j as f64 / N as f64;
+        }
+    }
+    let mut t_out = 1.0;
+    if let Some((a, outset)) = to {
+        if let Some(i) = samples.iter().rposition(|p| !a.contains(*p)) {
+            let mut j = i;
+            let mut run = 0.0;
+            while run < outset && j > 0 {
+                run += dist(samples[j], samples[j - 1]);
+                j -= 1;
+            }
+            t_out = j as f64 / N as f64;
+        }
+    }
+    if t_in >= t_out {
+        // Overlapping shapes: nothing visible would remain; keep the whole curve.
+        t_in = 0.0;
+        t_out = 1.0;
+    }
+    let (a, b) = (t_in, t_out);
+    let q0 = at(a);
+    let q2 = at(b);
+    let q1 = (
+        p0.0 * (1.0 - a) * (1.0 - b) + ctrl.0 * (a + b - 2.0 * a * b) + p2.0 * a * b,
+        p0.1 * (1.0 - a) * (1.0 - b) + ctrl.1 * (a + b - 2.0 * a * b) + p2.1 * a * b,
+    );
+    // Straight when the control point sits on the chord.
+    let chord_mid = ((q0.0 + q2.0) / 2.0, (q0.1 + q2.1) / 2.0);
+    let straight = dist(q1, chord_mid) < 0.05;
+    let mut min = (q0.0.min(q2.0), q0.1.min(q2.1));
+    let mut max = (q0.0.max(q2.0), q0.1.max(q2.1));
+    if !straight {
+        // Axis extrema of the sub-curve at t = (q0 - q1) / (q0 - 2 q1 + q2).
+        for axis in 0..2 {
+            let (v0, v1, v2) = if axis == 0 { (q0.0, q1.0, q2.0) } else { (q0.1, q1.1, q2.1) };
+            let den = v0 - 2.0 * v1 + v2;
+            if den.abs() > 1e-9 {
+                let t = (v0 - v1) / den;
+                if t > 0.0 && t < 1.0 {
+                    let u = 1.0 - t;
+                    let v = u * u * v0 + 2.0 * u * t * v1 + t * t * v2;
+                    if axis == 0 {
+                        min.0 = min.0.min(v);
+                        max.0 = max.0.max(v);
+                    } else {
+                        min.1 = min.1.min(v);
+                        max.1 = max.1.max(v);
+                    }
+                }
+            }
+        }
+    }
+    let elements = if straight {
+        vec![
+            CurveElement::Move {
+                points: vec![q0.0, q0.1],
+            },
+            CurveElement::Line {
+                points: vec![q2.0, q2.1],
+            },
+        ]
+    } else {
+        vec![
+            CurveElement::Move {
+                points: vec![q0.0, q0.1],
+            },
+            CurveElement::Quad {
+                points: vec![q1.0, q1.1, q2.0, q2.1],
+            },
+        ]
+    };
+    (CurvePath { elements }, min, max)
 }
 
 fn points_of(e: &mut CurveElement) -> &mut Vec<f64> {

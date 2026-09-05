@@ -421,6 +421,38 @@ export interface ImageDrawable {
     brightness?: number;
     [key: string]: number | undefined;
   };
+  /**
+   * Present when the image is a rendered equation (Insert > Equation in
+   * Keynote/Pages/Numbers): `image` is the app's PDF rendering of
+   * `equation.source`, and the source expression is the extractable
+   * content. [proto: TSWP.EquationInfoArchive extends TSD.ImageArchive]
+   */
+  equation?: EquationInfo;
+}
+
+/**
+ * The expression behind an equation image. [proto: TSWP.EquationInfoArchive
+ * extension fields on TSD.ImageArchive: equation_source_text = 103 (older
+ * files carry only equation_source_old = 100), equation_depth = 102,
+ * equation_text_properties = 101]
+ */
+export interface EquationInfo {
+  /** The expression as the author typed it: LaTeX, or MathML markup. */
+  source: string;
+  /** "mathml" when `source` starts with a `<math` element, else "latex" [inferred from the text]. */
+  format: "latex" | "mathml";
+  /**
+   * Baseline depth in points: how far the rendered image extends below the
+   * text baseline when placed inline (the image's bottom edge sits
+   * `depthPt` under the baseline). [proto: equation_depth]
+   */
+  depthPt?: number;
+  /** Font size the equation was set in, points. [proto: equation_text_properties.font_size] */
+  fontSizePt?: number;
+  /** Font family name. [proto: equation_text_properties.font_name] */
+  fontName?: string;
+  /** Text color. [proto: equation_text_properties.font_color] */
+  color?: HexColor;
 }
 
 export interface MovieDrawable {

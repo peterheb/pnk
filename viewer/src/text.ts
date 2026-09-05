@@ -2,6 +2,7 @@
 // paragraph style's outlineLevel says heading); runs resolve their char style
 // through the document pool (charStyleIndex); smart fields render their
 // stored value; inline attachments recurse into the drawable renderer.
+import { isPdfBytes, pdfMediaEl } from "./pdfmedia";
 import type {
   CharStyle,
   ImageDrawable,
@@ -659,7 +660,19 @@ function inlineImageEl(d: ImageDrawable, ctx: ViewerCtx): HTMLElement {
         tile.style.width = `${size.width}px`;
         tile.style.height = `${size.height}px`;
       }
-      return tile;
+      const bytes = ctx.bytes(d.image.dataId);
+      if (!bytes || !isPdfBytes(bytes)) return tile;
+      // pdf.js paints the PDF (an equation, usually) into the tile's box.
+      const host = pdfMediaEl(bytes, size?.width ?? 0, size?.height ?? 0, () => tile.cloneNode() as HTMLElement);
+      host.classList.add("inline-pdf");
+      if (size) {
+        host.style.width = `${size.width}px`;
+        host.style.height = `${size.height}px`;
+      }
+      // An equation's stored depth is how far its box hangs below the text
+      // baseline [model: ImageDrawable.equation.depthPt].
+      host.style.verticalAlign = d.equation?.depthPt !== undefined ? `${-d.equation.depthPt}px` : "text-bottom";
+      return host;
     }
   }
   if (!url) {

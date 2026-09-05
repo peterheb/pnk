@@ -401,17 +401,29 @@ pub fn stroke_of(ctx: &mut Ctx, m: &Msg) -> Option<Stroke> {
         2 => StrokeJoin::Bevel,
         _ => StrokeJoin::Miter,
     };
+    let width_pt = m.f32v(2).unwrap_or(1.0) as f64;
     let (dash, dash_phase) = match m.msg(6) {
         Some(p) => {
-            let dash: Vec<f64> = p.packed_f32s(4).into_iter().map(|v| v as f64).collect();
+            // Pattern entries are multiples of the stroke width, not points:
+            // Keynote's "dotted" preset stores [1, 1] on a 2pt stroke and its
+            // PDF export draws 2pt dashes with 2pt gaps (kcsrk deck, slide 8,
+            // measured 2.4/1.44pt on/off at 150dpi with anti-aliasing). The
+            // archive pads the array to six entries; `count` (field 3) says
+            // how many are real.
+            let mut dash: Vec<f64> = p.packed_f32s(4).into_iter().map(|v| v as f64).collect();
+            if let Some(n) = p.varint(3).map(|n| n as usize) {
+                if n > 0 && n < dash.len() {
+                    dash.truncate(n);
+                }
+            }
             // All-zero patterns are Apple's "solid" placeholder, not a real
             // dash — emitting them renders invisible zero-length dashes.
             let dash = if p.varint(1) == Some(2) || !dash.iter().any(|d| *d > 0.0) {
                 None
             } else {
-                Some(dash)
+                Some(dash.into_iter().map(|d| d * width_pt).collect())
             };
-            (dash, p.f32v(2).map(|v| v as f64))
+            (dash, p.f32v(2).map(|v| v as f64 * width_pt))
         }
         None => (None, None),
     };
@@ -425,15 +437,22 @@ pub fn stroke_of(ctx: &mut Ctx, m: &Msg) -> Option<Stroke> {
             asset_scale: f.f32v(3).map(|v| v as f64),
         })
     });
+    // Smart ("hand-drawn") strokes: the preset name is all a consumer can
+    // use; the brush parameters (a reference dictionary) stay dropped.
+    let smart_stroke = m
+        .msg(7)
+        .and_then(|s| s.string(2))
+        .filter(|n| !n.is_empty());
     Some(Stroke {
         color,
-        width_pt: m.f32v(2).unwrap_or(1.0) as f64,
+        width_pt,
         cap,
         join,
         miter_limit: m.f32v(5).map(|v| v as f64),
         dash,
         dash_phase,
         frame,
+        smart_stroke,
     })
 }
 

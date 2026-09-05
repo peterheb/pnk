@@ -4,6 +4,8 @@
 # Node
 node_modules/
 dist/
+# generated at build time by scripts/build_viewer.sh (pdf.js worker text)
+/viewer/src/gen/
 
 # macOS
 .DS_Store

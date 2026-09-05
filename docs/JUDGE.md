@@ -400,6 +400,91 @@ What remains, in the order the judge names it:
 4. Wrap differences from fallback faces (Franklin Gothic, Gill Sans):
    one word per slide moving between lines.
 
+### Keynote, round 2 (2026-09-05, Qwen thinking off, every page)
+
+The two decks round 1 left worst: the atnf Bayesian lecture (25 slides,
+55 equations) and the kcsrk OCaml talk (37 slides, connection lines).
+Both were exported from Keynote once; the same exports are on both sides
+of every score below. Schema and converter fixes came first, per the
+round's brief; the viewer changes follow from them.
+
+| defect | deck | cause | fix |
+| --- | --- | --- | --- |
+| equations drawn as grey boxes | atnf (11 of 25 slides) | Keynote stores each equation as a PDF with no raster twin; the source expression sat unread in `TSWP.EquationInfoArchive` extension fields on the image | converter: `ImageDrawable.equation` (source, format, depth, font); dumpers emit the source; viewer: pdf.js rasterizes PDF media in-page (bundled, blob: worker, no network) |
+| curved connection lines drawn as two straight segments | kcsrk slide 8 | the stored path is move+line+line whose middle point is ON Keynote's quadratic; the converter rebaked it as a polyline scaled between trimmed chord endpoints | converter emits move+quad through the middle point, centre to centre, cut back where the curve leaves each shape's outline |
+| dotted lines drawn nearly solid | kcsrk slides 7, 8 | `StrokePatternArchive.pattern` is in multiples of the stroke width, the model said points; [1,1] on a 2pt stroke rendered 1pt on/off | converter multiplies by the width and truncates to `count`; the export measures 2pt on / 2pt off |
+| connection line to a shape moved after baking ends in empty space | kcsrk slide 8 ("k" box) | a free start plus a stale stored end | connected ends follow the shape's current centre; free ends stay where stored |
+| callout tail missing | kcsrk slide 7 | the viewer drew a 10pt triangle on the top edge instead of a wedge to `tailPosition` | viewer draws the wedge from the facing edge to the apex (not scored: landed after the judge run) |
+
+Qwen's mean over the 62 pages, before and after, same exports:
+
+| doc | pages | before | after |
+| --- | ---: | ---: | ---: |
+| atnf Bayesian | 25 | 6.28 | 8.72 |
+| kcsrk OCaml | 37 | 8.70 | 8.81 |
+| all | 62 | 7.73 | 8.77 |
+
+Pages scored 9 or more went from 43 to 53 of 62. Pages that moved by two
+points or more, all up: atnf 2, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17
+(equations; 2 -> 9 on six of them) and kcsrk 8 (6 -> 9, the curves) and
+21 (5 -> 8). Four pages dropped one point: three are hinting verdicts on
+unchanged renders; kcsrk 6 names arrows that are plain line shapes ending
+inside content-sized label boxes, which this round did not touch.
+
+Confirmed against the export by measurement, not by eye: the curve peak
+(y 336 measured, 334.8 predicted from the stored middle point), the curve
+ends at the box edges (y 350.5 measured, 351 predicted), the dot pitch
+(2.4/1.44pt on/off at 150dpi for a 2pt stroke), and the canvas equation on
+atnf slide 2 (ink 287x67pt in the export, 285x66pt in ours).
+
+#### Schema and converter findings
+
+- **Equation source text was dropped.** `TSWP.EquationInfoArchive`
+  extends `TSD.ImageArchive` with `equation_source_text` (103, LaTeX or
+  MathML as typed; `equation_source_old` 100 is the same text in older
+  files), `equation_depth` (102, baseline depth in points) and
+  `equation_text_properties` (101: font size, name, colour). 52 of 484
+  Keynote decks in the corpus carry equations; every sampled source is
+  LaTeX. Added `ImageDrawable.equation` (TS + serde, documented in
+  model-design.md and format/drawables.md); the text and markdown dumpers
+  print the source in place of the image.
+- **Dash patterns were in the wrong unit.** Fixed in the converter; the
+  model's "points" contract now holds. No golden output changed.
+- **Connection line routing type** (`ConnectionLinePathSourceArchive.type`,
+  quadratic/orthogonal) was ignored; the path now encodes it (quad vs
+  line elements). Not added as a field: the path carries it.
+- **Hand-drawn stroke identity was dropped.** `Stroke.smartStroke` now
+  carries the preset name ("Pencil", "Dry Brush", "Feathered Brush",
+  "Chalk2", "Crayon", "Pen" in the corpus); the brush parameters stay
+  dropped. G2 gains two names; expected JSON re-synced.
+- **Inline equation size differs from the stored geometry in Keynote's
+  export.** The image's geometry equals the PDF page (e.g. 203x40pt for
+  `y=mx+b` at 45pt), and ours renders that. Keynote's export draws the
+  same inline equation at a font-dependent scale: 1.208x when
+  `equation_text_properties.font_name` is HelveticaNeue (45 -> 54.36pt,
+  28 -> 33.82, 30 -> 36.24, 66 -> 79.72, read from the export's text
+  spans), 1.005x for TimesNewRomanPS-ItalicMT, and 0.89 to 1.10x across
+  the fonts of a second deck (1199f5d2). Canvas-level equations are 1:1.
+  The factor is not derivable from the archive with what is known now
+  (1.208 = HelveticaNeue's ascender over STIX's, which fits one font
+  and not the others). Left as stored; noted for a later round.
+- **Checked and present:** presenter notes (every slide carries a
+  storage; both decks' are empty), skipped flags, transitions, builds,
+  hyperlinks on runs, accessibility descriptions, group structure. Not
+  present: a structured slide title (the dumpers derive it from the
+  title placeholder; a `Slide.title` would save every consumer that
+  walk), and empty notes are emitted as an empty `StyledText` rather
+  than omitted. Both are proposals, not implemented.
+
+What remains, in the order the judge names it:
+
+1. Inline equation scale (above): the export draws them up to 21% larger
+   than the stored geometry.
+2. Plain line shapes that end inside content-sized (0x0) text boxes
+   (kcsrk slide 6): Keynote stops them at the laid-out text edge.
+3. Hand-drawn stroke rendering: the preset name is now in the model; the
+   viewer still draws a plain stroke.
+4. Wrap differences from fallback faces, unchanged from round 1.
 ### Pages, round 1 (2026-09-05, Qwen thinking off, two pages per document)
 
 Pages had no judged round of its own; the 2026-09-02 calibration run
@@ -415,7 +500,35 @@ contents, a 24-page service booklet, a 2013-era save, and a chart. All
 
 | document | host | pages (Pages / ours) | judged | before | after |
 | --- | --- | ---: | ---: | ---: | ---: |
-AFTER_TABLE
+| f82b2fa40fd4 | apostlesonline.org | 24 / 25 | 2 | 1.0 | 1.0 |
+| 964b85d1b8b9 | i-campus.hokkyodai.ac.jp | 1 / 1 | 1 | 2.0 | 8.0 |
+| ae1cc13b298f | rustedradishes.com | 7 / 7 | 2 | 3.0 | 2.5 |
+| cf4b76a33f5a | johnwheeldonacademy.co.uk | 32 / 35 | 2 | 3.0 | 4.5 |
+| 26a356dc8651 | strokeinformation.co.uk | 6 / 6 | 2 | 3.5 | 4.0 |
+| 38a7da366cc3 | lakecitypresbyterian.org | 5 / 5 | 2 | 3.5 | 8.0 |
+| eb2a7cde90d6 | paadopt.org | 61 / 67 | 2 | 3.5 | 7.0 |
+| e2e0bff371c1 | financialplanningindubai.com | 3 / 3 | 2 | 5.0 | 6.0 |
+| 48f5f124cdd9 | schule-schlotheim.net | 9 / 9 | 2 | 5.5 | 7.5 |
+| 7b8e38edb184 | immobilienundleben.de | 9 / 9 | 2 | 5.5 | 5.5 |
+| cace32e1ed60 | bdrp.ch | 5 / 6 | 2 | 5.5 | 6.0 |
+| 77890685af37 | sa-uc.edu.iq | 1 / 1 | 1 | 6.0 | 6.0 |
+| f43d849f63dd | likvi.de | 1 / 1 | 1 | 6.0 | 6.0 |
+| d88d9139e2f5 | img.lucensoftware.com | 2 / 3 | 2 | 6.5 | 6.0 |
+| 4047e81b0665 | bcss.org | 12 / 12 | 2 | 7.0 | 6.5 |
+| 44d11ec89c32 | canineassistants.org | 14 / 14 | 2 | 7.0 | 7.0 |
+| 904cec1c6651 | pearlpirie.com | 12 / 12 | 2 | 7.0 | 7.5 |
+| 27254104743d | thelastamericanvagabond.com | 4 / 4 | 2 | 7.5 | 7.5 |
+| 806df50f6150 | chemiedidaktik.uni-wuppertal.de | 25 / 25 | 2 | 7.5 | 7.5 |
+| 87560fc1b5b0 | nfgymcheer.com | 2 / 2 | 2 | 7.5 | 7.5 |
+| 1bd116a4fa8f | domaukcyjnyiglica.pl | 1 / 2 | 1 | 8.0 | 9.0 |
+| 9a3616c756a7 | easy4me.info | 1 / 1 | 1 | 8.0 | 8.0 |
+| bc5e6bd19210 | kobysh.com | 7 / 7 | 2 | 8.0 | 8.5 |
+| all | 23 documents | | 41 | 5.46 | 6.27 |
+
+The page counts are Pages' export against the final build; the cover
+rule added pages to two documents (paadopt 63 to 67, bdrp 5 to 6) and
+removed one from two others (schule-schlotheim 8 to 9 matches Pages
+now; the Japanese form went from 2 pages to Pages' 1).
 
 What the judge names most often across the 41 pages, in order:
 
@@ -457,7 +570,30 @@ Defects fixed, with cause and fix:
 | "en" language on every run of a document whose locale is en_US | (regression caught by the G2 golden) | table_language spans split runs even when the tag equals the locale | converter: run boundaries and `language` only where the emitted language changes |
 
 Qwen's scores for the same 41 pairs, same exports, before and after are
-in the table above. AFTER_SUMMARY
+in the table above. Mean 5.46 to 6.27 over the 41 pairs; score
+counts after: 0 ×2, 2 ×2, 4 ×3, 5 ×5, 6 ×9, 7 ×4, 8 ×10, 9 ×6. Pages
+that moved by two points or more: lakecitypresbyterian 1 (0 to 9, the
+black page), paadopt 1 (2 to 9, the cover), the Japanese form (2 to 8,
+the table under the seals), schule-schlotheim 2 (4 to 8, tiered numbers
+and the inherited footer), johnwheeldonacademy 2 (2 to 4) and
+financialplanningindubai 2 (4 to 6), both pagination. No page dropped
+by two; the four one-point drops are re-judged verdicts on renders that
+changed only in line wrapping.
+
+What remains, in the order the judge names it:
+
+1. Pagination against Pages' own line breaks: six documents differ in
+   page count and every pair after the divergence compares different
+   content. Not a fidelity item the viewer can close without Pages'
+   font metrics; a judge that aligns pages by content would score the
+   render itself.
+2. Table rows: heights taller than Pages' (likvi, immobilienundleben)
+   and cell text not wrapping (financialplanningindubai). Numbers agent's
+   files.
+3. Linked text boxes (the proposal below).
+4. Right-to-left paragraph alignment and bullet placement (two Arabic
+   documents, unchanged at 6.0 and 2.5).
+5. Fonts: weight and all-caps display faces.
 
 #### Schema and converter findings
 
@@ -539,6 +675,7 @@ Proposals not implemented:
 ### Next
 
 Numbers: row height from wrapped text, then the cached formula results.
-Keynote: PDF media (equations first), then curved connection lines. Score more of the corpus, one or two pages per document, with Qwen; use
+Keynote: inline equation scale, lines ending at content-sized text boxes.
+Pages: linked text boxes, then table row heights and cell wrapping. Score more of the corpus, one or two pages per document, with Qwen; use
 the ranked list to choose fidelity work; add a reference re-run with
 Claude when the prompt changes again.

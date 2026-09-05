@@ -28,6 +28,9 @@ const EXT_MIME: Record<string, string> = {
 
 export class ViewerCtx {
   private urls = new Map<string, string>();
+  // Raw bytes of vector media (PDF/AI) kept for pdf.js rasterization; other
+  // kinds live only behind their blob URL.
+  private vectorBytes = new Map<string, Uint8Array>();
 
   /** Register bytes for a DataInfo id; later `url()` calls hand back a blob URL. */
   addMedia(dataId: string, bytes: Uint8Array, fileName?: string): void {
@@ -38,15 +41,22 @@ export class ViewerCtx {
     const ext = fileName?.split(".").pop()?.toLowerCase() ?? "";
     const blob = new Blob([copy], { type: EXT_MIME[ext] ?? "application/octet-stream" });
     this.urls.set(dataId, URL.createObjectURL(blob));
+    if (ext === "pdf" || ext === "ai") this.vectorBytes.set(dataId, copy);
   }
 
   url(dataId: string): string | undefined {
     return this.urls.get(dataId);
   }
 
+  /** Bytes of a PDF/AI asset, for pdf.js; undefined for other media. */
+  bytes(dataId: string): Uint8Array | undefined {
+    return this.vectorBytes.get(dataId);
+  }
+
   /** Revoke every object URL (when a new document replaces the current one). */
   dispose(): void {
     for (const u of this.urls.values()) URL.revokeObjectURL(u);
     this.urls.clear();
+    this.vectorBytes.clear();
   }
 }

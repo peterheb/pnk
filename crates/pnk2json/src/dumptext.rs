@@ -43,6 +43,14 @@ fn para_plain(p: &Paragraph) -> String {
                 // line-oriented tooling (gotchas #15).
                 s.push_str(&text.replace(['\u{2028}', '\u{2029}'], " "))
             }
+            // An inline equation image carries its source expression; any
+            // other attached object is a placeholder space.
+            ParagraphItem::InlineObject {
+                drawable: Drawable::Image {
+                    equation: Some(eq), ..
+                },
+                ..
+            } => s.push_str(&eq.source),
             ParagraphItem::InlineObject { .. } => s.push(' '), // object placeholder
             ParagraphItem::Field { value, field, .. } => match (value, field) {
                 (Some(v), _) => s.push_str(v),
@@ -86,6 +94,12 @@ fn para_markdown(p: &Paragraph, char_styles: &[CharStyle]) -> String {
                     s.push_str(&t);
                 }
             }
+            ParagraphItem::InlineObject {
+                drawable: Drawable::Image {
+                    equation: Some(eq), ..
+                },
+                ..
+            } => s.push_str(&equation_markdown(eq)),
             ParagraphItem::InlineObject { .. } => s.push(' '),
             ParagraphItem::Field { value, .. } => {
                 if let Some(v) = value {
@@ -95,6 +109,15 @@ fn para_markdown(p: &Paragraph, char_styles: &[CharStyle]) -> String {
         }
     }
     s.trim_end().to_string()
+}
+
+/// LaTeX sources go out as `$...$` math spans; MathML markup (all tags,
+/// which the HTML escape would neutralize anyway) as a code span.
+fn equation_markdown(eq: &EquationInfo) -> String {
+    match eq.format {
+        EquationFormat::Latex => format!("${}$", escape_html(&eq.source)),
+        EquationFormat::Mathml => format!("`{}`", eq.source.replace('`', "'")),
+    }
 }
 
 fn styled_plain(st: &StyledText) -> String {
@@ -148,6 +171,9 @@ fn drawable_texts(d: &Drawable, out: &mut Vec<(String, String)>) {
                 drawable_texts(c, out);
             }
         }
+        Drawable::Image {
+            equation: Some(eq), ..
+        } => out.push(("equation".into(), eq.source.clone())),
         Drawable::Image { .. } => out.push(("image".into(), String::new())),
         Drawable::Table { table, .. } => {
             out.push((
@@ -619,6 +645,9 @@ fn numbers_text(d: &NumbersDocument, out: &mut String) {
                         chart.series.len()
                     ));
                 }
+                Drawable::Image {
+                    equation: Some(eq), ..
+                } => out.push_str(&format!("\n{}\n", eq.source)),
                 Drawable::Image { .. } => out.push_str("\n[image]\n"),
                 Drawable::Group { children, .. } => {
                     let mut texts = Vec::new();
@@ -680,6 +709,9 @@ fn numbers_md(d: &NumbersDocument, out: &mut String) {
                         out.push('\n');
                     }
                 }
+                Drawable::Image {
+                    equation: Some(eq), ..
+                } => out.push_str(&format!("{}\n\n", equation_markdown(eq))),
                 Drawable::Image { .. } => out.push_str("*(image)*\n\n"),
                 Drawable::Movie { .. } => out.push_str("*(movie)*\n\n"),
                 Drawable::Group { children, .. } => {
