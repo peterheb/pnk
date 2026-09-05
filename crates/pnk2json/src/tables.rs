@@ -211,7 +211,8 @@ fn header_styles(
                 s.paragraph = Some(para);
             }
         }
-        let s = crate::ctx::strip_cell_defaults(s);
+        // wrap=false stays explicit until the section-default fill has run
+        // (convert_table strips it at emission)
         if s != TableCellStyle::default() {
             out.insert(idx, s);
         }
@@ -1112,10 +1113,13 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
             cell.cell_style_index = cell_pool.intern(s);
         }
         // Wrap resolves through the SECTION default when the cell's own
-        // style chain is silent: 90fbb6c53674 stores per-cell styles
+        // style chain is SILENT: 90fbb6c53674 stores per-cell styles
         // without text_wrap over a wrapping body style, and Numbers wraps
-        // ("Portes en Valdaine" on two lines). A cell style that sets
-        // wrap=false keeps it (stripped to absent at emission = one line).
+        // ("Portes en Valdaine" on two lines). An explicit wrap=false in the
+        // chain wins over the section default (cab63a6dd0de's Excel-imported
+        // "Stories of the Saints" cells spill unwrapped over a wrapping body
+        // style) — which is why the pool keeps Some(false) until the strip
+        // pass after this loop.
         if let Some(i) = cell.cell_style_index {
             let unset = cell_pool
                 .items
@@ -1229,6 +1233,15 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
     // an explicit true shows it — `name_hidden` records the off state.
     let stored_name = m.string(8).filter(|n| !n.is_empty());
     let name_shown = m.boolean(22) == Some(true);
+    // Emission strip: wrap=false is the documented default (model-design
+    // "STYLES OMIT-DEFAULT"); it stayed explicit in the pool only so the
+    // section-default fill above could tell "no" from "unsaid".
+    for s in cell_pool.items.iter_mut() {
+        if s.text_wrap == Some(false) {
+            s.text_wrap = None;
+        }
+    }
+
     TableModel {
         name_hidden: match &stored_name {
             Some(_) if !name_shown => Some(true),
@@ -1702,7 +1715,7 @@ fn decode_cell(
     {
         style = Some(overlay_conditional(style, cond));
     }
-    let cell_style_index = style.and_then(|s| cell_pool.intern(crate::ctx::strip_cell_defaults(s)));
+    let cell_style_index = style.and_then(|s| cell_pool.intern(s));
 
     // Formula placeholder (TSCE stays opaque; model-design §2.8).
     let formula = formula_id.map(|id| TsceFormulaRef::unparsed(id.to_string()));
@@ -2236,7 +2249,7 @@ fn decode_cell_v3(
             }
         }
     }
-    let cell_style_index = style.and_then(|s| cell_pool.intern(crate::ctx::strip_cell_defaults(s)));
+    let cell_style_index = style.and_then(|s| cell_pool.intern(s));
     if matches!(value, CellValue::Empty) && cell_style_index.is_none() {
         return None;
     }
@@ -2637,7 +2650,7 @@ fn decode_cell_v4(
     {
         style = Some(overlay_conditional(style, cond));
     }
-    let cell_style_index = style.and_then(|s| cell_pool.intern(crate::ctx::strip_cell_defaults(s)));
+    let cell_style_index = style.and_then(|s| cell_pool.intern(s));
     if matches!(value, CellValue::Empty) && cell_style_index.is_none() && formula.is_none() {
         return None;
     }
