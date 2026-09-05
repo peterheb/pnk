@@ -114,8 +114,13 @@ export function applyCharStyle(el: HTMLElement, cs: CharStyle | undefined): void
   if (cs.capitalization === "all-caps") s.textTransform = "uppercase";
   else if (cs.capitalization === "small-caps") s.fontVariant = "small-caps";
   else if (cs.capitalization === "title") s.textTransform = "capitalize";
-  if (cs.baseline === "superscript") s.verticalAlign = "super";
-  else if (cs.baseline === "subscript") s.verticalAlign = "sub";
+  // Superscript/subscript: Keynote sets the run at 2/3 size and raises it so
+  // its top meets the cap height (handtracker b6b44046 cover, Arial 50pt:
+  // the superscript "1" is 50px tall against 77px caps at 150dpi, its
+  // bottom 26px above the baseline). CSS "super" alone kept full size.
+  // The vertical-align length is in the run's OWN em (2/3 of the parent's).
+  if (cs.baseline === "superscript") { s.fontSize = "66.7%"; s.verticalAlign = "0.5em"; }
+  else if (cs.baseline === "subscript") { s.fontSize = "66.7%"; s.verticalAlign = "-0.25em"; }
   if (cs.baselineShiftPt) s.verticalAlign = `${cs.baselineShiftPt}px`;
   // A shifted run must not grow the LINE box (Apple's baseline shifts never
   // change line spacing; 0d5851c0 slide 19's raised red labels stretched
