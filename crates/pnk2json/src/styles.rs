@@ -226,6 +226,19 @@ pub fn para_style_from(ctx: &mut Ctx, msgs: &[Msg]) -> ParaStyle {
             _ => None,
         };
     }
+    // writing_direction (38): 0 = left-to-right, 1 = right-to-left; the
+    // default kWritingDirectionNatural (-1, a 10-byte varint) means "from
+    // the text" and stays absent. Arabic corpus documents store 1 on every
+    // paragraph style (77890685, ae1cc13b); without it the viewer laid the
+    // paragraphs out left-to-right with right alignment: list markers on
+    // the left, sentence punctuation at the wrong end.
+    if let Some(m) = take(msgs, 38, None) {
+        s.writing_direction = match m.varint(38) {
+            Some(0) => Some(WritingDirection::LeftToRight),
+            Some(1) => Some(WritingDirection::RightToLeft),
+            _ => None,
+        };
+    }
     if let Some(m) = take(msgs, 11, None) {
         s.left_indent_pt = m.f32v(11).map(|v| v as f64);
     }

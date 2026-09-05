@@ -344,6 +344,27 @@ const PUA_MARKERS: Record<string, string> = {
  * list membership renders a marker (• / 1. …) with restart-aware numbering
  * tracked in the shared ListNumberingState.
  */
+/**
+ * Paragraph base direction: the style's writing direction when stored, else
+ * Pages' "natural" — the first strong character decides (Unicode bidi
+ * paragraph level). No corpus document stores the direction: 77890685's and
+ * ae1cc13b's Arabic paragraphs are all "natural", and without this they
+ * ran left-to-right with right alignment — list markers on the left, the
+ * sentence's period at the wrong end, justified last lines at the left.
+ */
+function paragraphDirection(p: Paragraph, style: ParaStyle | undefined): "rtl" | "ltr" | undefined {
+  if (style?.writingDirection === "right-to-left") return "rtl";
+  if (style?.writingDirection === "left-to-right") return "ltr";
+  for (const it of p.items) {
+    const text = typeof it === "string" ? it : "type" in it ? "" : (it as TextRun).text;
+    for (const ch of text) {
+      if (/[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/.test(ch)) return "rtl";
+      if (/\p{L}/u.test(ch)) return undefined;
+    }
+  }
+  return undefined;
+}
+
 export function renderParagraph(
   p: Paragraph,
   doc: HydratedDoc,
@@ -352,6 +373,7 @@ export function renderParagraph(
 ): HTMLElement {
   const style = paraStyleOf(doc, p.pStyle);
   const list = style?.list;
+  const dir = paragraphDirection(p, style);
   // Apple draws no marker on an EMPTY list paragraph (blank bullet lines
   // exist only while editing — 1249b390's preview shows clean gaps between
   // items where we drew lone ▶ glyphs); inline objects/fields still count
@@ -370,6 +392,12 @@ export function renderParagraph(
   const el = level >= 1 && level <= 5
     ? document.createElement(`h${level}`)
     : document.createElement("p");
+  if (dir) {
+    el.dir = dir;
+    // "auto" alignment follows the direction (start); an explicit left
+    // alignment stays at the left in a right-to-left paragraph
+    if (style?.horizontalAlignment === "left") el.style.textAlign = "left";
+  }
 
   // The block's own font-size feeds the line-box STRUT: run spans carry
   // their sizes but the <p> inherited the chrome's 15px, so every line of
@@ -421,6 +449,7 @@ export function renderParagraph(
     // marker hangs in a flex row; paragraph margins live on the wrapper
     const wrap = document.createElement("div");
     wrap.className = "list-item";
+    if (dir) wrap.dir = dir; // the marker hangs on the paragraph's start side
     if (style) {
       applyParaStyle(wrap, style, paraFont, paraSizePx);
       el.style.marginTop = "0";
@@ -464,7 +493,9 @@ export function renderParagraph(
     // ...but not its underline or strikethrough: Keynote draws a plain dot
     // beside a hyperlink bullet (RIPE 75 slide 6), not an underlined one.
     marker.style.textDecoration = "none";
-    marker.style.paddingRight = "0.3em"; // marker-to-text gap, scales with size
+    // marker-to-text gap, scales with size; logical so a right-to-left row
+    // (direction set by the paragraph style) keeps the gap beside the text
+    marker.style.paddingInlineEnd = "0.3em";
     if (list!.textIndentEm) {
       const emPt = runCs?.fontSizePt ?? runSizes[0];
       marker.style.minWidth = emPt
