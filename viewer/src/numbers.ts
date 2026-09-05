@@ -6,7 +6,7 @@ import type { TableModel } from "../../model/src/shared";
 import type { ViewerCtx } from "./ctx";
 import { applyTextFit, renderCanvasDrawable } from "./drawables";
 import type { HydratedDoc } from "./hydrate";
-import { tableDrawnWidth } from "./tables";
+import { spillUnwrappedCells, tableDrawnWidth } from "./tables";
 
 function drawableExtent(
   d: { type: string; table?: TableModel; common?: { position?: { x: number; y: number }; size?: { width: number; height: number } }; children?: unknown[] },
@@ -32,6 +32,24 @@ function sheetExtent(sheet: Sheet): { width: number; height: number } {
   const cur = { x: 720, y: 480 };
   for (const d of sheet.drawables) drawableExtent(d, cur);
   return { width: cur.x + 40, height: cur.y + 40 };
+}
+
+/** Grow the canvas to the drawn content. The stored table frame is a stale
+ * cache of the table's size and unsized rows auto-fit in the DOM, so the
+ * model-derived extent can be short by hundreds of points (a French
+ * property listing lost its bottom 40% of rows to the element box). Must
+ * run after the sheet is in the document, so offsets are laid out. */
+function fitCanvasToContent(area: HTMLElement): void {
+  const canvas = area.querySelector<HTMLElement>(".sheet-canvas");
+  if (!canvas) return;
+  let w = canvas.offsetWidth;
+  let h = canvas.offsetHeight;
+  for (const el of Array.from(canvas.children) as HTMLElement[]) {
+    w = Math.max(w, el.offsetLeft + Math.max(el.offsetWidth, el.scrollWidth) + 40);
+    h = Math.max(h, el.offsetTop + Math.max(el.offsetHeight, el.scrollHeight) + 40);
+  }
+  canvas.style.width = `${w}px`;
+  canvas.style.height = `${h}px`;
 }
 
 function renderSheet(sheet: Sheet, hdoc: HydratedDoc, ctx: ViewerCtx, index: number): HTMLElement {
@@ -66,6 +84,8 @@ export function renderNumbers(doc: NumbersDocument, hdoc: HydratedDoc, ctx: View
     // pass; keynote has run it since c94861a — sheets clipped instead:
     // proteger-les-donnees red banner cut its own caption).
     applyTextFit(areaSlot);
+    spillUnwrappedCells(areaSlot);
+    fitCanvasToContent(areaSlot);
     for (const tab of tabs.children) {
       tab.classList.toggle("active", (tab as HTMLElement).dataset.sheetIndex === String(index));
     }

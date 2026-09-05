@@ -489,9 +489,57 @@ function applyCellStyle(td: HTMLTableCellElement, style: TableCellStyle | undefi
   }
   if (style?.verticalAlignment) s.verticalAlign = style.verticalAlignment === "middle" ? "middle" : style.verticalAlignment === "bottom" ? "bottom" : "top";
   if (style?.padding) s.padding = `${style.padding.top ?? 4}px ${style.padding.right ?? 8}px ${style.padding.bottom ?? 4}px ${style.padding.left ?? 8}px`;
-  if (style?.textWrap) s.whiteSpace = "normal";
+  // Wrap is resolved through the style chain by the converter and omitted
+  // when false, so absent means "one line": Numbers keeps unwrapped text on
+  // a single line, clipped at the cell edge unless the cells to the right
+  // are empty, in which case it spills over them (see spillUnwrappedCells).
+  if (style?.textWrap) {
+    s.whiteSpace = "normal";
+    td.classList.add("cell-wrap");
+  } else {
+    s.whiteSpace = "nowrap";
+    td.classList.add("cell-nowrap");
+  }
   if (header) td.classList.add("cell-header");
   if (footer) td.classList.add("cell-footer");
+}
+
+/**
+ * Let unwrapped cell text spill across empty neighbor cells, as Numbers
+ * draws it: an unwrapped cell wider than its column extends over the cells
+ * to its right while they are empty, and is clipped at the first cell with
+ * content or at the table edge (MTD workbook: three lines of instructions
+ * in a 40pt first column spanning the next two columns; a calendar
+ * template's "S_LOCALIZABLE_Sunday" clipped to "S_L" because its neighbor
+ * has content). Needs layout, so call after the table is in the document.
+ */
+export function spillUnwrappedCells(root: HTMLElement): void {
+  const cells = root.querySelectorAll<HTMLTableCellElement>("table.sheet-table td.cell-nowrap, table.sheet-table th.cell-nowrap");
+  for (const td of Array.from(cells)) {
+    if (td.textContent?.trim() === "") continue;
+    const align = getComputedStyle(td).textAlign;
+    if (align === "right" || align === "end" || align === "center") continue;
+    const need = td.scrollWidth - td.clientWidth;
+    if (need <= 0) continue;
+    let room = 0;
+    let sib = td.nextElementSibling as HTMLTableCellElement | null;
+    while (sib && room < need) {
+      if (sib.textContent?.trim() !== "" || sib.querySelector("img, svg, table")) break;
+      room += sib.getBoundingClientRect().width;
+      sib = sib.nextElementSibling as HTMLTableCellElement | null;
+    }
+    if (room <= 0) continue;
+    // Move the content into a clipping box that is as wide as the run of
+    // empty cells allows; the cell itself lets it overflow.
+    const box = document.createElement("div");
+    box.className = "cell-spill";
+    box.append(...Array.from(td.childNodes));
+    td.appendChild(box);
+    const cs = getComputedStyle(td);
+    const inner = td.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    box.style.width = `${inner + room}px`;
+    td.style.overflow = "visible";
+  }
 }
 
 /**

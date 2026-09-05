@@ -415,6 +415,7 @@ fn shape_info_drawable(
             vertical_alignment: frame.vertical_alignment,
             text_insets: None,
             text_fit,
+            natural_size: None,
         }
     } else {
         let mut d = shape_drawable(ctx, &shape, text, frame.vertical_alignment);
@@ -457,6 +458,35 @@ fn shape_info_drawable(
                 if let (Some(p), Some(s)) = (common.position.as_mut(), common.size.as_ref()) {
                     p.x -= s.width / 2.0;
                     p.y -= s.height / 2.0;
+                }
+            }
+        }
+    }
+
+    // Zero-size geometry: Numbers text boxes can store 0×0 in the geometry
+    // while the path source still carries a natural size (6914f46e51ab time
+    // sheet: five boxes at 0×0, path natural sizes 183×36, 185×25, 30×21,
+    // 146×25). Numbers sizes such a box to its content, so the natural size
+    // is a hint, not the box: the title's 183pt matches its text, the
+    // 30×21 box holds a three-line paragraph. Emit it as Textbox.natural_size
+    // and leave the stored 0×0 alone; the viewer's zero-size path decides.
+    // [inferred: verified against Numbers' export of 6914f46e51ab]
+    if let Drawable::Textbox {
+        common, natural_size, ..
+    } = &mut drawable
+    {
+        let zero = common
+            .size
+            .as_ref()
+            .map_or(true, |s| s.width == 0.0 && s.height == 0.0);
+        if zero {
+            if let Some(ns) = shape
+                .msg(3)
+                .map(|ps| crate::tsd::shape_geometry(&ps))
+                .and_then(|g| g.natural_size)
+            {
+                if ns.width > 0.0 || ns.height > 0.0 {
+                    *natural_size = Some(ns);
                 }
             }
         }

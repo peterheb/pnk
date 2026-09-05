@@ -1114,6 +1114,7 @@ function anchorZeroSizeText(
   text: StyledText | undefined,
   verticalAlignment: string | undefined,
   doc: HydratedDoc,
+  naturalSize?: { width: number; height: number },
 ): void {
   div.style.width = "auto";
   div.style.height = "auto";
@@ -1123,6 +1124,19 @@ function anchorZeroSizeText(
   layer.style.whiteSpace = "nowrap";
   layer.style.width = "max-content"; // percentage of an auto box is meaningless
   layer.style.height = "auto";
+  if (naturalSize && naturalSize.width > 0 && (doc as { kind?: string }).kind === "numbers") {
+    // Numbers content-sized box (stored 0×0, path natural size present):
+    // the box is at least its natural width and grows with its text, but
+    // long text wraps rather than running across the sheet. The wrap
+    // width is not stored; 6914f46e51ab's intro paragraph wraps at about
+    // 355pt in Numbers' own export, and that is the cap used here.
+    // Keynote decks store hundreds of 0×0 labels with natural sizes and
+    // render correctly on the nowrap path above, so this is Numbers-only.
+    // [inferred from one document]
+    layer.style.minWidth = `${naturalSize.width}px`;
+    layer.style.maxWidth = `${Math.max(naturalSize.width, 355)}px`;
+    layer.style.whiteSpace = "normal";
+  }
   const paras = text?.paragraphs;
   const firstPara = paras?.find((p) => typeof p !== "string" && p.items.length > 0) ?? paras?.[0];
   const hAlign = paraStyleOf(doc, typeof firstPara === "string" ? undefined : firstPara?.pStyle)?.horizontalAlignment;
@@ -1276,7 +1290,7 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
       // Zero-size textboxes (Keynote emits some badge labels at 0×0) carry
       // their text unclipped: let the content size the box instead.
       if (!c.size || (c.size.width === 0 && c.size.height === 0)) {
-        anchorZeroSizeText(div, layer, d.text, d.verticalAlignment, doc);
+        anchorZeroSizeText(div, layer, d.text, d.verticalAlignment, doc, d.naturalSize);
       } else {
         applyTextFitMode(div, layer, d.textFit, d.verticalAlignment);
       }

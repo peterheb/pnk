@@ -238,15 +238,35 @@ failing (below). The Claude run used about 470k input tokens.
 
 ### Problems in the image pairs
 
-Found by reading the pairs the judges disagreed on, and not yet fixed:
+Found by reading the pairs the judges disagreed on:
 
-- Numbers' PDF export scales a whole sheet onto one page, while the viewer
-  screenshot is the browser viewport, so long sheets are missing rows on
-  the viewer side. This is a `visual_diff.py` problem, not a viewer problem.
-- `--max-pages 4` samples short documents as heavily as long ones.
+- Numbers' PDF export paginates and scales a sheet onto printed pages,
+  while the viewer shows one continuous canvas. Prompt v2 (2026-09-03)
+  tells the judge to ignore pagination, margins, scale, and locale for
+  spreadsheets. Under v1 the judges had scored page geometry rather than
+  the viewer.
+- The Numbers screenshot lost rows because the sheet canvas was sized
+  from stale table frames; fixed in the viewer the same day (the canvas
+  now grows to its rendered content).
+- `--max-pages 4` samples short documents as heavily as long ones. Not
+  yet changed.
+
+### Numbers, round 1 (2026-09-03, Qwen thinking off)
+
+After prompt v2 and three viewer fixes found by reading the judged pairs
+(canvas sized to content; unwrapped cells kept on one line and spilling
+over empty neighbors; content-sized text boxes wrapping), Qwen's mean
+over the same 19 Numbers pages went from 4.79 (v1, old build) to 6.16
+(v2, new build); the MTD tax workbook from 2.8 to 5.2 and the Italian
+exam list from 2 to 7. The two numbers are not a controlled comparison,
+since the prompt changed as well; the per-page composites are the
+evidence for each fix. Remaining Numbers problems the judges name most:
+number formats (integers shown as currency, a percentage as $0.95),
+category grouping rows, chart legends and axis titles, and cell border
+weight and alternating row shading.
 
 ### Next
 
-Fix the two harvest problems and re-run; then score more of the corpus,
-one or two pages per document, with Qwen; then use the ranked list to
-choose fidelity work.
+Score more of the corpus, one or two pages per document, with Qwen; use
+the ranked list to choose fidelity work; add a reference re-run with
+Claude when the prompt changes again.
