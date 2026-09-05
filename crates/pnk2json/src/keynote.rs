@@ -408,13 +408,23 @@ fn convert_slide_raw(ctx: &mut Ctx, slide_id: u64, is_master: bool) -> (Slide, O
             .collect()
     };
 
+    // Structured title: the plain text of the first title placeholder that
+    // carries text (paragraphs joined by "\n"). Derived here so that every
+    // consumer — the dumpers, extraction tools, a viewer's slide navigator —
+    // reads one string instead of walking drawables for a role.
+    let title = slide_title(&drawables);
+
     // Notes: KN.NoteArchive { containedStorage = 1 } → TSWP.StorageArchive.
+    // Every slide carries a notes storage; one with no visible text (the
+    // usual case) is omitted rather than emitted as an empty StyledText, so
+    // `notes` present means "this slide has presenter notes".
     let notes = m
         .reference(27)
         .and_then(|nid| ctx.loaded.msg(nid))
         .and_then(|n| n.reference(1))
         .and_then(|stid| crate::text::extract(ctx, stid))
-        .map(|e| e.text);
+        .map(|e| e.text)
+        .filter(|t| !styled_text_is_blank(t));
 
     // Background: KN.SlideStyleArchive.slide_properties(11).fill(1), walking
     // up the TSS.StyleArchive parent chain when the style itself sets none.
@@ -443,6 +453,7 @@ fn convert_slide_raw(ctx: &mut Ctx, slide_id: u64, is_master: bool) -> (Slide, O
         Slide {
             master_drawables: None,
             name: name.clone(),
+            title,
             skipped: None,
             master_name: None,
             drawables,
@@ -455,10 +466,41 @@ fn convert_slide_raw(ctx: &mut Ctx, slide_id: u64, is_master: bool) -> (Slide, O
     )
 }
 
+/// The plain text of the first title placeholder that carries text, or
+/// None. Paragraphs join with "\n"; blank paragraphs are dropped, so a
+/// title of only whitespace is None. Placeholders inside groups are not
+/// searched: Keynote keeps title placeholders at the slide's top level.
+fn slide_title(drawables: &[Drawable]) -> Option<String> {
+    drawables.iter().find_map(|d| {
+        if drawable_role(d) != Some("title") {
+            return None;
+        }
+        let text = match d {
+            Drawable::Textbox { text, .. } => text,
+            Drawable::Shape { text: Some(t), .. } => t,
+            _ => return None,
+        };
+        let t = crate::dumptext::styled_plain(text);
+        (!t.is_empty()).then_some(t)
+    })
+}
+
+/// True when the text has no visible content: only whitespace runs, no
+/// fields, inline objects or attachments.
+fn styled_text_is_blank(st: &StyledText) -> bool {
+    st.paragraphs.iter().all(|p| {
+        p.items.iter().all(|it| match it {
+            ParagraphItem::Plain(t) | ParagraphItem::Text { text: t, .. } => t.trim().is_empty(),
+            _ => false,
+        })
+    })
+}
+
 fn empty_slide() -> Slide {
     Slide {
         master_drawables: None,
         name: None,
+        title: None,
         skipped: None,
         master_name: None,
         drawables: Vec::new(),

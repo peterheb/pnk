@@ -33,7 +33,7 @@ pub fn to_markdown(doc: &PnkDocument) -> String {
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-fn para_plain(p: &Paragraph) -> String {
+pub(crate) fn para_plain(p: &Paragraph) -> String {
     let mut s = String::new();
     for item in &p.items {
         match item {
@@ -120,7 +120,7 @@ fn equation_markdown(eq: &EquationInfo) -> String {
     }
 }
 
-fn styled_plain(st: &StyledText) -> String {
+pub(crate) fn styled_plain(st: &StyledText) -> String {
     st.paragraphs
         .iter()
         .map(para_plain)
@@ -215,7 +215,15 @@ fn slide_title_and_bullets(
     slide: &Slide,
     para_styles: &[ParaStyle],
 ) -> (Option<String>, Vec<String>) {
-    let mut title = None;
+    // The title is the converter's `Slide.title` (the first title placeholder
+    // with text); the dumpers print its first line and skip that drawable
+    // when collecting bullets.
+    let title = slide
+        .title
+        .as_deref()
+        .and_then(|t| t.lines().next())
+        .map(str::to_string);
+    let mut title_seen = false;
     let mut bullets = Vec::new();
     for d in &slide.drawables {
         let role = match d {
@@ -230,12 +238,11 @@ fn slide_title_and_bullets(
             _ => None,
         };
         let Some(text) = text else { continue };
-        if role.as_deref() == Some("title") && title.is_none() {
-            let t = text.paragraphs.first().map(para_plain).unwrap_or_default();
-            if !t.is_empty() {
-                title = Some(t);
+        if role.as_deref() == Some("title") && title.is_some() && !title_seen {
+            if !styled_plain(text).is_empty() {
+                title_seen = true;
+                continue;
             }
-            continue;
         }
         for p in &text.paragraphs {
             let line = para_plain(p);

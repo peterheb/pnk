@@ -162,6 +162,8 @@ manually. JSON emission stays compact (LS/PS escaping stays).
 | `KN.DocumentArchive` [1] → `KN.ShowArchive` [2] (keynote.md) | `KeynoteDocument` |
 | `KN.SlideTreeArchive.slides` (authoritative order) | `KeynoteDocument.slides[]` |
 | `KN.SlideNodeArchive` (navigator tree) | only `skipped`/`slideNumberVisible` flags harvested |
+| title placeholder text (`KN.PlaceholderArchive` role title, on the slide) | `Slide.title?: string` — plain text derived at emission (paragraphs joined by "\n"); absent when the slide has no title text. Consumers read this, never walk `drawables` for a role `[converter-derived 2026-09-05; fixtures kcsrk 6f8a…, RIPE 75 bc5a842a]` |
+| `KN.NoteArchive.containedStorage` (presenter notes) | `Slide.notes?: StyledText` — present only when the storage has visible text; the empty storage every slide carries is omitted `[converter rule 2026-09-05]` |
 | `KN.ThemeArchive.templates` | `KeynoteDocument.masters[]` |
 | `TSP.PackageMetadata` (object 2), `Metadata/*.plist` | `DocumentMeta` + `media[]` |
 

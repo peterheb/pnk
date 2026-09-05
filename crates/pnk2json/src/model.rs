@@ -1782,6 +1782,10 @@ pub struct TransitionSpec {
 pub struct Slide {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// Plain text of the title placeholder, derived at emission (paragraphs
+    /// joined by "\n"); absent when the slide has no title text.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skipped: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
