@@ -327,9 +327,82 @@ export scales onto one page, and a 1,129 × 192 table (217,000 cells)
 that the viewer takes too long to lay out; the second is a performance
 item, not a fidelity one.
 
+### Keynote, round 1 (2026-09-04, Qwen thinking off, every page)
+
+Six decks from six origin hosts that no earlier run had judged: RIPE 75
+(8 slides), Saint Mary's Press (15), pre-trib.org (19), a Bayesian
+statistics lecture from atnf.csiro.au (25), an OCaml effect-handlers
+talk from kcsrk.info (37), and a GitHub Actions deck from howtocode.io
+(7). All 111 slides were exported from Keynote and scored before and
+after the fixes, with the same exports on both sides.
+
+The judge's first-five-pages sample scored 8.5 and named almost nothing
+but font hinting; the defects were on later slides and were found by
+reading the composites. Each fix was confirmed against Keynote's raster
+by measuring rows of pixels, not by eye alone.
+
+| defect | decks | cause | fix |
+| --- | --- | --- | --- |
+| list rows taller than their text, then the whole body shrunk to fit | RIPE 75 | the 1.5× marker span set the flex row's height | marker contributes no line height |
+| code blocks 30% too tight | kcsrk | "at least 20pt" line spacing rendered as exactly 20pt | min/max modes bound the natural height |
+| "Questions?" 60pt low, over the email link; a code block 200pt low | RIPE 75, kcsrk | a 0-height box with "middle" alignment hung its text below the anchor | Keynote centres the block on the stored y |
+| 124pt cover title on one line off both slide edges | pre-trib | 0×0 box rendered nowrap; its natural size was 1821×370, two lines | wrap at the natural width, bounded shrink for the wider fallback face |
+| white mat and shadow around the hidden part of a cropped photo | Saint Mary's | border and drop shadow on the image box, not the mask window | frame and shadow on the window, stroke centred on its edge |
+| block arrows drawn as chevrons with a fat shaft | atnf | fixed 0.35/0.45 guesses | converter carries TSD.PointPathSource.point; head 64pt, shaft edge 0.34 |
+
+Qwen's mean over the 111 pages, before and after. Two regressions the
+re-judge caught on the way (a stale natural height shrinking a list, and
+hanging trailing spaces painting their background across a diagram) are
+fixed in the same branch and included in the after column.
+
+| doc | pages | before | after |
+| --- | ---: | ---: | ---: |
+| RIPE 75 | 8 | 8.2 | 9.0 |
+| Saint Mary's Press | 15 | 8.7 | 9.0 |
+| pre-trib.org | 19 | 8.7 | 9.0 |
+| atnf Bayesian | 25 | 6.0 | 6.3 |
+| kcsrk OCaml | 37 | 8.1 | 8.6 |
+| howtocode Actions | 7 | 8.6 | 8.3 |
+| all | 111 | 7.86 | 8.23 |
+
+Pages that moved by two points or more:
+
+| slide | before | after | what changed |
+| --- | ---: | ---: | --- |
+| RIPE 75 8 | 5 | 9 | zero-height box centred on its anchor |
+| Saint Mary's Press 12 | 5 | 9 | frame and shadow on the crop window |
+| atnf Bayesian 10 | 2 | 4 | arrow proportions; the inline equations are still grey boxes |
+| atnf Bayesian 19 | 6 | 9 | arrows |
+| atnf Bayesian 20 | 6 | 9 | arrows |
+| kcsrk OCaml 6 | 4 | 8 | code box position |
+| kcsrk OCaml 8 | 4 | 7 | code box position; its curved connectors are still straight |
+| kcsrk OCaml 18 | 6 | 9 | code line pitch |
+| kcsrk OCaml 20 | 6 | 9 | code line pitch |
+| kcsrk OCaml 28 | 7 | 9 | code line pitch and position |
+| kcsrk OCaml 33 | 4 | 7 | line pitch |
+| pre-trib.org 1 | 4 | 9 | title wraps to two lines |
+
+Slides scored 9 went from 75 to 89 of 111. No slide dropped by more than a point; the ones that dropped one point are
+hinting and anti-aliasing verdicts on unchanged renders, plus one OCaml slide where the code box, now in Keynote's place, is crossed by connection lines that should be curves.
+
+What remains, in the order the judge names it:
+
+1. Equations. Keynote stores each equation as a PDF (`equation-N.pdf`)
+   with no raster twin, and the viewer draws a grey box for it. 41 of
+   the 484 Keynote decks in the corpus carry one; the Bayesian lecture
+   has them on 11 of 25 slides, and its score is capped by them. In-
+   browser PDF rasterization (pdf.js, Apache-2.0) is the fix; it would
+   also cover pasted vector art without a thumbnail. Needs
+   `worker-src blob:` in the viewer's CSP.
+2. Curved and dotted connection lines drawn straight (kcsrk slide 8).
+3. Hand-drawn ("sketch") stroke styles, which the judge names on every
+   deck that uses them and which no fix here addresses.
+4. Wrap differences from fallback faces (Franklin Gothic, Gill Sans):
+   one word per slide moving between lines.
+
 ### Next
 
-Row height from wrapped text is the next fidelity item. Then the cached
-formula results. Score more of the corpus, one or two pages per document, with Qwen; use
+Numbers: row height from wrapped text, then the cached formula results.
+Keynote: PDF media (equations first), then curved connection lines. Score more of the corpus, one or two pages per document, with Qwen; use
 the ranked list to choose fidelity work; add a reference re-run with
 Claude when the prompt changes again.

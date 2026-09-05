@@ -377,6 +377,15 @@ export interface ShapeGeometry {
     cornerRadius?: number;
     centerTail?: boolean;
   };
+  /**
+   * Control point of a point preset, in `naturalSize` space. Arrows: x is
+   * the head length in points and y the shaft's top edge as a fraction of
+   * the height (Keynote's default arrow stores 64 × 0.34, verified against
+   * the app's export of atnf.csiro.au's Bayesian deck). Star: x is the
+   * number of points and y the inner radius as a fraction of the outer.
+   * [proto: TSD.PointPathSourceArchive.point; semantics inferred]
+   */
+  point?: Point;
 }
 
 export interface ImageDrawable {

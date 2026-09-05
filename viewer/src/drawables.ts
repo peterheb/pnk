@@ -22,8 +22,8 @@ import type {
 } from "../../model/src/shared";
 import type { ViewerCtx } from "./ctx";
 import { renderTable } from "./tables";
-import { layoutTabs, renderStyledText } from "./text";
-import { paraStyleOf, type HydratedDoc } from "./hydrate";
+import { layoutTabs, naturalLineHeight, renderStyledText } from "./text";
+import { charStyleOf, paraStyleOf, type HydratedDoc } from "./hydrate";
 
 function el(tag: string, className?: string): HTMLElement {
   const e = document.createElement(tag);
@@ -117,8 +117,12 @@ function presetPathD(preset: string, g: ShapeGeometry, w: number, h: number): st
       return `M${pts.join(" L")} Z`;
     }
     case "double-arrow": {
-      const head = w * 0.25;
-      const bar = h * 0.45;
+      // point.x = head length (natural-size pt), point.y = shaft top edge as
+      // a fraction of the height (see ShapeGeometry.point); defaults are
+      // Keynote's stored values for a fresh arrow (64pt on 174, 0.34).
+      const sx = g.naturalSize?.width ? w / g.naturalSize.width : 1;
+      const head = g.point ? clamp(g.point.x * sx, 0, w / 2) : w * 0.25;
+      const bar = g.point ? h * (1 - 2 * clamp(g.point.y, 0, 0.5)) : h * 0.45;
       const p: [number, number][] = [
         [0, h / 2], [head, 0], [head, (h - bar) / 2], [w - head, (h - bar) / 2], [w - head, 0],
         [w, h / 2], [w - head, h], [w - head, (h + bar) / 2], [head, (h + bar) / 2], [head, h],
@@ -126,12 +130,15 @@ function presetPathD(preset: string, g: ShapeGeometry, w: number, h: number): st
       return "M" + p.map(([x, y]) => `${f(x)},${f(y)}`).join(" L") + " Z";
     }
     case "star": {
-      // scalar = pointiness (0..1): inner radius shrinks as it grows
-      const inner = 0.5 - 0.3 * clamp(g.scalar ?? 0.4, 0, 1);
+      // point.x = number of points, point.y = inner radius as a fraction of
+      // the outer (Keynote stores 5 × 0.498 for its default star); without
+      // it, scalar = pointiness (0..1): inner radius shrinks as it grows
+      const n = g.point && g.point.x >= 3 ? Math.round(g.point.x) : 5;
+      const inner = g.point ? 0.5 * clamp(g.point.y, 0.05, 0.95) : 0.5 - 0.3 * clamp(g.scalar ?? 0.4, 0, 1);
       const pts: string[] = [];
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < 2 * n; i++) {
         const r = i % 2 === 0 ? 0.5 : inner;
-        const a = (Math.PI / 5) * i - Math.PI / 2;
+        const a = (Math.PI / n) * i - Math.PI / 2;
         pts.push(`${f(w / 2 + Math.cos(a) * r * w)},${f(h / 2 + Math.sin(a) * r * h)}`);
       }
       return `M${pts.join(" L")} Z`;
@@ -148,9 +155,18 @@ function presetPathD(preset: string, g: ShapeGeometry, w: number, h: number): st
     case "right-arrow":
     case "up-arrow":
     case "down-arrow": {
-      // simple block arrow pointing in the preset's direction
-      const head = preset.endsWith("left") || preset.endsWith("right") ? w * 0.35 : h * 0.35;
-      const bar = (preset.endsWith("left") || preset.endsWith("right") ? h : w) * 0.45;
+      // Block arrow from the stored control point: point.x is the head
+      // length along the arrow (natural-size pt, scaled to the box) and
+      // point.y the shaft edge as a fraction of the cross size. Keynote's
+      // export of a default 174×100 arrow (atnf.csiro.au Bayesian deck)
+      // measures a 63pt head and a 31pt shaft, from a stored 64 × 0.34;
+      // the old 0.35/0.45 guesses drew a chevron with a fat shaft.
+      const horizontal = preset.endsWith("left") || preset.endsWith("right");
+      const along = horizontal ? w : h;
+      const across = horizontal ? h : w;
+      const nAlong = horizontal ? g.naturalSize?.width : g.naturalSize?.height;
+      const head = g.point ? clamp(g.point.x * (nAlong ? along / nAlong : 1), 0, along) : along * 0.35;
+      const bar = g.point ? across * (1 - 2 * clamp(g.point.y, 0, 0.5)) : across * 0.45;
       const pts: Record<string, [number, number][]> = {
         "right-arrow": [[0, (h - bar) / 2], [w - head, (h - bar) / 2], [w - head, 0], [w, h / 2], [w - head, h], [w - head, (h + bar) / 2], [0, (h + bar) / 2]],
         "left-arrow": [[w, (h - bar) / 2], [head, (h - bar) / 2], [head, 0], [0, h / 2], [head, h], [head, (h + bar) / 2], [w, (h + bar) / 2]],
@@ -1108,6 +1124,16 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
  * dead-center on the point; the left-aligned "Transverse" label anchors
  * top-left as before. Applies to 0×0 textboxes and 0×0 shapes alike.
  */
+/** Vertical anchoring of a 0-height text box: "middle" centres the laid-out
+ *  block on the stored y, "bottom" stacks it above; "top" (default) flows
+ *  down as before. Composed after any rotation so the shift is in the
+ *  box's own frame. */
+function anchorLineVertical(div: HTMLElement, verticalAlignment: string | undefined): void {
+  const ty = verticalAlignment === "middle" ? "-50%" : verticalAlignment === "bottom" ? "-100%" : null;
+  if (!ty) return;
+  div.style.transform = `${div.style.transform ?? ""} translate(0, ${ty})`.trim();
+}
+
 function anchorZeroSizeText(
   div: HTMLElement,
   layer: HTMLElement,
@@ -1124,6 +1150,7 @@ function anchorZeroSizeText(
   layer.style.whiteSpace = "nowrap";
   layer.style.width = "max-content"; // percentage of an auto box is meaningless
   layer.style.height = "auto";
+  let multiLine = false;
   if (naturalSize && naturalSize.width > 0 && (doc as { kind?: string }).kind === "numbers") {
     // Numbers content-sized box (stored 0×0, path natural size present):
     // the box is at least its natural width and grows with its text, but
@@ -1136,6 +1163,40 @@ function anchorZeroSizeText(
     layer.style.minWidth = `${naturalSize.width}px`;
     layer.style.maxWidth = `${Math.max(naturalSize.width, 355)}px`;
     layer.style.whiteSpace = "normal";
+  } else if (naturalSize && naturalSize.width > 0 && naturalSize.height > 0) {
+    // Keynote 0×0 box whose natural size is TALLER than one line: the text
+    // was laid out wrapped at that width (pre-trib.org's 124pt cover title
+    // stores 1821×370 and Keynote breaks it into two centred lines); on
+    // the nowrap path it ran off both slide edges. Single-line labels keep
+    // nowrap — the natural width is Apple's metrics and would re-wrap a
+    // label whose browser face runs a few px wider.
+    const first = text?.paragraphs.find((p) => p.items.length > 0);
+    let sizePt = 0;
+    let font: string | undefined;
+    for (const it of first?.items ?? []) {
+      if (typeof it === "string" || "type" in it) continue;
+      const cs = charStyleOf(doc, (it as { cStyle?: number }).cStyle);
+      if (cs?.fontSizePt && cs.fontSizePt > sizePt) { sizePt = cs.fontSizePt; font = cs.fontName; }
+    }
+    const lineH = sizePt ? sizePt * naturalLineHeight(font) : 0;
+    if (lineH && naturalSize.height > 1.5 * lineH) {
+      // 3% wider than Apple's laid-out width: browser faces run a hair
+      // wider, and at the exact width a line that just fit in Keynote
+      // wraps its last word (pre-trib slide 9, Helvetica Bold 42pt).
+      layer.style.width = `${(naturalSize.width * 1.03).toFixed(1)}px`;
+      layer.style.whiteSpace = "normal";
+      // The natural height caps the box (and triggers the bounded shrink)
+      // only when it can hold the paragraphs at all: pre-trib.org's
+      // section list stores 305pt for seven 42pt paragraphs at 1.6 leading,
+      // a stale size that shrank the block to 65% where Keynote draws it
+      // full size below the anchor.
+      const paraCount = text?.paragraphs.filter((p) => p.items.length > 0).length ?? 1;
+      const leading = paraStyleOf(doc, typeof first === "string" ? undefined : first?.pStyle)?.lineSpacingMultiple ?? 1;
+      if (naturalSize.height >= 0.9 * paraCount * lineH * leading) {
+        layer.style.height = `${naturalSize.height}px`;
+        multiLine = true;
+      }
+    }
   }
   const paras = text?.paragraphs;
   const firstPara = paras?.find((p) => typeof p !== "string" && p.items.length > 0) ?? paras?.[0];
@@ -1151,6 +1212,11 @@ function anchorZeroSizeText(
     // clamps (offset-based, so only valid untransformed).
     div.dataset.textFit = "edge-clamp";
   }
+  // A wrapped box keeps Apple's natural height as its box and takes the
+  // bounded font-drift shrink of fixed boxes: pre-trib.org's title wraps to
+  // two lines in Keynote's Franklin Gothic and to three in the browser's
+  // wider fallback face, the third over the red banner beneath it.
+  if (multiLine) div.dataset.textFit = "tolerance";
 }
 
 /** Position + rotate + opacity from DrawableCommon, 1pt = 1px. */
@@ -1293,6 +1359,13 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
         anchorZeroSizeText(div, layer, d.text, d.verticalAlignment, doc, d.naturalSize);
       } else {
         applyTextFitMode(div, layer, d.textFit, d.verticalAlignment);
+        // A 0-height box with a real width is an anchor LINE: the text
+        // wraps at the width and its vertical alignment is relative to the
+        // stored y — "middle" centres the block on it, "bottom" stacks it
+        // above. Keynote's export of RIPE 75's "Questions?" (613×0, middle,
+        // y=286) paints the 97pt line spanning 250–327; ours hung it below
+        // the anchor, over the email link. Same for kcsrk's 368×0 code box.
+        if (c.size.height === 0 && c.size.width > 0) anchorLineVertical(div, d.verticalAlignment);
       }
       div.appendChild(layer);
     } else div.textContent = "";
@@ -1320,6 +1393,7 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
         layer.style.bottom = "auto";
         layer.style.height = "auto";
         layer.style.overflow = "visible";
+        anchorLineVertical(div, d.verticalAlignment);
       } else {
         // Shapes keep their geometry: a shape never grows for its text, so
         // "grow" degrades to the fixed-box tolerance mode.
@@ -1329,29 +1403,41 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
     }
   } else if (d.type === "image") {
     const img = imageEl(d.image.dataId, d.image.preferredFileName ?? d.image.fileName, ctx, d.image.preferredFileName, d.thumbnail);
-    // photo borders / picture frames (the stroke lives on the image style)
-    applyBoxStroke(div, c.style?.stroke);
     const m = d.mask?.common;
     if (m?.position && m.size && m.size.width > 0 && m.size.height > 0) {
       // TSD.ImageArchive.mask: the mask frame is in the image drawable's own
       // space — show only that window, keeping the full-size image behind it
       // (ppd deck cover photo: 1770x1508 image cropped to a 1770x577 band).
+      // The photo border and drop shadow belong to the WINDOW, not the
+      // full image box: Keynote's export of smp.org's wave photo (459×307
+      // image, 459×245 window) draws its 7pt white stroke centred on the
+      // window's edge; on the outer box it painted a white mat over the
+      // hidden strip and shadowed the caption below. A CSS border sits
+      // outside the content box, so the window is widened by the stroke
+      // and shifted by half of it to keep the stroke centred on the edge.
+      const stroke = c.style?.stroke;
+      const sw = stroke && !stroke.frame && stroke.widthPt > 0 ? stroke.widthPt : 0;
       const wrap = el("div");
       wrap.style.position = "absolute";
-      wrap.style.left = `${m.position.x}px`;
-      wrap.style.top = `${m.position.y}px`;
-      wrap.style.width = `${m.size.width}px`;
-      wrap.style.height = `${m.size.height}px`;
+      wrap.style.left = `${m.position.x - sw / 2}px`;
+      wrap.style.top = `${m.position.y - sw / 2}px`;
+      wrap.style.width = `${m.size.width + sw}px`;
+      wrap.style.height = `${m.size.height + sw}px`;
+      wrap.style.boxSizing = "border-box";
       wrap.style.overflow = "hidden";
+      applyBoxStroke(wrap, stroke);
+      if (div.style.filter) { wrap.style.filter = div.style.filter; div.style.filter = ""; }
       img.style.position = "absolute";
-      img.style.left = `${-m.position.x}px`;
-      img.style.top = `${-m.position.y}px`;
+      img.style.left = `${-m.position.x - sw / 2}px`;
+      img.style.top = `${-m.position.y - sw / 2}px`;
       img.style.width = `${w}px`;
       img.style.height = `${h}px`;
       img.style.maxWidth = "none";
       wrap.appendChild(img);
       div.appendChild(wrap);
     } else {
+      // photo borders / picture frames (the stroke lives on the image style)
+      applyBoxStroke(div, c.style?.stroke);
       div.appendChild(img);
     }
   } else if (d.type === "movie") {
