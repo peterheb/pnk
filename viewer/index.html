@@ -4,14 +4,14 @@
   <meta charset="utf-8">
   <!-- Defense in depth for untrusted documents: same-origin only, plus
        blob: for locally-generated media/JSON, wasm-unsafe-eval for the
-       pnk2json wasm module, and blob: workers for the bundled pdf.js
-       worker. The document itself still cannot leave the page: there is no
+       pnk2json wasm module, and same-origin workers for pdf.js (fetched on
+       demand, with its chunk, only for documents that carry PDF media). The document itself still cannot leave the page: there is no
        connect-src, img-src or form-action that could carry it anywhere.
        The two Google Fonts origins are the ONE remote allowance — the
        stylesheet for the substitute faces (webfonts.ts) and the woff2 files
        it names. They carry font family names and nothing else, and the
        "substitute fonts" setting turns the request off entirely. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' blob:; connect-src 'self' blob:; worker-src blob:; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' blob:; connect-src 'self' blob:; worker-src 'self' blob:; base-uri 'none'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>pnk.vu — iWork, locally</title>
   <link rel="stylesheet" href="styles.css">

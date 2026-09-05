@@ -48,17 +48,16 @@ cp viewer/dist/wasm/pnk2json_wasm.js viewer/src/wasm/pnk2json_wasm.js
 cp viewer/dist/wasm/pnk2json_wasm.d.ts viewer/src/wasm/pnk2json_wasm.d.ts
 
 # pdf.js (viewer/node_modules/pdfjs-dist, Apache-2.0) renders PDF media
-# in-page. Its worker script is embedded in the bundle as a string and
-# started from a blob: URL, so the served page makes no request after load.
-echo "==> pdf.js worker -> viewer/src/gen/pdf.worker.txt"
-mkdir -p viewer/src/gen
-cp viewer/node_modules/pdfjs-dist/build/pdf.worker.min.mjs viewer/src/gen/pdf.worker.txt
+# in-page. Its worker is served as a same-origin file next to main.js and
+# started only when a document carries PDF media (pdfmedia-core.ts).
+echo "==> pdf.js worker -> viewer/dist/pdf.worker.min.mjs"
+cp viewer/node_modules/pdfjs-dist/build/pdf.worker.min.mjs viewer/dist/pdf.worker.min.mjs
 
-echo "==> esbuild bundle -> viewer/dist/main.js"
+echo "==> esbuild bundle -> viewer/dist/main.js (+ chunks/ for on-demand modules)"
+rm -rf viewer/dist/chunks
 "$ESBUILD" viewer/src/main.ts \
-  --bundle --format=esm --target=es2022 \
-  --loader:.txt=text \
-  --outfile=viewer/dist/main.js
+  --bundle --format=esm --target=es2022 --splitting \
+  --outdir=viewer/dist --entry-names=[name] --chunk-names=chunks/[name]-[hash]
 
 echo "==> static shell -> viewer/dist/"
 cp viewer/index.html viewer/styles.css viewer/dist/
