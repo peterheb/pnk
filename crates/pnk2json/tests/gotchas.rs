@@ -189,6 +189,7 @@ fn serde_field_names_match_ts_contract() {
             height: 720.0,
         },
         slides: vec![Slide {
+            title: None,
             name: Some("S".into()),
             skipped: Some(false),
             master_name: None,
@@ -296,6 +297,7 @@ fn json_escapes_zs_cf_code_points() {
             height: 100.0,
         },
         slides: vec![Slide {
+            title: None,
             name: None,
             skipped: None,
             master_name: None,

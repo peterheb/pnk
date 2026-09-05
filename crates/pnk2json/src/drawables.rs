@@ -815,6 +815,15 @@ fn image_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
         brightness: None,
     });
     let equation = equation_info(ctx, m);
+    // Instant Alpha (field 10, TSP.Path): the kept region in naturalSize
+    // (pixel) space. Keynote's export draws only what lies inside it —
+    // icecube c3582f31 slide 1: a 624x982 screenshot whose crop window shows
+    // a legend that the alpha path excludes, so the export shows nothing
+    // there, and a 768x1284 map drawn without its white rectangle.
+    let instant_alpha_path = m
+        .msg(10)
+        .and_then(|p| crate::tsd::tsp_path(&p))
+        .filter(|p| p.elements.len() >= 2);
     Drawable::Image {
         common,
         image,
@@ -825,11 +834,127 @@ fn image_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
         mask,
         adjustments,
         equation,
+        instant_alpha_path,
     }
 }
 
 /// Equation images (Insert > Equation) are TSD.ImageArchives whose media is
 /// a PDF the app rendered from the typed expression, which rides along as
+/// x-height (em fraction) of the fonts that set inline equations in the
+/// corpus, read from the installed faces with CoreText (`CTFontGetXHeight`,
+/// macOS 26.6, 2026-09-05); Calibri/Cambria from their OS/2 sxHeight
+/// (952/2048, 956/2048). Keynote sizes an inline equation so that STIX's
+/// x-height matches the run font's, so this table IS the display scale.
+const FONT_X_HEIGHT: &[(&str, f64)] = &[
+    ("HelveticaNeue", 0.5170),
+    ("HelveticaNeue-Bold", 0.5170),
+    ("HelveticaNeue-Light", 0.5230),
+    ("HelveticaNeue-Medium", 0.5170),
+    ("HelveticaNeue-Italic", 0.5170),
+    ("HelveticaNeue-BoldItalic", 0.5170),
+    ("HelveticaNeue-Thin", 0.5140),
+    ("HelveticaNeue-UltraLight", 0.5200),
+    ("Helvetica", 0.5229),
+    ("Helvetica-Bold", 0.5322),
+    ("Helvetica-Light", 0.5240),
+    ("Helvetica-Oblique", 0.5229),
+    ("GillSans", 0.4497),
+    ("GillSans-Bold", 0.5015),
+    ("GillSans-Light", 0.4536),
+    ("GillSans-Italic", 0.4561),
+    ("GillSans-BoldItalic", 0.5015),
+    ("Calibri", 0.4648),
+    ("Calibri-Bold", 0.4648),
+    ("Cambria", 0.4668),
+    ("CambriaMath", 0.4668),
+    ("Times-Roman", 0.4536),
+    ("Times-Bold", 0.4604),
+    ("Times-Italic", 0.4463),
+    ("Times-BoldItalic", 0.4629),
+    ("TimesNewRomanPSMT", 0.4473),
+    ("TimesNewRomanPS-BoldMT", 0.4565),
+    ("TimesNewRomanPS-ItalicMT", 0.4302),
+    ("TimesNewRomanPS-BoldItalicMT", 0.4390),
+    ("Palatino-Roman", 0.4712),
+    ("Palatino-Bold", 0.4712),
+    ("Palatino-Italic", 0.4766),
+    ("Chalkboard-Bold", 0.5260),
+    ("ChalkboardSE-Regular", 0.5017),
+    ("Skia-Regular", 0.5059),
+    ("AvenirNext-Regular", 0.4680),
+    ("AvenirNext-Medium", 0.4740),
+    ("AvenirNext-Bold", 0.4980),
+    ("AvenirNext-DemiBold", 0.4980),
+    ("AvenirNextCondensed-Regular", 0.4960),
+    ("AvenirNextCondensed-Bold", 0.5230),
+    ("Avenir-Book", 0.4680),
+    ("Avenir-Medium", 0.4740),
+    ("ArialMT", 0.5186),
+    ("Arial-BoldMT", 0.5186),
+    ("Arial-ItalicMT", 0.5186),
+    ("CourierNewPSMT", 0.4229),
+    ("CourierNewPS-BoldMT", 0.4434),
+    ("Courier", 0.4565),
+    ("Copperplate", 0.4400),
+    ("Futura-Medium", 0.4824),
+    ("IowanOldStyle-Roman", 0.4858),
+    ("IowanOldStyle-Italic", 0.4746),
+    ("Georgia", 0.4814),
+    ("Georgia-Bold", 0.4844),
+    ("Verdana", 0.5454),
+    ("Baskerville", 0.3999),
+    ("Optima-Regular", 0.4780),
+    ("Menlo-Regular", 0.5469),
+    ("AppleSDGothicNeo-Regular", 0.5020),
+    ("PingFangSC-Regular", 0.6000),
+    ("HiraginoSans-W3", 0.5450),
+    ("Graphik-Light", 0.5230),
+];
+
+/// x-height of STIXGeneral-Italic, the face Keynote's equation renderer
+/// sets its PDFs in (the stored `equation-N.pdf` files embed STIXGeneral
+/// Regular/Italic at `font_size` unscaled).
+const STIX_ITALIC_X_HEIGHT: f64 = 0.4280;
+
+/// Keynote draws an INLINE equation larger than its stored PDF geometry:
+/// the export re-sets it at font_size * x-height(run font) / x-height(STIX
+/// Italic), so the math's x-height matches the surrounding text. Measured in
+/// Keynote's PDF export: HelveticaNeue 45pt -> STIX 54.36pt (1.208), 28 ->
+/// 33.82, 30 -> 36.24, 66 -> 79.72; HelveticaNeue-Light 40 -> 48.88 (1.222);
+/// AvenirNext-Regular 50 -> 54.67 (1.093); TimesNewRomanPS-ItalicMT 30 ->
+/// 30.15 (1.005); every one equals the x-height ratio to four digits. Canvas
+/// equations are drawn 1:1 (fixtures 0ddd627b, 3775cc34). Applied by the
+/// text path to the image drawable at each U+FFFC attachment; the geometry
+/// and depth are multiplied and the factor recorded in `display_scale`.
+pub(crate) fn scale_inline_equation(d: &mut Drawable) {
+    let Drawable::Image {
+        common,
+        equation: Some(eq),
+        ..
+    } = d
+    else {
+        return;
+    };
+    let Some(font) = eq.font_name.as_deref() else {
+        return;
+    };
+    let Some((_, xh)) = FONT_X_HEIGHT.iter().find(|(n, _)| *n == font) else {
+        return;
+    };
+    let scale = xh / STIX_ITALIC_X_HEIGHT;
+    if (scale - 1.0).abs() < 0.002 {
+        return;
+    }
+    if let Some(s) = common.size.as_mut() {
+        s.width *= scale;
+        s.height *= scale;
+    }
+    if let Some(dp) = eq.depth_pt.as_mut() {
+        *dp *= scale;
+    }
+    eq.display_scale = Some((scale * 10000.0).round() / 10000.0);
+}
+
 /// TSWP.EquationInfoArchive extension fields: equation_source_text = 103
 /// (equation_source_old = 100 in older files, identical when both exist),
 /// equation_depth = 102 (baseline depth, pt), equation_text_properties =
@@ -854,6 +979,7 @@ fn equation_info(ctx: &mut Ctx, m: &Msg) -> Option<EquationInfo> {
         font_size_pt,
         font_name,
         color,
+        display_scale: None,
     })
 }
 
@@ -984,12 +1110,14 @@ impl Anchor {
 
 /// Geometry of a connection anchor drawable, whatever its wrapper depth:
 /// TSD.ShapeArchive nests DrawableArchive once, TSWP.ShapeInfoArchive twice,
-/// KN/TP placeholders three times. Walk down `super = 1` until a level
-/// parses as DrawableArchive.geometry (a nested message whose field 1/2
-/// decode as TSP.Point + TSP.Size); that level is the ShapeArchive, whose
-/// `pathsource = 3` gives the outline.
-fn anchor_shape(ctx: &Ctx, aid: u64) -> Option<Anchor> {
+/// KN/TP placeholders three times. Walk down `super = 1` until the level
+/// whose field 1 parses as DrawableArchive.geometry (TSP.Point + TSP.Size):
+/// that level is the DrawableArchive, the one above it the ShapeArchive
+/// (`pathsource = 3`, `style = 2`), and the one above that — when there is
+/// one — the TSWP.ShapeInfoArchive that owns the text storage.
+fn anchor_shape(ctx: &mut Ctx, aid: u64) -> Option<Anchor> {
     let mut cur = ctx.loaded.msg(aid)?.clone();
+    let mut levels: Vec<Msg> = Vec::new();
     for _ in 0..4 {
         if let Some(g) = cur.msg(1) {
             if let (Some((x, y)), Some((w, h))) = (g.point(1), g.size(2)) {
@@ -998,10 +1126,36 @@ fn anchor_shape(ctx: &Ctx, aid: u64) -> Option<Anchor> {
                     width: w,
                     height: h,
                 };
-                let outline = cur
-                    .msg(3)
-                    .map(|ps| crate::tsd::shape_geometry(&ps))
-                    .and_then(|geo| outline_polygon(&geo, &position, &size));
+                let shape = levels.last();
+                let info = levels.len().checked_sub(2).map(|i| &levels[i]);
+                let geo = shape
+                    .and_then(|s| s.msg(3))
+                    .map(|ps| crate::tsd::shape_geometry(&ps));
+                if w == 0.0 && h == 0.0 {
+                    // A content-sized text box stores a 0x0 frame; Keynote
+                    // lays it out at the path source's natural size, placed
+                    // against the anchor by the text's alignment (centred
+                    // text is centred on the anchor, middle-aligned text
+                    // straddles it). Keynote's export connects to the centre
+                    // of THAT box and stops the line at its edge (kcsrk
+                    // slide 6: "computation" label, natural 132x36, centred
+                    // and middle-aligned; the export's arrow tip sits at the
+                    // text's left edge, the stored endpoint at its centre).
+                    if let (Some(shape), Some(nat)) = (shape, geo.as_ref().and_then(|g| g.natural_size)) {
+                        if nat.width > 0.0 && nat.height > 0.0 {
+                            let (ax, ay) = zero_box_anchor_fractions(ctx, shape, info);
+                            return Some(Anchor {
+                                position: Point {
+                                    x: x - nat.width * ax,
+                                    y: y - nat.height * ay,
+                                },
+                                size: nat,
+                                outline: None,
+                            });
+                        }
+                    }
+                }
+                let outline = geo.and_then(|geo| outline_polygon(&geo, &position, &size));
                 return Some(Anchor {
                     position,
                     size,
@@ -1009,9 +1163,44 @@ fn anchor_shape(ctx: &Ctx, aid: u64) -> Option<Anchor> {
                 });
             }
         }
+        levels.push(cur.clone());
         cur = cur.msg(1)?.clone();
     }
     None
+}
+
+/// Where a content-sized (0x0) text box hangs from its anchor point, as
+/// fractions of its laid-out width and height: horizontal from the first
+/// paragraph's alignment (centre 0.5, right 1, else 0), vertical from the
+/// text frame's vertical alignment (middle 0.5, bottom 1, else 0). Mirrors
+/// the viewer's zero-size text placement. `shape` is the ShapeArchive,
+/// `info` the TSWP.ShapeInfoArchive above it (owner of the storage).
+fn zero_box_anchor_fractions(ctx: &mut Ctx, shape: &Msg, info: Option<&Msg>) -> (f64, f64) {
+    let ay = match shape_text_frame_props(ctx, shape).vertical_alignment {
+        Some(VerticalAlignment::Middle) => 0.5,
+        Some(VerticalAlignment::Bottom) => 1.0,
+        _ => 0.0,
+    };
+    // Storage: owned_storage (4), else text_flow (3) -> FlowInfo.text_storage
+    // (1), else deprecated_storage (2) — the same order as the text path.
+    let storage_id = info.and_then(|i| {
+        i.reference(4)
+            .or_else(|| i.reference(3).and_then(|f| ctx.loaded.msg(f)).and_then(|f| f.reference(1)))
+            .or_else(|| i.reference(2))
+    });
+    // First paragraph style: TSWP.StorageArchive.table_para_style (5) is an
+    // ObjectAttributeTable whose entries (1) carry {character_index, object}.
+    let para_style_id = storage_id
+        .and_then(|sid| ctx.loaded.msg(sid))
+        .and_then(|s| s.msg(5))
+        .and_then(|t| t.msgs(1).into_iter().min_by_key(|e| e.varint(1).unwrap_or(0)))
+        .and_then(|e| e.reference(2));
+    let ax = match para_style_id.map(|id| crate::styles::resolve_para_style(ctx, id).horizontal_alignment) {
+        Some(Some(HorizontalAlignment::Center)) => 0.5,
+        Some(Some(HorizontalAlignment::Right)) => 1.0,
+        _ => 0.0,
+    };
+    (ax, ay)
 }
 
 /// Flatten a shape's explicit path (in its naturalSize space) into a slide-
@@ -1117,10 +1306,10 @@ fn connection_line_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
 
     let from_anchor = m.reference(2).and_then(|aid| anchor_shape(ctx, aid));
     let to_anchor = m.reference(3).and_then(|aid| anchor_shape(ctx, aid));
-    // A content-sized text box stores a 0x0 frame (Keynote lays it out at
-    // display time), so its centre and outline are unknown here: such an
-    // end keeps the stored endpoint, which Keynote baked at the text's
-    // edge (kcsrk slide 6: label boxes connected to code highlights).
+    // A content-sized text box stores a 0x0 frame; `anchor_shape` turns it
+    // into its laid-out box when the path source carries a natural size.
+    // One without a natural size has no known centre or outline: such an
+    // end keeps the stored endpoint.
     fn sized(a: &Option<Anchor>) -> Option<&Anchor> {
         a.as_ref()
             .filter(|a| a.size.width > 0.0 && a.size.height > 0.0)

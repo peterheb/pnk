@@ -463,6 +463,17 @@ export interface ImageDrawable {
    * content. [proto: TSWP.EquationInfoArchive extends TSD.ImageArchive]
    */
   equation?: EquationInfo;
+  /**
+   * Instant Alpha (background removal): the part of the image that stays
+   * visible, as a closed path (possibly several subpaths) in `naturalSize`
+   * space; everything outside it is transparent. A viewer clips the image
+   * to it, scaling naturalSize -> the drawable's size. Absent when the image
+   * has no background removed. [proto: TSD.ImageArchive.instantAlphaPath =
+   * 10 (TSP.Path); fixture: icecube c3582f31 slide 1, a 768x1284 map whose
+   * path spans x 37-766, y 0-1285 and whose export shows the cut-out map
+   * with no white rectangle]
+   */
+  instantAlphaPath?: CurvePath;
 }
 
 /**
@@ -488,6 +499,17 @@ export interface EquationInfo {
   fontName?: string;
   /** Text color. [proto: equation_text_properties.font_color] */
   color?: HexColor;
+  /**
+   * Inline equations only: the factor Keynote applies at display time over
+   * the stored PDF geometry, x-height(fontName) / x-height(STIXGeneral-Italic
+   * = 0.428 em). HelveticaNeue 1.208, HelveticaNeue-Light 1.222, AvenirNext
+   * 1.093, TimesNewRomanPS-ItalicMT 1.005, measured in Keynote's PDF export of
+   * two decks (0ddd627b, 3775cc34). The converter has ALREADY multiplied
+   * `common.size` and `depthPt` by it; this field records what was applied.
+   * Absent when 1: canvas-level equations (drawn 1:1) and fonts whose
+   * x-height the converter does not know. [inferred, 2026-09-05]
+   */
+  displayScale?: number;
 }
 
 export interface MovieDrawable {

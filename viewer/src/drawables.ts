@@ -10,6 +10,7 @@
 
 import { isPdfBytes, pdfMediaEl } from "./pdfmedia";
 import type {
+  CurvePath,
   ChartModel,
   ChartNumberFormat,
   CurveElement,
@@ -53,6 +54,22 @@ export function fillToCss(f: Fill | undefined): string | undefined {
   return f.tint ?? "#d9d9de";
 }
 
+/** A CurvePath (any coordinate space) -> SVG path data, scaled by sx/sy. */
+function curvePathToD(path: CurvePath, sx: number, sy: number): string {
+  const f = (v: number) => (Math.round(v * 100) / 100).toString();
+  const parts: string[] = [];
+  for (const e of path.elements) {
+    if (e.type === "close") { parts.push("Z"); continue; }
+    const p = e.points;
+    const xy = (i: number) => `${f(p[i] * sx)} ${f(p[i + 1] * sy)}`;
+    if (e.type === "move" && p.length >= 2) parts.push(`M ${xy(0)}`);
+    else if (e.type === "line" && p.length >= 2) parts.push(`L ${xy(0)}`);
+    else if (e.type === "quad" && p.length >= 4) parts.push(`Q ${xy(0)} ${xy(2)}`);
+    else if (e.type === "cubic" && p.length >= 6) parts.push(`C ${xy(0)} ${xy(2)} ${xy(4)}`);
+  }
+  return parts.length ? parts.join(" ") : "";
+}
+
 function svgStrokeAttrs(e: SVGElement, stroke: Stroke | undefined, scale: number): void {
   if (!stroke) return;
   e.setAttribute("stroke", stroke.color);
@@ -62,6 +79,82 @@ function svgStrokeAttrs(e: SVGElement, stroke: Stroke | undefined, scale: number
   // Apple emits placeholder dash arrays of all zeros for solid strokes; SVG
   // would render those as invisible zero-length dashes.
   if (stroke.dash?.some((d) => d > 0)) e.setAttribute("stroke-dasharray", stroke.dash.map((d) => d * scale).join(" "));
+  // Hand-drawn ("smart") strokes: Keynote textures the line with a brush
+  // preset (Pencil, Chalk2, Crayon, Dry Brush, ...). The brush parameters
+  // are not in the model; a document-wide displacement filter gives the
+  // edge wobble and a lighter, uneven ink, which is what reads as
+  // hand-drawn at slide scale. Applied per element; the shape's fill goes
+  // through the same filter, so a filled shape's edge wobbles with its
+  // stroke, as Keynote's does.
+  if (stroke.smartStroke && /chalk|crayon|pencil|dry brush/i.test(stroke.smartStroke)) {
+    e.setAttribute("filter", `url(#${sketchStrokeFilterId(stroke.smartStroke)})`);
+    // Keynote's chalk texture reads as a pale, near-white line whatever the
+    // stroke colour: ripe76 (9d5dcf60) stores the circles' fill colour as
+    // the Chalk2 stroke colour and the export draws a white speckled ring.
+    // Lighten chalk 60% toward white. [inferred from one deck]
+    if (/chalk/i.test(stroke.smartStroke)) e.setAttribute("stroke", lightenHex(stroke.color, 0.6));
+  }
+  // Pen, Feathered Brush and the other smooth presets draw as plain strokes:
+  // at slide scale Keynote's export of them (greenberg 40c5f2ef, slide 12)
+  // differs from a plain stroke only by a slight taper.
+}
+
+/** Mix a #rrggbb colour toward white by `t` (0..1). */
+function lightenHex(hex: string, t: number): string {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i.exec(hex);
+  if (!m) return hex;
+  const mix = (h: string) => Math.round(parseInt(h, 16) + (255 - parseInt(h, 16)) * t).toString(16).padStart(2, "0");
+  return `#${mix(m[1])}${mix(m[2])}${mix(m[3])}`;
+}
+
+/** One shared <filter> per brush family, in a 0x0 <svg> on the body. */
+function sketchStrokeFilterId(preset: string): string {
+  const chalky = /chalk|crayon|pencil/i.test(preset);
+  const id = chalky ? "pnk-sketch-chalk" : "pnk-sketch-brush";
+  if (!document.getElementById(id)) {
+    const NS = "http://www.w3.org/2000/svg";
+    const holder = document.createElementNS(NS, "svg");
+    holder.setAttribute("width", "0");
+    holder.setAttribute("height", "0");
+    holder.setAttribute("aria-hidden", "true");
+    holder.style.position = "absolute";
+    const filter = document.createElementNS(NS, "filter");
+    filter.id = id;
+    filter.setAttribute("x", "-5%");
+    filter.setAttribute("y", "-5%");
+    filter.setAttribute("width", "110%");
+    filter.setAttribute("height", "110%");
+    const noise = document.createElementNS(NS, "feTurbulence");
+    noise.setAttribute("type", "fractalNoise");
+    noise.setAttribute("baseFrequency", chalky ? "0.08" : "0.03");
+    noise.setAttribute("numOctaves", "2");
+    noise.setAttribute("seed", "7");
+    noise.setAttribute("result", "noise");
+    const wobble = document.createElementNS(NS, "feDisplacementMap");
+    wobble.setAttribute("in", "SourceGraphic");
+    wobble.setAttribute("in2", "noise");
+    wobble.setAttribute("scale", chalky ? "3" : "2");
+    wobble.setAttribute("xChannelSelector", "R");
+    wobble.setAttribute("yChannelSelector", "G");
+    filter.appendChild(noise);
+    filter.appendChild(wobble);
+    if (chalky) {
+      // Chalk and pencil leave gaps: modulate the alpha with the noise.
+      const grain = document.createElementNS(NS, "feComposite");
+      grain.setAttribute("in2", "noise");
+      grain.setAttribute("operator", "arithmetic");
+      grain.setAttribute("k1", "0");
+      grain.setAttribute("k2", "0.85");
+      grain.setAttribute("k3", "0");
+      grain.setAttribute("k4", "0");
+      filter.appendChild(grain);
+    }
+    const defs = document.createElementNS(NS, "defs");
+    defs.appendChild(filter);
+    holder.appendChild(defs);
+    document.body.appendChild(holder);
+  }
+  return id;
 }
 
 function svgGradientDefs(svg: SVGSVGElement, style: DrawableCommon["style"]): void {
@@ -1202,9 +1295,21 @@ function chartSvg(chart: ChartModel, w: number, h: number, numbersAxis = false):
  *  block on the stored y, "bottom" stacks it above; "top" (default) flows
  *  down as before. Composed after any rotation so the shift is in the
  *  box's own frame. */
-function anchorLineVertical(div: HTMLElement, verticalAlignment: string | undefined): void {
+function anchorLineVertical(div: HTMLElement, layer: HTMLElement | null, verticalAlignment: string | undefined): void {
   const ty = verticalAlignment === "middle" ? "-50%" : verticalAlignment === "bottom" ? "-100%" : null;
   if (!ty) return;
+  // The translate is a fraction of the box's own height, so the box must
+  // take its content's height: a 0-height div with an absolutely placed
+  // text layer stayed 0 tall and the shift was a no-op (icecube c3582f31
+  // slide 1: the bottom-aligned slide-number placeholder at y=1060 hung
+  // its "1" below the slide's edge). Grow boxes already sized this way.
+  div.style.height = "auto";
+  div.style.overflow = "visible";
+  if (layer) {
+    layer.style.position = "relative";
+    layer.style.height = "auto";
+    layer.style.overflow = "visible";
+  }
   div.style.transform = `${div.style.transform ?? ""} translate(0, ${ty})`.trim();
 }
 
@@ -1449,7 +1554,7 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
         // above. Keynote's export of RIPE 75's "Questions?" (613×0, middle,
         // y=286) paints the 97pt line spanning 250–327; ours hung it below
         // the anchor, over the email link. Same for kcsrk's 368×0 code box.
-        if (c.size.height === 0 && c.size.width > 0) anchorLineVertical(div, d.verticalAlignment);
+        if (c.size.height === 0 && c.size.width > 0) anchorLineVertical(div, layer, d.verticalAlignment);
       }
       div.appendChild(layer);
     } else div.textContent = "";
@@ -1458,8 +1563,13 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
     // box stored degenerate (proteger-les-donnees red banner: size 471x0,
     // path 471x32) — adopt the path height so its white caption gets the
     // band as its layout/fit box instead of spilling invisibly below it.
+    // A 0x0 shape is different: a content-sized text anchor whose path
+    // natural size is the laid-out text (deeplearningbook 2bb490dc: the
+    // master's "(Goodfellow 2016)" footer, 0x0 at (969, 746.5), path
+    // 105x21.6, centred text; adopting the height alone left a 0-wide box
+    // that painted nothing).
     const naturalH = d.geometry.naturalSize?.height ?? 0;
-    const effH = h === 0 && d.geometry.path && naturalH > 1 ? naturalH : h;
+    const effH = h === 0 && w > 0 && d.geometry.path && naturalH > 1 ? naturalH : h;
     if (effH !== h) div.style.height = `${effH}px`;
     const svg = shapeSvg(d.geometry, w, effH, c.style);
     div.appendChild(svg);
@@ -1470,14 +1580,14 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
         // textbox labels (0d5851c0 slide 29's 51pt quote — Apple lays it
         // out natural-width from the anchor; our 0-width box wrapped it
         // into a 4-line sliver).
-        anchorZeroSizeText(div, layer, d.text, d.verticalAlignment, doc);
+        anchorZeroSizeText(div, layer, d.text, d.verticalAlignment, doc, d.geometry.naturalSize);
       } else if (effH === 0) {
         // 0-height shape carrying text (RIPE ea785d2e subtitle): the box is
         // an anchor, not a clip — let the text flow down from it.
         layer.style.bottom = "auto";
         layer.style.height = "auto";
         layer.style.overflow = "visible";
-        anchorLineVertical(div, d.verticalAlignment);
+        anchorLineVertical(div, layer, d.verticalAlignment);
       } else {
         // Shapes keep their geometry: a shape never grows for its text, so
         // "grow" degrades to the fixed-box tolerance mode.
@@ -1487,6 +1597,14 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
     }
   } else if (d.type === "image") {
     const img = imageEl(d.image.dataId, d.image.preferredFileName ?? d.image.fileName, ctx, d.image.preferredFileName, d.thumbnail, { width: w, height: h });
+    // Instant Alpha: clip the image to the kept region (naturalSize space,
+    // scaled to the box). Keynote's export draws only the inside of that
+    // path; without the clip a cut-out photo shows its original rectangle
+    // (icecube c3582f31 slide 1: a map on a white screenshot).
+    if (d.instantAlphaPath && d.naturalSize?.width && d.naturalSize?.height) {
+      const dPath = curvePathToD(d.instantAlphaPath, w / d.naturalSize.width, h / d.naturalSize.height);
+      if (dPath) img.style.clipPath = `path("${dPath}")`;
+    }
     const m = d.mask?.common;
     if (m?.position && m.size && m.size.width > 0 && m.size.height > 0) {
       // TSD.ImageArchive.mask: the mask frame is in the image drawable's own

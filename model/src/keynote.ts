@@ -101,6 +101,14 @@ export interface TransitionSpec {
 export interface Slide {
   /** Slide name when set. [proto: KN.SlideArchive.name] */
   name?: string;
+  /**
+   * Plain text of the slide's title placeholder, derived by the converter
+   * from the first drawable whose `placeholder.role` is "title" and which
+   * carries text (paragraphs joined by "\n", soft breaks as spaces). Absent
+   * when the slide has no title text. Consumers that want the title read
+   * this and never walk `drawables` for a role. [converter-derived, 2026-09-05]
+   */
+  title?: string;
   /** Navigator "skip" flag. [proto: KN.SlideNodeArchive.isSkipped] */
   skipped?: boolean;
   /** Master this slide follows (by MasterSlide.name). */
@@ -115,7 +123,11 @@ export interface Slide {
   masterDrawables?: Drawable[];
   /** All drawables in paint order (z-order), placeholders included. */
   drawables: Drawable[];
-  /** Presenter notes. [proto: KN.NoteArchive.containedStorage → TSWP.StorageArchive] */
+  /**
+   * Presenter notes. Present only when the notes storage has visible text;
+   * a storage of empty paragraphs (every slide carries one) is omitted.
+   * [proto: KN.NoteArchive.containedStorage → TSWP.StorageArchive]
+   */
   notes?: StyledText;
   /** The one slide transition. [proto: KN.SlideArchive.transition (required)] */
   transition?: TransitionSpec;
