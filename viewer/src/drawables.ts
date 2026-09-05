@@ -1511,8 +1511,13 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
     // box stored degenerate (proteger-les-donnees red banner: size 471x0,
     // path 471x32) — adopt the path height so its white caption gets the
     // band as its layout/fit box instead of spilling invisibly below it.
+    // A 0x0 shape is different: a content-sized text anchor whose path
+    // natural size is the laid-out text (deeplearningbook 2bb490dc: the
+    // master's "(Goodfellow 2016)" footer, 0x0 at (969, 746.5), path
+    // 105x21.6, centred text; adopting the height alone left a 0-wide box
+    // that painted nothing).
     const naturalH = d.geometry.naturalSize?.height ?? 0;
-    const effH = h === 0 && d.geometry.path && naturalH > 1 ? naturalH : h;
+    const effH = h === 0 && w > 0 && d.geometry.path && naturalH > 1 ? naturalH : h;
     if (effH !== h) div.style.height = `${effH}px`;
     const svg = shapeSvg(d.geometry, w, effH, c.style);
     div.appendChild(svg);
@@ -1523,7 +1528,7 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
         // textbox labels (0d5851c0 slide 29's 51pt quote — Apple lays it
         // out natural-width from the anchor; our 0-width box wrapped it
         // into a 4-line sliver).
-        anchorZeroSizeText(div, layer, d.text, d.verticalAlignment, doc);
+        anchorZeroSizeText(div, layer, d.text, d.verticalAlignment, doc, d.geometry.naturalSize);
       } else if (effH === 0) {
         // 0-height shape carrying text (RIPE ea785d2e subtitle): the box is
         // an anchor, not a clip — let the text flow down from it.
