@@ -304,7 +304,9 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
                 {
                     items.push(ParagraphItem::Field {
                         kind: FieldTag::Field,
-                        c_style: ctx.char_pool.intern(crate::ctx::strip_char_defaults(style)),
+                        c_style: ctx
+                            .char_pool
+                            .intern(crate::ctx::strip_char_defaults(*style)),
                         value,
                         field,
                     });
@@ -327,7 +329,8 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
                 let resolved = resolve_attachment(ctx, att.object_id, pi as u32, &mut footnotes);
                 let consumed_anchor = !matches!(resolved, AttachmentResult::None);
                 match resolved {
-                    AttachmentResult::Drawable(drawable, h_off, v_off) => {
+                    AttachmentResult::Drawable(boxed, h_off, v_off) => {
+                        let drawable = *boxed;
                         // b31db822 stores 0xffffffff (NaN) offsets on two
                         // attachments — serde writes those as null; drop them
                         let clean = |v: Option<f64>| v.filter(|x| x.is_finite());
@@ -370,7 +373,9 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
                     } => {
                         items.push(ParagraphItem::Field {
                             kind: FieldTag::Field,
-                            c_style: ctx.char_pool.intern(crate::ctx::strip_char_defaults(style)),
+                            c_style: ctx
+                                .char_pool
+                                .intern(crate::ctx::strip_char_defaults(*style)),
                             value,
                             field,
                         });
@@ -569,9 +574,11 @@ fn drawable_wraps(d: &Drawable) -> bool {
 }
 
 enum AttachmentResult {
-    Drawable(Drawable, Option<f64>, Option<f64>),
+    // boxed: a Drawable is ~11 KB and a CharStyle ~370 bytes, against a
+    // handful of bytes for the rest (clippy large_enum_variant)
+    Drawable(Box<Drawable>, Option<f64>, Option<f64>),
     Field {
-        style: CharStyle,
+        style: Box<CharStyle>,
         value: Option<String>,
         field: FieldKind,
     },
@@ -609,7 +616,7 @@ fn resolve_attachment(
             match drawable_id {
                 Some(did) => {
                     let d = crate::drawables::convert_drawable(ctx, did);
-                    AttachmentResult::Drawable(d, h, v)
+                    AttachmentResult::Drawable(Box::new(d), h, v)
                 }
                 None => AttachmentResult::None,
             }
@@ -626,7 +633,7 @@ fn resolve_attachment(
                 _ => FieldKind::FootnoteMark,
             };
             AttachmentResult::Field {
-                style: CharStyle::default(),
+                style: Box::new(CharStyle::default()),
                 value: att.string(1),
                 field: kind,
             }
@@ -648,7 +655,7 @@ fn resolve_attachment(
                 _ => FieldKind::PageNumber {},
             };
             AttachmentResult::Field {
-                style: CharStyle::default(),
+                style: Box::new(CharStyle::default()),
                 value,
                 field,
             }
@@ -663,7 +670,7 @@ fn resolve_attachment(
                 }
             }
             AttachmentResult::Field {
-                style: CharStyle::default(),
+                style: Box::new(CharStyle::default()),
                 value: None,
                 field: FieldKind::FootnoteMark,
             }
@@ -679,12 +686,12 @@ fn resolve_attachment(
                     .unwrap_or_else(|| format!("type id {}", rec.type_id))
             );
             AttachmentResult::Drawable(
-                Drawable::Unknown {
+                Box::new(Drawable::Unknown {
                     common: None,
                     type_id: format!("0x{:x}", rec.type_id),
                     type_name,
                     reason,
-                },
+                }),
                 None,
                 None,
             )
