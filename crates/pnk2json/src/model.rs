@@ -165,6 +165,10 @@ pub struct Stroke {
     /// 10a06959 stores "Formal Shadow" there and Pages draws the mat]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub frame: Option<StrokeFrame>,
+    /// Hand-drawn stroke preset name ("Pencil", "Marker", ...).
+    /// [proto: TSD.StrokeArchive.smart_stroke = 7 → SmartStrokeArchive.stroke_name = 2]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub smart_stroke: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

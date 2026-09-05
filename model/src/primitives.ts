@@ -200,6 +200,13 @@ export interface Stroke {
    * unlisted in the 15.3.1 extraction, fixture-verified on 10a06959)]
    */
   frame?: { name: string; assetScale?: number };
+  /**
+   * Hand-drawn ("sketch") stroke preset name when the stroke is one of
+   * Keynote's smart strokes ("Pencil", "Marker", ...): the line is drawn
+   * with a textured brush the viewer approximates with a plain stroke.
+   * [proto: TSD.StrokeArchive.smart_stroke = 7 → TSD.SmartStrokeArchive.stroke_name = 2]
+   */
+  smartStroke?: string;
 }
 
 /** Decorative line ends (arrowheads etc.).

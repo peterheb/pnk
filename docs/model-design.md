@@ -428,7 +428,7 @@ storage is identified.
 | Themes' preset catalogs (`TSWP./TSD./TSA.ThemePresetsArchive`, color presets, fill sets) | UI affordances; resolved styles already bake in what's used |
 | `VersionedStyles` snapshots in stylesheets (styles_for_10_0 …) | per-release style caches |
 | Custom format list beyond what cells reference | unused formats are dead weight |
-| `TSD.StrokePatternArchive` "smart stroke" parameter dictionaries | decorative stroke textures beyond dash pattern |
+| `TSD.SmartStrokeArchive` parameter dictionaries | decorative stroke textures beyond dash pattern; the preset NAME survives as `Stroke.smartStroke` ("Pencil", "Dry Brush", "Feathered Brush", "Chalk2", "Crayon", "Pen" in the corpus, added 2026-09-05) so a consumer knows the line is a hand-drawn style |
 | iWork '08/'09 legacy content | out of scope entirely (docs/format/legacy.md) |
 
 Anything else the converter meets and cannot model becomes `UnknownDrawable`

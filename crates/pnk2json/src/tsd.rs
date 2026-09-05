@@ -437,6 +437,12 @@ pub fn stroke_of(ctx: &mut Ctx, m: &Msg) -> Option<Stroke> {
             asset_scale: f.f32v(3).map(|v| v as f64),
         })
     });
+    // Smart ("hand-drawn") strokes: the preset name is all a consumer can
+    // use; the brush parameters (a reference dictionary) stay dropped.
+    let smart_stroke = m
+        .msg(7)
+        .and_then(|s| s.string(2))
+        .filter(|n| !n.is_empty());
     Some(Stroke {
         color,
         width_pt,
@@ -446,6 +452,7 @@ pub fn stroke_of(ctx: &mut Ctx, m: &Msg) -> Option<Stroke> {
         dash,
         dash_phase,
         frame,
+        smart_stroke,
     })
 }
 
