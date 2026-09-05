@@ -540,8 +540,23 @@ export interface UnknownDrawable {
  * re-evaluates formulas (docs/format/calcengine.md).
  */
 export interface TableModel {
-  /** Display name. [proto: TableModelArchive.table_name] */
+  /**
+   * Table name. [proto: TableModelArchive.table_name] Always carried when
+   * stored: formula text (`TsceFormulaRef.sourceText`) names tables by it
+   * ("Table 1::A1"). Whether the caption is DRAWN above the table is
+   * `nameHidden` (absent = drawn).
+   */
   name?: string;
+  /** True when Numbers does not show the name above the table. [proto: table_name_enabled (22) not true] */
+  nameHidden?: boolean;
+  /**
+   * Category grouping ("Organize by" a column), when enabled. `grid` stays
+   * the ungrouped data; this is the group tree Numbers lays over it, with
+   * the summary rules and the app's cached totals. [proto: TableModelArchive
+   * category_owner (86) → CategoryOwnerRefArchive → GroupByArchive; see
+   * crates/pnk2json/src/categories.rs]
+   */
+  grouping?: TableGrouping;
   rowCount: number;
   columnCount: number;
   headerRowCount: number;
@@ -668,6 +683,45 @@ export interface CellFormat {
   accounting?: boolean;
   /** Raw custom format string when kind = "custom". */
   formatString?: string;
+}
+
+/** Category grouping of a table's rows. */
+export interface TableGrouping {
+  /** Model column indexes grouped by, outermost first. */
+  columns: number[];
+  /** Summary rules per column shown in group rows. */
+  aggregates?: GroupAggregate[];
+  /** Group tree, one level per entry of `columns`, in display order. */
+  groups: TableGroup[];
+  /** Whole-table cached summaries. */
+  totals?: GroupTotal[];
+}
+
+export interface GroupAggregate {
+  column: number;
+  /** Stored rule code (ColumnAggregateArchive.agg_type): 2 = sum [inferred from one fixture]; other codes unnamed. */
+  rule: number;
+  level?: number;
+}
+
+export interface TableGroup {
+  /** Group key: the grouped column's value; `null` = the blank group. */
+  value: string | number | boolean | null;
+  /** True when `value` is an ISO date string. */
+  date?: boolean;
+  /** Model row indexes (into `grid`) of the group's rows; leaf groups only. */
+  rows?: number[];
+  children?: TableGroup[];
+  /** Cached summaries per aggregated column, from the app's accumulators. */
+  totals?: GroupTotal[];
+}
+
+export interface GroupTotal {
+  column: number;
+  sum?: number;
+  count?: number;
+  min?: number;
+  max?: number;
 }
 
 /** Merged region: anchor (top-left) + span. [proto: TST.MergeRegionMapArchive CellRange] */
@@ -812,9 +866,16 @@ export type ChartType =
 export interface TsceFormulaRef {
   /** Identity of the formula in the source (e.g. the TableDataList key). */
   id: string;
-  status: "unparsed";
-  /** Formula text when trivially recoverable; usually absent. */
+  /**
+   * "decoded": `sourceText` holds the formula text re-synthesized from the
+   * TSCE AST, as the app's formula editor shows it (relative references
+   * resolved against the owning cell; `×`/`÷`/`≥`/`≤`/`≠` operators;
+   * `Table::A1` / `Sheet::Table::A1` cross-table prefixes; `#REF!` for
+   * broken references). "unparsed": kept opaque, see `warning`.
+   */
+  status: "unparsed" | "decoded";
+  /** Formula text; present when status is "decoded". */
   sourceText?: string;
-  /** Always set: what the viewer should surface instead of a live formula. */
-  warning: Warning;
+  /** Present when status is "unparsed": what to surface instead of a live formula. */
+  warning?: Warning;
 }

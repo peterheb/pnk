@@ -98,6 +98,52 @@ pnk is a **viewer**, not a spreadsheet runtime. For rendering:
   (`OwnerUIDMapperArchive`, TSCEArchives.proto) and dependency archives —
   more evidence this is the right cut line. [inferred]
 
+## Formula text (pnk2json `formulas.rs`, 2026-09-05)
+
+pnk2json re-synthesizes formula text from the AST and emits it as
+`TsceFormulaRef.sourceText` (status `"decoded"`). What was verified:
+
+- Node list is postfix; a stack walk over `AST_node_type` renders it.
+  Binary operators pop right then left (`ADDITION_NODE` 1 … `NOT_EQUAL_TO_NODE`
+  12), `NEGATION_NODE` 13 / `PERCENT_NODE` 15 are unary, `FUNCTION_NODE` 16
+  pops `AST_function_node_numArgs` (f3) and names the function by
+  `AST_function_node_index` (f2) through the vendored id table
+  (`function_names.rs`, from numbers-parser's `functionmap.py`, 345 ids).
+  `LIST_NODE` 25 / `ARRAY_NODE` 24 / `EMPTY_ARGUMENT_NODE` 22 / whitespace
+  and thunk brackets 32-35 as in numbers-parser `NODE_FUNCTION_MAP`.
+  [parser: masaccio/numbers-parser@3238795 formula.py:12-226]
+- `NUMBER_NODE` 17: `AST_number_node_decimal_high` (f43) ==
+  0x3040000000000000 marks an integer whose value is `decimal_low` (f42);
+  otherwise the double (f4) prints shortest-roundtrip. [parser: formula.py
+  `number`; fixture-verified 16c9478d6d21]
+- `CELL_REFERENCE_NODE` 36: `AST_column` (f26 {column sint32 zigzag,
+  absolute}) and `AST_row` (f27) are OFFSETS from the owning cell unless
+  `absolute`; a node with only a row/column is a whole-row/column ref.
+  `COLON_TRACT_NODE` 67: `AST_colon_tract` (f40) relative/absolute range
+  lists + `AST_sticky_bits` (f33); begin 0x7FFFFFFF (rows) / 0x7FFF
+  (columns) with no relative entry = unbounded axis. [parser: model.py
+  node_to_ref:962-1058; fixture-verified: 338 of 359 formulas in
+  16c9478d6d21 re-evaluate to their cached values over pnk2json's own grid
+  (remaining 21: error cells and evaluator gaps)]
+- Cross-table references carry `AST_cross_table_reference_extra_info` (f28)
+  with a `TSP.CFUUIDArchive` (f1, four u32 words f2-f5). In a 2020-era file
+  (16c9478d6d21, no `haunted_owner` on the models) that uuid is the target
+  `TableModelArchive.table_id` string (f1) read as 16 bytes → four LE u32
+  words. Modern files map `haunted_owner` (f84) → `base_owner_uid` through
+  the kind-35 `FormulaOwnerDependenciesArchive` (as numbers-parser does);
+  pnk2json keys its table map by all three. [fixture-verified for the
+  table_id form; the haunted/base form is parser-derived: numbers-parser
+  model.py:773-810]
+- Prefix rule (numbers-parser xrefs.py `expand_ref`): none for the owning
+  table; `Table::A1` when the name is unique in the document or on the same
+  sheet; `Sheet::Table::A1` otherwise. `#REF!` for reference-error nodes
+  and negative resolved coordinates.
+- Corpus (158 Numbers fixtures): 54,318 formula cells in 23 documents, all
+  decode; 45,069 of them in one 1,380-row sheet (0ab5dd52841e). Node kinds
+  not seen in the corpus (durations, let/lambda, linked/category/spill
+  refs, legacy handle-based refs 27/28) are refused, leaving the ref
+  `"unparsed"` — never a partial text.
+
 ## Known unknowns (fixture-verification queue)
 
 - Whether `packedData` in `TSCE.CellCoordinateArchive` uses the same

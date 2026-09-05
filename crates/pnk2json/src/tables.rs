@@ -19,6 +19,8 @@ struct ListEntry {
     reference: Option<u64>,
     format: Option<Msg>,
     custom_format: Option<Msg>,
+    /// FORMULA lists: the inline TSCE.FormulaArchive (entry field 5).
+    formula: Option<Msg>,
 }
 
 /// A decoded TableDataList (string/style/formula/format tables).
@@ -40,6 +42,7 @@ fn load_data_list(ctx: &Ctx, list_id: Option<u64>) -> DataList {
             reference: e.reference(4).or_else(|| e.reference(9)),
             format: e.msg(6),
             custom_format: e.msg(8),
+            formula: e.msg(5),
         });
     }
     // Segmented lists (large tables): segments = 4 → TableDataListSegment
@@ -55,6 +58,7 @@ fn load_data_list(ctx: &Ctx, list_id: Option<u64>) -> DataList {
                     reference: e.reference(4).or_else(|| e.reference(9)),
                     format: e.msg(6),
                     custom_format: e.msg(8),
+                    formula: e.msg(5),
                 });
             }
         }
@@ -207,7 +211,8 @@ fn header_styles(
                 s.paragraph = Some(para);
             }
         }
-        let s = crate::ctx::strip_cell_defaults(s);
+        // wrap=false stays explicit until the section-default fill has run
+        // (convert_table strips it at emission)
         if s != TableCellStyle::default() {
             out.insert(idx, s);
         }
@@ -273,18 +278,7 @@ fn header_info(
 /// u128 from a TSP.UUID ({lower=1, upper=2}) or TSP.CFUUIDArchive
 /// ({uuid_w0..w3 = fields 2..5}); both normalize to the same 128-bit value
 /// (parser: masaccio/numbers-parser@3238795 numbers_uuid.py).
-fn uuid_u128(m: &Msg) -> Option<u128> {
-    if let (Some(w2), Some(w3)) = (m.varint(4), m.varint(5)) {
-        let w0 = m.varint(2)?;
-        let w1 = m.varint(3)?;
-        return Some(
-            ((w3 as u128) << 96) | ((w2 as u128) << 64) | ((w1 as u128) << 32) | w0 as u128,
-        );
-    }
-    let lower = m.varint(1)?;
-    let upper = m.varint(2)?;
-    Some(((upper as u128) << 64) | lower as u128)
-}
+use crate::formulas::uuid_u128;
 
 /// Merge rects from TSCE.FormulaOwnerDependenciesArchive (type 4008)
 /// records: the HAUNTED_OWNER (kind 35) archive whose formula_owner_uid
@@ -766,6 +760,53 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
     }
     cells.sort_by_key(|(r, c, _, _)| (*r, *c));
 
+    // Formula text: re-synthesize each formula cell's text from its TSCE
+    // AST (docs/format/calcengine.md §Formula text). Refs the walker cannot
+    // decode stay "unparsed" with their warning.
+    if cells.iter().any(|(_, _, c, _)| c.formula.is_some()) {
+        let names = crate::formulas::names(ctx);
+        let self_uid = m
+            .msg(84)
+            .and_then(|h| h.msg(1))
+            .as_ref()
+            .and_then(uuid_u128)
+            .map(|h| names.base_uid(h));
+        let scope = crate::formulas::TableScope {
+            names: &names,
+            self_uid,
+            sheet: self_uid.and_then(|u| names.sheet_of(u)),
+        };
+        let debug = std::env::var("PNK_DEBUG_FORMULA").is_ok();
+        for (r, c, cell, _) in cells.iter_mut() {
+            let Some(fref) = cell.formula.as_mut() else { continue };
+            let Some(fm) = fref
+                .id
+                .parse::<i32>()
+                .ok()
+                .and_then(|k| formula_table.entries.get(&k))
+                .and_then(|e| e.formula.as_ref())
+            else {
+                if debug {
+                    eprintln!("formula r{r}c{c} key {}: no FormulaArchive in the FORMULA list", fref.id);
+                }
+                continue;
+            };
+            match crate::formulas::decode(&scope, fm, *r, *c) {
+                Ok(text) => {
+                    if debug {
+                        eprintln!("formula r{r}c{c} = {text}");
+                    }
+                    *fref = TsceFormulaRef::decoded(fref.id.clone(), text);
+                }
+                Err(reason) => {
+                    if debug {
+                        eprintln!("formula r{r}c{c} key {}: {reason}", fref.id);
+                    }
+                }
+            }
+        }
+    }
+
     // Merges, in numbers-parser's priority order (model.py merge_cells):
     // (1) merge_owner (model f47) formula-store ranges — modern files write
     //     COLON_TRACT_NODE (67) ASTs with absolute row/col tracts; pre-BNC
@@ -1054,6 +1095,9 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
     // formatted cell goes quadratic when a document carries many distinct
     // formats. Pool order stays first-appearance, so output is unchanged.
     let mut format_index: HashMap<String, u32> = HashMap::new();
+    let header_rows = m.varint(9).unwrap_or(0) as u32;
+    let header_cols = m.varint(10).unwrap_or(0) as u32;
+    let footer_start = row_count.saturating_sub(m.varint(11).unwrap_or(0) as u32);
     for (row, col, mut cell, format) in cells {
         if cell.cell_style_index.is_none() {
             if let Some(s) = row_styles.get(&row).or_else(|| col_styles.get(&col)) {
@@ -1067,6 +1111,38 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
                 .unwrap_or_default();
             merge_borders(&mut s, b);
             cell.cell_style_index = cell_pool.intern(s);
+        }
+        // Wrap resolves through the SECTION default when the cell's own
+        // style chain is SILENT: 90fbb6c53674 stores per-cell styles
+        // without text_wrap over a wrapping body style, and Numbers wraps
+        // ("Portes en Valdaine" on two lines). An explicit wrap=false in the
+        // chain wins over the section default (cab63a6dd0de's Excel-imported
+        // "Stories of the Saints" cells spill unwrapped over a wrapping body
+        // style) — which is why the pool keeps Some(false) until the strip
+        // pass after this loop.
+        if let Some(i) = cell.cell_style_index {
+            let unset = cell_pool
+                .items
+                .get(i as usize)
+                .is_some_and(|s| s.text_wrap.is_none());
+            if unset {
+                let section = style.as_ref().and_then(|ts| {
+                    if row < header_rows {
+                        ts.header_row_cell_style.as_ref()
+                    } else if col < header_cols {
+                        ts.header_column_cell_style.as_ref()
+                    } else if row >= footer_start {
+                        ts.footer_row_cell_style.as_ref()
+                    } else {
+                        ts.body_cell_style.as_ref()
+                    }
+                });
+                if section.and_then(|s| s.text_wrap) == Some(true) {
+                    let mut s2 = cell_pool.items[i as usize].clone();
+                    s2.text_wrap = Some(true);
+                    cell.cell_style_index = cell_pool.intern(s2);
+                }
+            }
         }
         if let Some(f) = format {
             let key = serde_json::to_string(&f).unwrap_or_default();
@@ -1149,18 +1225,30 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
         }
     }
 
+    // The stored table name is always carried: formula text names tables
+    // by it ("Table 1::A1"), so a consumer needs it even when the caption
+    // is off. table_name_enabled (f22) defaults OFF: Apple's own templates
+    // (02_Invoice "Details") and older docs (lafs "Table 1") omit the field
+    // and render no caption; table_name_height (f33) is 0 there too. Only
+    // an explicit true shows it — `name_hidden` records the off state.
+    let stored_name = m.string(8).filter(|n| !n.is_empty());
+    let name_shown = m.boolean(22) == Some(true);
+    // Emission strip: wrap=false is the documented default (model-design
+    // "STYLES OMIT-DEFAULT"); it stayed explicit in the pool only so the
+    // section-default fill above could tell "no" from "unsaid".
+    for s in cell_pool.items.iter_mut() {
+        if s.text_wrap == Some(false) {
+            s.text_wrap = None;
+        }
+    }
+
     TableModel {
-        name: {
-            // table_name_enabled (f22) defaults OFF: Apple's own templates
-            // (02_Invoice "Details") and older docs (lafs "Table 1") omit the
-            // field and render no table name; table_name_height (f33) is 0
-            // there too. Only an explicit true shows the caption.
-            let n = m.string(8);
-            match n {
-                Some(name) if !name.is_empty() && m.boolean(22) == Some(true) => Some(name),
-                _ => None,
-            }
+        name_hidden: match &stored_name {
+            Some(_) if !name_shown => Some(true),
+            _ => None,
         },
+        name: stored_name,
+        grouping: crate::categories::extract(ctx, &m),
         row_count,
         column_count,
         header_row_count: m.varint(9).unwrap_or(0) as u32,
@@ -1194,6 +1282,8 @@ fn fixed32(v: &iwadump::proto::Value) -> Option<u32> {
 fn empty_table() -> TableModel {
     TableModel {
         name: None,
+        name_hidden: None,
+        grouping: None,
         row_count: 0,
         column_count: 0,
         header_row_count: 0,
@@ -1526,11 +1616,14 @@ fn decode_cell(
             value: double.unwrap_or(0.0) > 0.0,
         },
         7 => CellValue::Duration { value: double? },
+        // Formula-error cell: the error record (flag 0x800 -> FORMULA_ERROR
+        // list) is the only stored text; without it the cell has NO cached
+        // value and Numbers prints it blank (docs/format/tables.md
+        // §Formula-error cells). Never invent a placeholder string here.
         8 => CellValue::Error {
             value: formula_error_id
                 .and_then(|id| formula_error_table.entries.get(&id))
-                .and_then(|e| e.string.clone())
-                .unwrap_or_else(|| "formula error".to_string()),
+                .and_then(|e| e.string.clone()),
         },
         9 => {
             let rid = rich_id?;
@@ -1622,7 +1715,7 @@ fn decode_cell(
     {
         style = Some(overlay_conditional(style, cond));
     }
-    let cell_style_index = style.and_then(|s| cell_pool.intern(crate::ctx::strip_cell_defaults(s)));
+    let cell_style_index = style.and_then(|s| cell_pool.intern(s));
 
     // Formula placeholder (TSCE stays opaque; model-design §2.8).
     let formula = formula_id.map(|id| TsceFormulaRef::unparsed(id.to_string()));
@@ -1711,7 +1804,11 @@ fn value_into_parts(value: CellValue) -> (GridValue, Option<CellTypeTag>, Option
         CellValue::Richtext { text } => {
             (GridValue::Richtext(text), Some(CellTypeTag::Richtext), None)
         }
-        CellValue::Error { value } => (GridValue::Scalar(value), Some(CellTypeTag::Error), None),
+        CellValue::Error { value } => (
+            value.map(GridValue::Scalar).unwrap_or(GridValue::None),
+            Some(CellTypeTag::Error),
+            None,
+        ),
     }
 }
 
@@ -2152,7 +2249,7 @@ fn decode_cell_v3(
             }
         }
     }
-    let cell_style_index = style.and_then(|s| cell_pool.intern(crate::ctx::strip_cell_defaults(s)));
+    let cell_style_index = style.and_then(|s| cell_pool.intern(s));
     if matches!(value, CellValue::Empty) && cell_style_index.is_none() {
         return None;
     }
@@ -2553,7 +2650,7 @@ fn decode_cell_v4(
     {
         style = Some(overlay_conditional(style, cond));
     }
-    let cell_style_index = style.and_then(|s| cell_pool.intern(crate::ctx::strip_cell_defaults(s)));
+    let cell_style_index = style.and_then(|s| cell_pool.intern(s));
     if matches!(value, CellValue::Empty) && cell_style_index.is_none() && formula.is_none() {
         return None;
     }

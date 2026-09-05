@@ -1044,7 +1044,12 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
     if (horizontal) text((left + right) / 2, bottom - 2, chart.valueAxisTitle);
     else text(base, (plotTop + plotBottom) / 2, chart.valueAxisTitle, { rotate: -90 });
   }
-  if (chart.categoryAxisTitle) text(horizontal ? base : (left + right) / 2, horizontal ? (plotTop + plotBottom) / 2 : h - (showLegend ? base * 2.6 : base * 0.6), chart.categoryAxisTitle, { rotate: horizontal ? -90 : 0 });
+  // A legend stored OUTSIDE the frame (below it) leaves the category title
+  // its usual place under the tick labels; only an in-frame legend pushes
+  // the title up (burndown's sprint charts: legend at y = +179 in a 300pt
+  // frame, "Days" sits under the ticks).
+  const legendInside = showLegend && (!chart.legendFrame || h / 2 + chart.legendFrame.y < h);
+  if (chart.categoryAxisTitle) text(horizontal ? base : (left + right) / 2, horizontal ? (plotTop + plotBottom) / 2 : legendInside ? h - base * 2.6 : plotBottom + base * 2.4, chart.categoryAxisTitle, { rotate: horizontal ? -90 : 0 });
   // category labels: at most ~one per 5 glyph widths of plot; a 343-day
   // series (RIPE's waiting list) shows a dozen dates, not all of them.
   // Date categories (ISO strings from date cells) read as "Jun 2022" like
@@ -1070,9 +1075,18 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
     // at the axis origin, last at the right edge)
     const px = (i: number) => (n === 1 ? left + plotW / 2 : left + (i / (n - 1)) * plotW);
     if (showCatLabels) chart.categories.forEach((c, i) => { if (i % labelEvery === 0) text(px(i), plotBottom + base * 1.1, catLabel(c)); });
+    // category gridlines when the file asks for them (burndown's sprint
+    // charts draw a full grid; the value gridlines alone read as ruled paper)
+    if (ax?.categoryGridlines) chart.categories.forEach((_c, i) => gridLine(px(i), plotTop, px(i), plotBottom, false));
     const markers = n <= 40; // Keynote drops point markers on dense series
     const running: number[] = new Array(n).fill(0);
-    chart.series.forEach((s, si) => {
+    // Apple paints the FIRST series on top: burndown's "Planned Left" (blue)
+    // covers "Actual Left" (red) where the two coincide. Stacked kinds keep
+    // the natural order so the running totals compose.
+    const order = chart.series.map((_s, i) => i);
+    if (!stacked) order.reverse();
+    for (const si of order) {
+      const s = chart.series[si];
       const color = colors[si % colors.length];
       const pts: [number, number][] = [];
       s.values.forEach((v, vi) => {
@@ -1081,7 +1095,7 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
         if (stacked) running[vi] += v;
         pts.push([px(vi), vy(base + v)]);
       });
-      if (!pts.length) return;
+      if (!pts.length) continue;
       if (chart.type.endsWith("area")) {
         const area = document.createElementNS(NS, "path");
         area.setAttribute("d", `M${pts[0][0]},${vy(0)} L` + pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" L") + ` L${pts[pts.length - 1][0]},${vy(0)} Z`);
@@ -1104,7 +1118,7 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
         dot.setAttribute("fill", "#fff"); dot.setAttribute("stroke", color); dot.setAttribute("stroke-width", (base * 0.17).toFixed(1));
         svg.appendChild(dot);
       }
-    });
+    }
     return svg;
   }
   // column / bar family, grouped or stacked

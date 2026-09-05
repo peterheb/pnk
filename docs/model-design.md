@@ -267,12 +267,14 @@ The tile/offset-buffer machinery is fully flattened:
 | proto | model |
 |---|---|
 | `TableModelArchive` dimensions, header counts, frozen flags | `TableModel` scalar fields |
+| `table_name` (8) + `table_name_enabled` (22) | `name` always carried when stored (formula text references tables by name); `nameHidden: true` when the caption is off (2026-09-05; before, a hidden name was dropped) |
 | `DataStore.rowHeaders/columnHeaders` buckets | `rows[]/columns[]` (index, sizePt, hidden) |
 | tile `cell_storage_buffer` + packed offsets (BNC v5) | `grid[row][column]` — dense row-major; plain string/number/boolean scalars for unformatted cells, `null` for absent cells |
 | cell type byte → payload flags | scalar cells stay bare; ambiguous values get a `type` tag on the cell object (`date`/`duration`/`currency`/`richtext`/`error` — dates → ISO, duration → seconds) |
 | `TableDataList` STRING/RICH_TEXT_PAYLOAD entries | cell `v` string / `{ v: StyledText, type: "richtext" }` |
 | `TableDataList` FORMAT/CUSTOM_FORMAT | `formats[]` deduped pool, referenced by `TableCell.fmt` (custom formats degrade to `kind:"custom"` + raw string) |
 | `merge_region_map` CellRanges (col<<16|row packedData) | `merges[]` anchor + span |
+| `category_owner` (86) → `CategoryOwnerRefArchive` → `GroupByArchive` (docs/format/tables.md §Category grouping) | `grouping?: TableGrouping` — grouped column indexes, summary rules (raw code; 2 = sum), the group tree with model row indexes, and the app's cached totals; `grid` stays the ungrouped data (2026-09-05) |
 | `TableStyleNetworkArchive` role slots | `TableStyle` defaults; per-cell `cell_style`/`text_style` overrides resolved on top |
 | `TST.CellStylePropertiesArchive` fills/strokes/vertical alignment/padding | `cellStyles: TableCellStyle[]` deduped per-table pool, referenced by `TableCell.cellStyleIndex` |
 
@@ -300,11 +302,15 @@ formula becomes `cell.formula: TsceFormulaRef` (opaque).
 
 ### 2.8 Calc engine (TSCE) — docs/format/calcengine.md
 
-Deliberately **not** decompiled. `TsceFormulaRef { id, status: "unparsed",
-warning }` records that a formula existed; the last-calculated value already
-lives in the cell/chart data. If formula text is trivially re-synthesizable
-(numbers-parser's ~30-node dispatch table approach), `sourceText` may be
-filled — optional, never required.
+The calc engine is never RUN: the last-calculated value already lives in
+the cell/chart data. Formula TEXT is re-synthesized from the stored AST
+(`crates/pnk2json/src/formulas.rs`, a stack walk over the postfix node
+list; docs/format/calcengine.md §Formula text): `TsceFormulaRef { id,
+status: "decoded", sourceText }`. Cells whose AST uses a node kind, function
+id, or table uuid the walker does not know stay `{ id, status: "unparsed",
+warning }` — never a partial text. `warning` is present exactly when status
+is "unparsed" (2026-09-05: it was required before; it was always the same
+constant row). Chart `dataBinding` refs stay unparsed.
 
 ---
 

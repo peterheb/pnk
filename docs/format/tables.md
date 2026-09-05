@@ -185,6 +185,69 @@ masaccio/numbers-parser@3238795]
   numbers-parser writer model.py:1262-1306 + reader model.py:1071-1097; verify
   against fixtures for tables whose tiles are not row-block-aligned]
 
+## Row heights: no per-row fit-to-content flag
+
+`HeaderStorageBucket.Header` carries only `index`, `size`, `hidingState`,
+`numberOfCells` (+ style refs) [proto]; there is no flag saying whether a
+row was sized by hand or fits its content. Numbers grows a row whose
+wrapped text needs more than the stored `size` (90fbb6c53674: every row
+stored at the 19.93pt default, the export shows two- and three-line rows).
+The only trace of the grown heights is a layout cache,
+`TST.TableInfoArchive.layout_engine` (f14) → `LayoutEngineArchive` {
+width_height_cache 1 → `WidthHeightCache` { rows_fitting_entries 1
+[{ fitting_index 1, fitting_size 2 (float) }] } }, present in 1 of 3
+flagged files (c4b881955676) and absent from the others — not a source a
+viewer can rely on. pnk2json therefore carries the stored size only; the
+viewer treats it as a minimum and lets wrapped text grow the row (a `<tr>`
+height is a minimum in CSS). `[proto + fixture-verified 2026-09-05]`
+
+## Category grouping ("Organize by")
+
+`TableModelArchive.category_owner` (f86, TSP.Reference) → `TST.CategoryOwnerRefArchive`
+{ group_by = 1: repeated TSP.Reference } → `TST.GroupByArchive` [proto]:
+`group_by_uid` 1, `group_column` 2 [{ column_uid 1, grouping_type 2 }],
+`group_node_root` 3 (inline) or `group_node_root_ref` 18, `aggregator` 4
+[{ column_uid 1, agg_node 2 }], `column_agg_type` 5 [{ column_uid 1, level 2,
+agg_type 3, show_as_type 4 }], `is_enabled` 6, `row_uid_lookup` 15 { uuids 1 }.
+A model can reference several GroupBy archives; only the enabled one applies.
+
+`GroupNodeArchive`: `group_uid` 1, `child` 3 (inline) / `child_ref` 10,
+`row_uid` 4, `agg_formula_coords` 5, `group_cell_value` 7 (TSCE.CellValueArchive:
+cell_value_type 1 = NIL 1 / BOOLEAN 2 / DATE 3 / NUMBER 4 / STRING 5, value
+sub-messages 2-5), `row_lookup_uids` 9 (TSCE.IndexSetArchive entries
+{ range_begin 1, range_end 2 } — INCLUSIVE ranges indexing `row_uid_lookup`).
+Row/column uids resolve through the model's `base_column_row_uids` (f46) →
+`TST.ColumnRowUIDMapArchive` { sorted_column_uids 1 / column_index_for_uid 2,
+sorted_row_uids 4 / row_index_for_uid 5 }. Lookup order is NOT model order.
+
+Cached summaries: each aggregator's `AggNodeArchive` tree { formula_coord 1,
+accum 2 (AccumulatorArchive: number_count 2, min_value 6, max_value 7,
+number_total_value 8 — CellValueArchives), child 3 } is matched to group
+nodes by coordinate (a group node's `agg_formula_coords` names its agg node);
+child ORDER differs between the two trees. `agg_type` 2 shows as "Sum" in the
+fixture; other codes are unnamed. The grouped view's extra left column width
+is `TST.SummaryModelArchive.category_column_width` (f10, 50pt in the fixture;
+not carried). Groups display sorted by key with the blank group last.
+`[fixture-verified: 6914f46e51ab (Numbers 15.x, one grouped table in the
+158-file corpus) against its PDF export: groups "Muster" 4h27m / blank 3h57m,
+table 8h24m; parser: none — numbers-parser does not read categories]`
+
+## Formula-error cells
+
+A `formulaErrorCellType` (byte-1 value 8) cell is a formula whose last
+evaluation failed. Its buffer carries the formula id (flag 0x200), style and
+format ids, and a suggestion id (0x1000) — and, when Numbers stored one, a
+formula-error id (flag 0x800) into the `FORMULA_ERROR` (type 5) data list.
+There is NO number/string payload: nothing is cached. Corpus census
+(158 Numbers fixtures, 37 such cells in 4 files): none carries an 0x800
+record, none carries a value. Numbers' PDF export prints these cells blank
+(the in-app warning triangle is UI, not content). pnk2json emits
+`{ v: null, type: "error", formula }` — an earlier build invented the
+string "formula error" here, which the judge read as a rendering defect.
+`[fixture-verified: 16c9478d6d21 (17 cells), fcb2c1c1c3cd (1 cell) against
+Numbers 15.3.1 PDF exports; parser: numbers-parser@3238795 cell.py:928-929
+ErrorCell.value = None]`
+
 ## Formula linkage
 
 Cell buffers reference formulas by int32 id into the `FORMULA`-type

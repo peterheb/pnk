@@ -9,10 +9,18 @@ import type { HydratedDoc } from "./hydrate";
 import { spillUnwrappedCells, tableDrawnHeight, tableDrawnWidth } from "./tables";
 
 function drawableExtent(
-  d: { type: string; table?: TableModel; common?: { position?: { x: number; y: number }; size?: { width: number; height: number } }; children?: unknown[] },
+  d: { type: string; table?: TableModel; chart?: { legendFrame?: { x: number; y: number; width: number; height: number } }; common?: { position?: { x: number; y: number }; size?: { width: number; height: number } }; children?: unknown[] },
   cur: { x: number; y: number },
 ): void {
   if (d.common?.position && d.common.size) {
+    // A chart's legend frame is relative to the frame's centre and often
+    // hangs BELOW the frame (burndown's sprint charts: y = +179 in a 300pt
+    // box); the canvas must reach it or the legend is clipped away.
+    const lf = d.type === "chart" ? d.chart?.legendFrame : undefined;
+    if (lf) {
+      cur.x = Math.max(cur.x, d.common.position.x + d.common.size.width / 2 + lf.x + lf.width);
+      cur.y = Math.max(cur.y, d.common.position.y + d.common.size.height / 2 + lf.y + lf.height + 4);
+    }
     // A table draws at the sum of its column widths; its stored frame is a
     // stale cache (see tables.ts). Take the wider of the two so the canvas
     // never cuts a table off (cdrky's County Tax Rates: 1202pt of columns

@@ -11,6 +11,7 @@ import type {
   TableCell,
   TableModel,
   TableMerge,
+  TableGroup,
 } from "../../model/src/shared";
 import { fillToCss } from "./drawables";
 import { applyCharStyle, naturalLineHeight, renderStyledText } from "./text";
@@ -398,7 +399,9 @@ function valueToText(cell: TableCell, format: CellFormat | undefined): string {
       const sign = n < 0 ? "-" : "";
       return `${sign}${sym}${body}`;
     }
-    case "error": return String(v);
+    // An error cell with no stored error record has no cached value:
+    // Numbers prints it blank (16c9478d6d21, fcb2c1c1c3cd exports).
+    case "error": return v === null ? "" : String(v);
     case "richtext": {
       const st = v as TableModel["grid"] extends never ? never : NonNullable<TableCell["v"]> & { paragraphs?: { items?: { type?: string; text?: string }[] }[] };
       return (st as { paragraphs?: { items?: { type?: string; text?: string }[] }[] }).paragraphs
@@ -554,7 +557,7 @@ export function spillUnwrappedCells(root: HTMLElement): void {
  * which case the renderer falls back to the auto table layout.
  */
 export function tableDrawnWidth(model: TableModel): number {
-  let total = 0;
+  let total = model.grouping?.groups.length ? GROUP_COLUMN_PT : 0;
   for (let c = 0; c < model.columnCount; c++) {
     const info = model.columns?.[c];
     if (info?.hidden) continue;
@@ -572,7 +575,11 @@ export function tableDrawnWidth(model: TableModel): number {
  * Returns 0 when a height is unknown.
  */
 export function tableDrawnHeight(model: TableModel): number {
-  let total = model.name ? 24 : 0;
+  let total = model.name && !model.nameHidden ? 24 : 0;
+  if (model.grouping?.groups.length) {
+    // label row + one row per group node, at the default row height
+    total += (1 + countGroups(model.grouping.groups)) * (model.defaultRowHeightPt || 20);
+  }
   for (let r = 0; r < model.rowCount; r++) {
     const info = model.rows?.[r];
     if (info?.hidden) continue;
@@ -583,11 +590,92 @@ export function tableDrawnHeight(model: TableModel): number {
   return total;
 }
 
+/** Width of the category column Numbers adds to the left of a grouped table. */
+const GROUP_COLUMN_PT = 30;
+
+function countGroups(groups: TableGroup[]): number {
+  let n = 0;
+  for (const g of groups) n += 1 + (g.children ? countGroups(g.children) : 0);
+  return n;
+}
+
+/** Numbers lists groups by key ascending with the blank group last. */
+function sortedGroups(groups: TableGroup[]): TableGroup[] {
+  return [...groups].sort((a, b) => {
+    if (a.value === null) return b.value === null ? 0 : 1;
+    if (b.value === null) return -1;
+    if (typeof a.value === "number" && typeof b.value === "number") return a.value - b.value;
+    return String(a.value).localeCompare(String(b.value));
+  });
+}
+
+type RowEntry = number | { kind: "label"; depth: number } | { kind: "group"; group: TableGroup; depth: number };
+
+/**
+ * Row order of a grouped table: header rows, the label row ("Projekt:" /
+ * "Sum:"), then each group's row followed by its rows (nested groups
+ * indent), then rows no group claims, then footer rows.
+ */
+function groupedOrder(model: TableModel, visRows: number[], headEnd: number, footStart: number): RowEntry[] {
+  const g = model.grouping;
+  if (!g || g.groups.length === 0) return visRows;
+  const vis = new Set(visRows);
+  const out: RowEntry[] = [];
+  for (const r of visRows) if (r < headEnd) out.push(r);
+  out.push({ kind: "label", depth: 0 });
+  const placed = new Set<number>();
+  const walk = (groups: TableGroup[], depth: number) => {
+    for (const grp of sortedGroups(groups)) {
+      out.push({ kind: "group", group: grp, depth });
+      if (grp.children) walk(grp.children, depth + 1);
+      for (const r of grp.rows ?? []) {
+        if (vis.has(r) && r >= headEnd && r < footStart && !placed.has(r)) {
+          out.push(r);
+          placed.add(r);
+        }
+      }
+    }
+  };
+  walk(g.groups, 0);
+  for (const r of visRows) if (r >= headEnd && r < footStart && !placed.has(r)) out.push(r);
+  for (const r of visRows) if (r >= footStart) out.push(r);
+  return out;
+}
+
+/** A summary value printed like the column's own cells (duration, currency, format). */
+function totalText(model: TableModel, col: number, sum: number): string {
+  for (let r = model.headerRowCount; r < model.rowCount; r++) {
+    const cell = model.grid[r]?.[col];
+    if (cell !== null && cell !== undefined && typeof cell === "object" && (cell.type || cell.fmt !== undefined)) {
+      const probe: TableCell = { v: sum, type: cell.type === "duration" || cell.type === "currency" ? cell.type : undefined, cur: cell.cur, fmt: cell.fmt };
+      return valueToText(probe, cell.fmt !== undefined ? model.formats[cell.fmt] : undefined);
+    }
+  }
+  return valueToText({ v: sum }, undefined);
+}
+
+function headerName(model: TableModel, col: number): string {
+  if (model.headerRowCount > 0) {
+    const cell = model.grid[0]?.[col];
+    if (cell !== null && cell !== undefined) {
+      const text = valueToText(typeof cell === "object" ? cell : { v: cell }, undefined);
+      if (text) return text;
+    }
+  }
+  return `Column ${col + 1}`;
+}
+
+function groupLabel(model: TableModel, grp: TableGroup): string {
+  if (grp.value === null) return "(blank)";
+  if (grp.date && typeof grp.value === "string") return valueToText({ v: grp.value, type: "date" }, undefined);
+  return String(grp.value);
+}
+
 /** One TableModel as a real table; hidden rows/columns are skipped. */
 export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedDoc, _frameWidth?: number): HTMLTableElement {
   const table = document.createElement("table");
   table.className = "sheet-table";
-  if (model.name) {
+  if (model.name && !model.nameHidden) {
     const cap = document.createElement("caption");
     cap.className = "table-caption";
     cap.style.captionSide = "top";
@@ -620,6 +708,13 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedD
   const cg = document.createElement("colgroup");
   let totalW = 0;
   let allWidthsKnown = visCols.length > 0;
+  const grouping = model.grouping?.groups.length ? model.grouping : undefined;
+  if (grouping) {
+    const col = document.createElement("col");
+    col.style.width = `${GROUP_COLUMN_PT}px`;
+    totalW += GROUP_COLUMN_PT;
+    cg.appendChild(col);
+  }
   for (const c of visCols) {
     const col = document.createElement("col");
     // a stored 0 means "the default" (cdrky's pre-BNC sheet stores 0 for
@@ -660,7 +755,47 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedD
   // borders — the base gray gridlines would add lines Apple doesn't draw
   // (02_Invoice has horizontal rules only).
   if (model.style?.bodyCellStyle?.borders) table.classList.add("own-strokes");
-  for (const r of visRows) {
+  for (const entry of groupedOrder(model, visRows, headEnd, footStart)) {
+    if (typeof entry !== "number") {
+      // Synthetic grouping rows (Numbers "Organize by"): the label row names
+      // the grouped column and the summary rule; a group row carries the
+      // disclosure triangle, the group key, and the cached totals.
+      if (sectionKind !== "tbody") {
+        sectionKind = "tbody";
+        sectionEl = document.createElement("tbody");
+        table.appendChild(sectionEl);
+      }
+      const tr = document.createElement("tr");
+      tr.className = entry.kind === "group" ? "group-row" : "group-label-row";
+      const lead = document.createElement("td");
+      const leadCols = Math.max(1, model.headerColumnCount);
+      lead.colSpan = 1 + visCols.filter((c) => c < leadCols).length;
+      lead.className = "cell-group";
+      lead.style.paddingLeft = `${4 + entry.depth * 12}px`;
+      lead.textContent = entry.kind === "group"
+        ? "\u25BC " + groupLabel(model, entry.group)
+        : `${headerName(model, grouping!.columns[0])}:`;
+      tr.appendChild(lead);
+      for (const c of visCols) {
+        if (c < leadCols) continue;
+        const td = document.createElement("td");
+        td.className = "cell-group";
+        const agg = grouping!.aggregates?.find((a) => a.column === c);
+        if (agg) {
+          td.style.textAlign = "right";
+          if (entry.kind === "group") {
+            const t = entry.group.totals?.find((x) => x.column === c);
+            if (t?.sum !== undefined) td.textContent = totalText(model, c, t.sum);
+          } else {
+            td.textContent = agg.rule === 2 ? "Sum:" : "Summary:";
+          }
+        }
+        tr.appendChild(td);
+      }
+      sectionEl!.appendChild(tr);
+      continue;
+    }
+    const r = entry;
     const kind = r < headEnd ? "thead" : r >= footStart ? "tfoot" : "tbody";
     if (kind !== sectionKind) {
       sectionKind = kind;
@@ -668,6 +803,11 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedD
       table.appendChild(sectionEl);
     }
     const tr = document.createElement("tr");
+    if (grouping) {
+      const cat = document.createElement(r < headEnd ? "th" : "td");
+      cat.className = "cell-category";
+      tr.appendChild(cat);
+    }
     const info = model.rows?.[r];
     // stored height wins (CSS height on a <tr> is a minimum — content can
     // still grow it); 0/absent rows auto-fit their content like Apple.
@@ -721,6 +861,9 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedD
         const numeric = typeof norm.v === "number" || typedAligns || (norm.type === undefined && formatAligns && typeof norm.v !== "string" && typeof norm.v !== "boolean");
         if (!td.style.textAlign && numeric && norm.type !== "error") td.style.textAlign = "right";
         if (norm.type === "error") td.classList.add("cell-error");
+        // Decoded formula text as a hover tooltip (the cell shows the
+        // cached result, as Numbers does).
+        if (norm.formula?.sourceText) td.title = "=" + norm.formula.sourceText;
         const text = valueToText(norm, format);
         const rich = norm.type === "richtext" && typeof norm.v === "object" && norm.v !== null && "paragraphs" in norm.v
           ? norm.v : null;

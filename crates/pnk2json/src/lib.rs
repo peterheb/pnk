@@ -7,10 +7,13 @@
 //! drop (docs/model-design.md §5). Rejections (legacy, encrypted, corrupt)
 //! surface as iwadump layer-tagged errors.
 
+pub mod categories;
 pub mod charts;
 pub mod colors;
 pub mod ctx;
 pub mod drawables;
+pub mod formulas;
+pub mod function_names;
 pub mod dumptext;
 pub mod keynote;
 pub mod loader;
