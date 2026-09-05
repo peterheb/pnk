@@ -11,6 +11,9 @@ use crate::pb::{ids, Msg};
 
 pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
     let locale = ctx.resolve_locale(root);
+    // The text splitter compares run languages against the document locale
+    // (headers and text boxes are extracted before the body).
+    ctx.meta.locale = locale.clone();
 
     // Flavor discriminator: TP.SettingsArchive.body (field 1, default true)
     // — "include body text in the document". Layout docs carry body=0 even
@@ -70,17 +73,23 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
 
     // Page templates (masters).
     let mut template_ids = root.references(48);
-    // Fresh 26.3 docs (G5): PageMasterArchives float in the object graph when
-    // root has no field 48. They carry headers (f1) and footers (f2) as
-    // TSWP.StorageArchive references — the old TP.PageMasterArchive layout.
-    if template_ids.is_empty() {
-        for rec in ctx.loaded.records.values() {
-            if rec.type_id == 10143 {
-                template_ids.push(rec.id);
-            }
-        }
+    // PageMasterArchives (10143) carry the headers (f1), footers (f2) and
+    // master drawables, and sections reference THEM (fields 23-25). Fresh
+    // 26.3 docs (G5) have no field 48 at all; older docs (26a356, a Pages
+    // 5-era newsletter) point field 48 at a template container of another
+    // type while the masters float free. Either way every master in the
+    // graph joins the list, after the field-48 entries, in id order.
+    {
+        let mut masters: Vec<u64> = ctx
+            .loaded
+            .records
+            .values()
+            .filter(|rec| rec.type_id == 10143 && !template_ids.contains(&rec.id))
+            .map(|rec| rec.id)
+            .collect();
         // records is a hash map: sort for deterministic template order/names.
-        template_ids.sort_unstable();
+        masters.sort_unstable();
+        template_ids.extend(masters);
     }
     let mut page_templates = Vec::new();
     let mut template_names: std::collections::HashMap<u64, String> =
@@ -138,8 +147,28 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
     let mut body = None;
     let mut hidden_body = None;
     let mut footnotes: Vec<Footnote> = Vec::new();
+    let mut table_of_contents = None;
+    let mut comments = None;
+    let mut bookmarks = None;
     if let Some(bsid) = root.reference(4) {
         if let Some(ex) = crate::text::extract(ctx, bsid) {
+            if !ex.toc_entries.is_empty() {
+                // A document with several TOC boxes (one per section in
+                // 55d37c2b) repeats the same entries; keep one copy each.
+                let mut entries: Vec<TocEntry> = Vec::new();
+                for e in ex.toc_entries {
+                    if !entries.contains(&e) {
+                        entries.push(e);
+                    }
+                }
+                table_of_contents = Some(TableOfContents { entries });
+            }
+            if !ex.comments.is_empty() {
+                comments = Some(ex.comments);
+            }
+            if !ex.bookmarks.is_empty() {
+                bookmarks = Some(ex.bookmarks);
+            }
             let non_empty = ex.text.paragraphs.iter().any(|p| {
                 p.items
                     .iter()
@@ -343,7 +372,9 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
         floating,
         page_templates,
         sections,
-        table_of_contents: None,
+        table_of_contents,
+        comments,
+        bookmarks,
     }
     .with_locale(locale)
 }

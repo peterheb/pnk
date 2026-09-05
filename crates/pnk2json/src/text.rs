@@ -22,6 +22,100 @@ pub struct ExtractedText {
     pub text: StyledText,
     /// Footnote bodies keyed by the paragraph index where their mark occurs.
     pub footnotes: Vec<(u32, StyledText)>,
+    /// Table-of-contents entries from any TOC attachment in the storage.
+    pub toc_entries: Vec<TocEntry>,
+    /// Reviewer comments anchored in the storage (table_highlight).
+    pub comments: Vec<Comment>,
+    /// Bookmark anchors in the storage (table_bookmark).
+    pub bookmarks: Vec<Bookmark>,
+}
+
+/// Side outputs of an attachment walk: footnote bodies and TOC entries.
+struct Side {
+    footnotes: Vec<(u32, StyledText)>,
+    toc: Vec<TocEntry>,
+}
+
+/// table_language (19) entries: `{ character_index = 1, language = 2 }` —
+/// the tag is a plain string in field 2, not a reference [inferred: paadopt
+/// eb2a7cde stores "en" spans; an entry without field 2 ends the span].
+fn language_entries_of(table: Option<Msg>) -> Vec<(usize, Option<String>)> {
+    let Some(table) = table else {
+        return Vec::new();
+    };
+    let mut out: Vec<(usize, Option<String>)> = table
+        .msgs(1)
+        .into_iter()
+        .map(|e| (e.varint(1).unwrap_or(0) as usize, e.string(2).filter(|l| is_language_tag(l))))
+        .collect();
+    out.sort_by_key(|e| e.0);
+    out
+}
+
+/// A plausible language tag: Apple also stores the marker "__multilingual"
+/// for mixed runs (fixture 77890685), which is not a language.
+pub fn is_language_tag(tag: &str) -> bool {
+    !tag.is_empty()
+        && !tag.starts_with('_')
+        && tag.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+/// Primary language subtag of a locale or language tag ("en_US" → "en").
+fn primary_subtag(tag: &str) -> String {
+    tag.split(['_', '-'])
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase()
+}
+
+/// Deleted ranges (UTF-16) from table_deletion (22): an entry whose object is
+/// a TSWP.ChangeArchive with kind deletion (2) opens a range that the next
+/// entry closes [proto: ChangeArchive.kind; fixture 55d37c2b stores the
+/// deleted newline in the buffer and Pages hides it in the accepted view].
+fn change_ranges(ctx: &Ctx, entries: &[Entry], want_kind: u64) -> Vec<(usize, usize)> {
+    let mut out = Vec::new();
+    for (i, e) in entries.iter().enumerate() {
+        let Some(oid) = e.object_id else { continue };
+        let kind = ctx.loaded.msg(oid).and_then(|m| m.varint(1)).unwrap_or(0);
+        if kind != want_kind {
+            continue;
+        }
+        let end = entries.get(i + 1).map(|n| n.utf16_off).unwrap_or(usize::MAX);
+        if end > e.utf16_off {
+            out.push((e.utf16_off, end));
+        }
+    }
+    out
+}
+
+/// TSD.CommentStorageArchive → Comment (replies recurse one level per hop).
+fn comment_of(ctx: &Ctx, id: u64, anchor: u32, quoted: Option<String>, depth: u32) -> Option<Comment> {
+    let m = ctx.loaded.msg(id)?;
+    let author = m
+        .reference(3)
+        .and_then(|a| ctx.loaded.msg(a))
+        .and_then(|a| a.string(1))
+        .filter(|s| !s.is_empty());
+    let date = m
+        .msg(2)
+        .and_then(|d| d.f64v(1))
+        .map(crate::colors::iso_from_apple_seconds);
+    let replies: Vec<Comment> = if depth < 4 {
+        m.references(4)
+            .into_iter()
+            .filter_map(|r| comment_of(ctx, r, anchor, None, depth + 1))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    Some(Comment {
+        anchor_paragraph_index: anchor,
+        text: m.string(1).unwrap_or_default(),
+        author,
+        date,
+        quoted_text: quoted.filter(|q| !q.trim().is_empty()),
+        replies: if replies.is_empty() { None } else { Some(replies) },
+    })
 }
 
 /// Build a UTF-16 offset → char-index map for the text: entry `i` is the
@@ -121,6 +215,46 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
     // caps only the paragraph at 6366, not the following ones — so the
     // usual carry-forward range semantics do not hold here].
     let dropcap_entries = entries_of(storage.msg(28));
+    // Annotation tables: bookmarks (15), language spans (19), tracked
+    // changes (21 insertion / 22 deletion), comment highlights (23).
+    let bookmark_entries = entries_of(storage.msg(15));
+    let language_entries = language_entries_of(storage.msg(19));
+    let insertion_entries = entries_of(storage.msg(21));
+    let deletion_entries = entries_of(storage.msg(22));
+    let highlight_entries = entries_of(storage.msg(23));
+    let doc_lang = ctx.meta.locale.as_deref().map(primary_subtag);
+    // The language a run would carry at `off`: the span's tag when it
+    // differs from the document locale, else nothing (omit-default).
+    let emitted_lang = |off: usize| -> Option<String> {
+        let idx = language_entries.partition_point(|(o, _)| *o <= off);
+        let (_, lang) = idx.checked_sub(1).map(|i| &language_entries[i])?;
+        let lang = lang.as_ref()?;
+        (doc_lang.as_deref() != Some(primary_subtag(lang).as_str())).then(|| lang.clone())
+    };
+    // Run boundaries only where the emitted language actually changes: a
+    // span equal to the locale must not split a run (golden G2 keeps
+    // "Shapes can hold text too." as one item).
+    let language_boundaries: Vec<usize> = language_entries
+        .iter()
+        .filter(|(off, _)| *off > 0 && emitted_lang(*off) != emitted_lang(off - 1))
+        .map(|(off, _)| *off)
+        .collect();
+
+    // Tracked changes: emit the ACCEPTED view (insertions kept, deletions
+    // omitted) and say so once; the review markup itself is not modeled.
+    let deleted = change_ranges(ctx, &deletion_entries, 2);
+    let inserted = change_ranges(ctx, &insertion_entries, 1);
+    if !deleted.is_empty() || !inserted.is_empty() {
+        ctx.warn(
+            WarningCode::UnsupportedFeature,
+            format!(
+                "tracked changes: {} insertion(s) kept, {} deletion(s) omitted; text is the accepted view",
+                inserted.len(),
+                deleted.len()
+            ),
+        );
+    }
+    let in_deleted = |off: usize| deleted.iter().any(|(a, b)| off >= *a && off < *b);
 
     // List membership + levels + item numbers (fixture-verified against
     // G1-golden: gotchas #14):
@@ -133,7 +267,10 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
     let para_data = para_table(storage.msg(6));
     let para_starts = para_table(storage.msg(14));
 
-    let mut footnotes: Vec<(u32, StyledText)> = Vec::new();
+    let mut side = Side {
+        footnotes: Vec::new(),
+        toc: Vec::new(),
+    };
 
     // Paragraph boundaries: newlines in the character buffer (text.md
     // §Paragraph model). Each paragraph spans [start_char, end_char) in
@@ -162,6 +299,46 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
             }
         }
         para_ranges.push((start_char, text.chars().count()));
+    }
+    // Paragraph index holding a UTF-16 offset (anchors of bookmarks and
+    // comments); an offset past the end lands in the last paragraph.
+    let para_at = |off: usize| -> u32 {
+        let ci = u16_to_char_index(&map, off);
+        para_ranges
+            .iter()
+            .position(|(_, end)| ci <= *end)
+            .unwrap_or(para_ranges.len().saturating_sub(1)) as u32
+    };
+    let bookmarks: Vec<Bookmark> = bookmark_entries
+        .iter()
+        .filter_map(|e| {
+            let m = ctx.loaded.msg(e.object_id?)?;
+            let id = m.msg(1).and_then(|sup| sup.string(1)).filter(|s| !s.is_empty())?;
+            Some(Bookmark {
+                id,
+                name: m.string(2).filter(|s| !s.is_empty()),
+                paragraph_index: para_at(e.utf16_off),
+            })
+        })
+        .collect();
+    let mut comments: Vec<Comment> = Vec::new();
+    for (i, e) in highlight_entries.iter().enumerate() {
+        let Some(hid) = e.object_id else { continue };
+        let Some(cid) = ctx.loaded.msg(hid).and_then(|h| h.reference(1)) else {
+            continue;
+        };
+        let end = highlight_entries
+            .get(i + 1)
+            .map(|n| n.utf16_off)
+            .unwrap_or(e.utf16_off);
+        let quoted: String = {
+            let a = u16_to_char_index(&map, e.utf16_off);
+            let b = u16_to_char_index(&map, end);
+            text.chars().skip(a).take(b.saturating_sub(a)).collect()
+        };
+        if let Some(c) = comment_of(ctx, cid, para_at(e.utf16_off), Some(quoted), 0) {
+            comments.push(c);
+        }
     }
 
     // Per-paragraph list info: (list style id, level, stored item number). An entry at
@@ -192,6 +369,11 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
 
     let mut paragraphs: Vec<Paragraph> = Vec::new();
     let mut last_style: Option<u64> = None;
+    // List numbering state: the last number printed at each level. A stored
+    // number (table_para_starts) restarts a level; otherwise the level
+    // continues, and any item at a level restarts the levels below it
+    // (48f5f124: "1. Turnus" then "1.1 … 1.4", "2. Turnus" then "2.1 …").
+    let mut list_counters: Vec<u32> = Vec::new();
 
     for (pi, (start, end)) in para_ranges.iter().enumerate() {
         let p_start_u16 = map[*start];
@@ -250,6 +432,18 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
                 boundaries.push(e.utf16_off);
             }
         }
+        for off in &language_boundaries {
+            if *off > p_start_u16 && *off < p_end_u16 {
+                boundaries.push(*off);
+            }
+        }
+        for (a, b) in &deleted {
+            for off in [*a, *b] {
+                if off > p_start_u16 && off < p_end_u16 {
+                    boundaries.push(off);
+                }
+            }
+        }
         for (ci, ch) in text
             .chars()
             .enumerate()
@@ -266,7 +460,7 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
 
         for w in boundaries.windows(2) {
             let (b0, b1) = (w[0], w[1]);
-            if b1 <= b0 {
+            if b1 <= b0 || in_deleted(b0) {
                 continue;
             }
             // Effective char style: last char-style entry at or before b0
@@ -274,7 +468,12 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
             // PARAGRAPH style's char_properties chain — heading/title fonts
             // and placeholder text sizes live there (G5 goldens; RIPE deck).
             let char_sid = entry_at(&char_entries, b0).and_then(|e| e.object_id);
-            let char_style = crate::styles::resolve_effective_char_style(ctx, char_sid, style_ref);
+            let mut char_style = crate::styles::resolve_effective_char_style(ctx, char_sid, style_ref);
+            // Run language from table_language, only when it differs from
+            // the document locale (omit-default: the locale covers the rest).
+            if char_style.language.is_none() {
+                char_style.language = emitted_lang(b0);
+            }
             let c_style = ctx
                 .char_pool
                 .intern(crate::ctx::strip_char_defaults(char_style));
@@ -300,7 +499,7 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
                     style,
                     value,
                     field,
-                } = resolve_attachment(ctx, fe.object_id, pi as u32, &mut footnotes)
+                } = resolve_attachment(ctx, fe.object_id, pi as u32, &mut side)
                 {
                     items.push(ParagraphItem::Field {
                         kind: FieldTag::Field,
@@ -326,7 +525,7 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
                 .then(|| attach_entries.iter().find(|e| e.utf16_off == b0))
                 .flatten();
             if let Some(att) = att_at_start {
-                let resolved = resolve_attachment(ctx, att.object_id, pi as u32, &mut footnotes);
+                let resolved = resolve_attachment(ctx, att.object_id, pi as u32, &mut side);
                 let consumed_anchor = !matches!(resolved, AttachmentResult::None);
                 match resolved {
                     AttachmentResult::Drawable(boxed, h_off, v_off) => {
@@ -503,10 +702,23 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
         // (gotchas #14). The theme list style carries the marker vocabulary;
         // the storage tables carry WHO is in a list, at WHAT level, and
         // which number each item prints — decodable without theme resolution.
+        let mut list_number = None;
         if let Some((lid, level, number)) = list_by_para[pi] {
             let mut lf = resolve_list_format_minimal(ctx, lid, level);
             if number > 0 && lf.marker_kind == ListMarkerKind::Number {
                 lf.start = Some(number as f64);
+            }
+            if lf.marker_kind != ListMarkerKind::None {
+                let lv = level as usize;
+                if list_counters.len() <= lv {
+                    list_counters.resize(lv + 1, 0);
+                }
+                list_counters.truncate(lv + 1);
+                if lf.marker_kind == ListMarkerKind::Number {
+                    let n = if number > 0 { number as u32 } else { list_counters[lv] + 1 };
+                    list_counters[lv] = n;
+                    list_number = Some(n);
+                }
             }
             pstyle.list = Some(lf);
         }
@@ -525,12 +737,16 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
             p_style,
             items,
             page_break_before: page_break_before[pi].then_some(true),
+            list_number,
         });
     }
 
     Some(ExtractedText {
         text: StyledText { paragraphs },
-        footnotes,
+        footnotes: side.footnotes,
+        toc_entries: side.toc,
+        comments,
+        bookmarks,
     })
 }
 
@@ -591,7 +807,7 @@ fn resolve_attachment(
     ctx: &mut Ctx,
     object_id: Option<u64>,
     para_index: u32,
-    footnotes: &mut Vec<(u32, StyledText)>,
+    side: &mut Side,
 ) -> AttachmentResult {
     let Some(oid) = object_id else {
         return AttachmentResult::None;
@@ -638,11 +854,61 @@ fn resolve_attachment(
                 field: kind,
             }
         }
+        // TSWP.TOCAttachmentArchive { super = 1: DrawableAttachmentArchive }
+        // → TSWP.TOCInfoArchive (a ShapeInfo carrying the laid-out TOC text)
+        // whose toc_entry_data (3) → TOCEntryInstanceArchive { paragraph_index
+        // = 1, page_number = 2, heading = 4, indexed_paragraph_level = 8 }
+        // [proto: TSWPArchives.proto; fixture eb2a7cde]. The rendered TOC
+        // becomes an inline textbox; the entries go to the document.
+        2241 => {
+            let Some(att) = rec.msg.as_ref().and_then(|a| a.msg(1)) else {
+                return AttachmentResult::None;
+            };
+            let h = att.f32v(3).map(|v| v as f64);
+            let v = att.f32v(5).map(|v| v as f64);
+            let Some(did) = att.reference(1) else {
+                return AttachmentResult::None;
+            };
+            if let Some(info) = ctx.loaded.msg(did).cloned() {
+                for eid in info.references(3) {
+                    let Some(e) = ctx.loaded.msg(eid) else { continue };
+                    side.toc.push(TocEntry {
+                        text: e.string(4).unwrap_or_default(),
+                        page_number: e.varint(2).map(|n| n as u32),
+                        level: e.varint(8).map(|n| n as u32),
+                        paragraph_index: e.varint(1).map(|n| n as u32),
+                    });
+                }
+            }
+            let d = crate::drawables::convert_drawable(ctx, did);
+            AttachmentResult::Drawable(Box::new(d), h, v)
+        }
+        // TSWP.TSWPTOCPageNumberAttachmentArchive { super = 1, page_number
+        // = 2, bookmark_name = 3 }: the number is field 2 (field 3 is the
+        // target bookmark, not a value) [proto: TSWPArchives.proto].
+        2010 => {
+            let msg = rec.msg.as_ref();
+            let value = msg.and_then(|a| a.string(2));
+            let kind_val = msg
+                .and_then(|a| a.msg(1))
+                .and_then(|sup| sup.varint(2))
+                .unwrap_or(0);
+            let field = match kind_val {
+                1 => FieldKind::PageCount {},
+                2 => FieldKind::FootnoteMark {},
+                _ => FieldKind::PageNumber {},
+            };
+            AttachmentResult::Field {
+                style: Box::new(CharStyle::default()),
+                value,
+                field,
+            }
+        }
         // TSWP.NumberAttachmentArchive { super = 1 (TextualAttachment),
         //   number_format = 2, string_value = 3, number_format_name = 4 }
         // Field kind from the TextualAttachmentArchive super's kind (f2):
         // 0 = page-number, 1 = page-count, 2 = footnote-mark.
-        2043 | 2010 => {
+        2043 => {
             let msg = rec.msg.as_ref();
             let value = msg.and_then(|a| a.string(3).or_else(|| a.string(2)));
             let kind_val = msg
@@ -666,7 +932,7 @@ fn resolve_attachment(
             let storage_id = rec.msg.as_ref().and_then(|a| a.reference(2));
             if let Some(sid) = storage_id {
                 if let Some(ex) = extract(ctx, sid) {
-                    footnotes.push((para_index, ex.text));
+                    side.footnotes.push((para_index, ex.text));
                 }
             }
             AttachmentResult::Field {
