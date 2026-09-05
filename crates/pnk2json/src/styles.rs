@@ -187,7 +187,7 @@ pub fn char_style_from(ctx: &mut Ctx, msgs: &[Msg]) -> CharStyle {
         s.shadow = m.msg(21).and_then(|sh| crate::tsd::shadow_of(ctx, &sh));
     }
     if let Some(m) = take(msgs, 9, Some(8)) {
-        s.language = m.string(9);
+        s.language = m.string(9).filter(|l| crate::text::is_language_tag(l));
     }
     if let Some(m) = take(msgs, 34, Some(33)) {
         let features: Vec<String> = m
@@ -506,7 +506,10 @@ pub fn resolve_list_format(ctx: &mut Ctx, list_id: u64, level: u32) -> Option<Li
         .and_then(|g| g.f32v(2))
         .map(|v| v as f64)
         .filter(|v| *v != 0.0);
+    // tiered_numbers (25): one bool per level; "1.1" style labels.
+    let tiered = at_level(&varints(&msgs, 25), level).map(|v| v != 0).filter(|t| *t);
     Some(ListFormat {
+        tiered,
         number_surround,
         level,
         marker_kind,
@@ -716,6 +719,7 @@ pub fn resolve_cell_style(ctx: &mut Ctx, id: u64) -> Option<TableCellStyle> {
 /// bullets degrade to `marker_text` from `strings` when present.
 pub fn resolve_list_format_minimal(ctx: &mut Ctx, list_id: u64, level: u32) -> ListFormat {
     let full = resolve_list_format(ctx, list_id, level).unwrap_or(ListFormat {
+        tiered: None,
         number_surround: None,
         marker_color: None,
         marker_font_name: None,

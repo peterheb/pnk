@@ -425,7 +425,10 @@ function shapeSvg(g: ShapeGeometry, w: number, h: number, style: DrawableCommon[
     [w, g.naturalSize?.width] as const,
     [h, g.naturalSize?.height] as const,
   ]
-    .map(([dim, nat]) => (nat && nat > 0 ? dim / nat : NaN))
+    // A near-zero natural axis (38a7da36 stores a 0-height rule as
+    // 8.9e-17 x 24pt) is degenerate too: 1e-8 / 9e-17 painted a 1.9e8pt
+    // stroke and the whole page black. (Pages agent, 2026-09-05)
+    .map(([dim, nat]) => (nat && nat > 1e-3 && dim > 1e-3 ? dim / nat : NaN))
     .filter((r) => Number.isFinite(r) && r > 0);
   const scale = ratios.length ? ratios.reduce((a, b) => a + b, 0) / ratios.length : 1;
   svgGradientDefs(svg, style);

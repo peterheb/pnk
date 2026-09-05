@@ -72,6 +72,17 @@ fn convert_drawable_inner(
     match rec.type_id {
         // TSWP.ShapeInfoArchive / KN.PlaceholderArchive / TP.PlaceholderArchive
         2011 | 7 | 12 => shape_info_drawable(ctx, &msg, id, rec.type_id, rec.name.clone()),
+        // TSWP.TOCInfoArchive { super = 1: ShapeInfoArchive }: the laid-out
+        // table of contents is a text box (Pages agent, 2026-09-05).
+        2240 => match msg.msg(1) {
+            Some(sup) => shape_info_drawable(ctx, &sup, id, 2011, rec.name.clone()),
+            None => Drawable::Unknown {
+                common: None,
+                type_id: "0x8c0".into(),
+                type_name: rec.name.clone(),
+                reason: "TOCInfoArchive without a ShapeInfoArchive super".into(),
+            },
+        },
         // TSD.ShapeArchive
         ids::SHAPE => shape_drawable(ctx, &msg, None, None),
         ids::IMAGE => image_drawable(ctx, &msg),

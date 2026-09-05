@@ -483,6 +483,10 @@ pub struct ListFormat {
     pub marker_scale: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub marker_baseline_offset_pt: Option<f64>,
+    /// Tiered ("1.1", "1.1.1") numbering at this level. [proto:
+    /// TSWP.ListStyleArchive.tiered_numbers = 25, one bool per level]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tiered: Option<bool>,
     /// Marker-origin-to-text-column distance as a multiple of the paragraph
     /// font size (the level's TSWP.ListStyleArchive text_indents = 12;
     /// Dyalog deck: 1.0417 x 48pt = 50pt, 0.75 x 24pt = 18pt). [inferred]
@@ -661,6 +665,11 @@ pub struct Paragraph {
     /// A hard page break (U+0005 in the text buffer) precedes this paragraph.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub page_break_before: Option<bool>,
+    /// The item number this paragraph prints when its list marker is a
+    /// number: stored restarts and continuation counted by the converter,
+    /// deeper levels restarting after each shallower item.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub list_number: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -2017,6 +2026,44 @@ pub struct PagesDocument {
     pub sections: Vec<PagesSection>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub table_of_contents: Option<TableOfContents>,
+    /// Reviewer comments anchored in the body (word-processing flavor).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comments: Option<Vec<Comment>>,
+    /// Bookmark anchors in the body; a run `hyperlink` of `#<id>` targets one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bookmarks: Option<Vec<Bookmark>>,
+}
+
+/// A comment thread anchored at a body position. [proto: TSWP.StorageArchive
+/// table_highlight (23) → TSWP.HighlightArchive.commentStorage →
+/// TSD.CommentStorageArchive { text = 1, creation_date = 2, author = 3,
+/// replies = 4 }; author → TSK.AnnotationAuthorArchive.name]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Comment {
+    pub anchor_paragraph_index: u32,
+    pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub date: Option<String>,
+    /// The body text the comment highlights, when the range is non-empty.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quoted_text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replies: Option<Vec<Comment>>,
+}
+
+/// A bookmark anchor. [proto: TSWP.StorageArchive table_bookmark (15) →
+/// TSWP.BookmarkFieldArchive { super.text_attribute_uuid_string, name = 2 }]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Bookmark {
+    /// The bookmark's UUID; in-document hyperlinks carry it as `#<id>`.
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    pub paragraph_index: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -2057,6 +2104,9 @@ pub struct TocEntry {
     pub page_number: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub level: Option<u32>,
+    /// Index into `body.paragraphs` of the heading the entry points at.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub paragraph_index: Option<u32>,
 }
 
 /// The converter output: exactly one of the three document flavors.

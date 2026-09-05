@@ -193,6 +193,14 @@ export interface Paragraph {
    * paragraph STYLE's pageBreakBefore. [inferred: b31db822 / 155d6ba3]
    */
   pageBreakBefore?: boolean;
+  /**
+   * The item number this paragraph prints when its list marker is a number
+   * (`ParaStyle.list.markerKind === "number"`): the converter applies the
+   * stored restarts (`list.start`) and counts continuation, restarting each
+   * deeper level after a shallower item. Absent on non-list and bulleted
+   * paragraphs. [converter-computed, 2026-09-05; fixtures G1, 48f5f124]
+   */
+  listNumber?: number;
 }
 
 /**
