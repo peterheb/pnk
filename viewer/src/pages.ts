@@ -46,15 +46,25 @@ function templateCandidates(
   return i === 0 ? [first, ...parity] : parity;
 }
 
-/** `i` = 0-based page index WITHIN the section. */
+/** `i` = 0-based page index WITHIN the section. A section whose masters
+ *  carry no header/footer text and that asks to inherit the previous
+ *  section's (TP.SectionArchive.inherit_previous_header_footer) takes that
+ *  section's parity template: 48f5f124's second section repeats the first
+ *  section's "n von N" footer on every page. */
 function hfTemplateFor(
   doc: PagesDocument,
-  sec: PagesDocument["sections"][number] | undefined,
+  secIndex: number | undefined,
   i: number,
 ): PageTemplate | undefined {
+  const sec = secIndex !== undefined ? doc.sections[secIndex] : doc.sections[0];
   const candidates = templateCandidates(doc, sec, i);
   if (i === 0 && candidates[0]?.hideHeadersFooters) return undefined;
   for (const c of candidates) if (templateHasHf(c)) return c;
+  for (let s = (secIndex ?? 0) - 1; s >= 0 && doc.sections[s + 1]?.inheritPreviousHeaderFooter; s--) {
+    // a later page of the earlier section: parity template, never its first-page one
+    const inherited = templateCandidates(doc, doc.sections[s], i === 0 ? 2 : i);
+    for (const c of inherited) if (templateHasHf(c)) return c;
+  }
   return undefined;
 }
 
@@ -89,13 +99,30 @@ interface Anchor {
  * wrap ride along in a 0×0 float — positioned, no exclusion. The drawables
  * themselves paint absolutely inside the float at their offsets.
  */
-function anchorFloat(anchors: Anchor[], hdoc: HydratedDoc, ctx: ViewerCtx, contentW: number): HTMLElement {
-  const fl = document.createElement("div");
-  fl.className = "pages-anchor";
-  const boxes = anchors.map((a) => {
+interface AnchorBox {
+  a: Anchor;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+interface FloatGeom {
+  side: "left" | "right";
+  width: number;
+  height: number;
+  insetTop: number;
+}
+
+function anchorBoxes(anchors: Anchor[]): AnchorBox[] {
+  return anchors.map((a) => {
     const sz = a.drawable.type !== "unknown" ? a.drawable.common?.size : undefined;
     return { a, x: a.hPt, y: a.vPt, w: sz?.width ?? 100, h: sz?.height ?? 100 };
   });
+}
+
+/** The exclusion a set of anchored boxes carves out of a text column. */
+function floatGeometry(boxes: AnchorBox[], contentW: number): FloatGeom {
   const wrapping = boxes.filter((b) => b.a.wrap && b.a.wrap.kind !== "none");
   let side: "left" | "right" = "left";
   let width = 0;
@@ -133,21 +160,110 @@ function anchorFloat(anchors: Anchor[], hdoc: HydratedDoc, ctx: ViewerCtx, conte
     insetTop = Math.max(0, uy0);
     height = Math.max(0, uy1);
   }
+  return { side, width, height, insetTop };
+}
+
+function anchorFloat(anchors: Anchor[], hdoc: HydratedDoc, ctx: ViewerCtx, contentW: number): HTMLElement {
+  const fl = document.createElement("div");
+  fl.className = "pages-anchor";
+  const boxes = anchorBoxes(anchors);
+  const { side, width, height, insetTop } = floatGeometry(boxes, contentW);
   fl.style.cssFloat = side;
   fl.style.width = `${width.toFixed(2)}px`;
   // Geometry is relative to the ANCHOR PARAGRAPH's top; the float sits after
   // that paragraph and fixAnchorDrift pins its border box back up there.
   fl.dataset.objTop = insetTop.toFixed(2);
+  fl.dataset.side = side;
+  fl.dataset.contentW = contentW.toFixed(2);
   fl.style.height = `${height.toFixed(2)}px`;
   if (height > 0 && insetTop > 0) fl.style.shapeOutside = `inset(${insetTop.toFixed(2)}px 0 0 0)`;
   const floatLeft = side === "left" ? 0 : contentW - width;
   for (const b of boxes) {
     const el = renderCanvasDrawable(b.a.drawable, hdoc, ctx);
+    el.dataset.x = b.x.toFixed(2);
     el.style.left = `${(b.x - floatLeft).toFixed(2)}px`;
     el.style.top = `${b.y.toFixed(2)}px`;
     fl.appendChild(el);
   }
   return fl;
+}
+
+/**
+ * Drop an anchor float's exclusion, keeping its drawables where they are.
+ * Pages lets an inline TABLE overlap a "Move with Text" object beside it —
+ * 964b85d1's form anchors two 38pt seal boxes at the right margin and the
+ * 493pt table that follows sits under them; CSS instead moves a block that
+ * does not fit beside a float BELOW it, which opened a 350pt gap.
+ */
+function collapseFloat(fl: HTMLElement): void {
+  const side = fl.dataset.side ?? "left";
+  const contentW = parseFloat(fl.dataset.contentW ?? "0") || 0;
+  const newLeft = side === "left" ? 0 : contentW;
+  fl.style.width = "0px";
+  fl.style.height = "0px";
+  fl.style.shapeOutside = "";
+  fl.dataset.collapsed = "1";
+  fl.querySelectorAll<HTMLElement>(":scope > *").forEach((el) => {
+    const x = parseFloat(el.dataset.x ?? "0") || 0;
+    el.style.left = `${(x - newLeft).toFixed(2)}px`;
+  });
+}
+
+/**
+ * A page's floating objects that wrap the body (TP.FloatingDrawablesArchive
+ * objects with an exterior wrap) as full-width exclusion bands at the top of
+ * the printable area, in content coordinates. Only WIDE objects (at least
+ * 60% of the text width) make a band: Pages flows text beside a narrower
+ * object, and this viewer lets the text run under it, as before, rather
+ * than modelling one CSS float per object (48f5f124's cover has six
+ * half-width note shapes; a single union box pushed the title under them).
+ * Overlapping bands merge; each band is a float placed below the previous
+ * one with a shape-outside inset keeping the gap above it open. The
+ * drawables themselves paint in the page frame, not here. A cover image
+ * that covers the whole printable area leaves the page without body text:
+ * eb2a7cde's cover photo and the full-page text box on its page 2 push
+ * "About PA-ADOPT" to page 3, where Pages prints it.
+ */
+function pageExclusion(drawables: Drawable[], g: PageGeom): { fls: HTMLElement[]; full: boolean } | null {
+  const bands: { top: number; bottom: number }[] = [];
+  for (const d of drawables) {
+    if (d.type === "unknown" || !d.common) continue;
+    const c = d.common;
+    if (!c.textWrap || c.textWrap.kind === "none" || !c.position || !c.size) continue;
+    const m = Math.max(0, c.textWrap.marginPt ?? 0);
+    const x0 = Math.max(0, c.position.x - g.left - m);
+    const x1 = Math.min(g.contentW, c.position.x - g.left + c.size.width + m);
+    if (x1 - x0 < g.contentW * 0.6) continue;
+    const top = Math.max(0, c.position.y - g.top - m);
+    const bottom = Math.min(g.contentH, c.position.y - g.top + c.size.height + m);
+    if (bottom - top < 1) continue;
+    bands.push({ top, bottom });
+  }
+  if (!bands.length) return null;
+  bands.sort((a, b) => a.top - b.top);
+  const merged: { top: number; bottom: number }[] = [];
+  for (const b of bands) {
+    const last = merged[merged.length - 1];
+    if (last && b.top <= last.bottom + 1) last.bottom = Math.max(last.bottom, b.bottom);
+    else merged.push({ ...b });
+  }
+  const fls: HTMLElement[] = [];
+  let prevBottom = 0;
+  for (const b of merged) {
+    const fl = document.createElement("div");
+    fl.className = "pages-exclusion";
+    fl.style.cssFloat = "left";
+    fl.style.width = `${g.contentW.toFixed(2)}px`;
+    fl.style.height = `${(b.bottom - prevBottom).toFixed(2)}px`;
+    const inset = b.top - prevBottom;
+    if (inset > 0) fl.style.shapeOutside = `inset(${inset.toFixed(2)}px 0 0 0)`;
+    fls.push(fl);
+    prevBottom = b.bottom;
+  }
+  // no room for even one line above, between or below the bands: the page is full
+  let full = merged[0].top < 14 && merged[merged.length - 1].bottom > g.contentH - 14;
+  for (let i = 1; i < merged.length && full; i++) if (merged[i].top - merged[i - 1].bottom >= 14) full = false;
+  return { fls, full };
 }
 
 /**
@@ -250,6 +366,36 @@ function fillPageFields(root: HTMLElement, pageNumber: number, pageCount: number
   });
 }
 
+/** Headers/footers of a section's page, absolutely positioned at the
+ *  header/footer margins (TP.DocumentArchive fields 36/37). */
+function appendHeadersFooters(
+  inner: HTMLElement,
+  doc: PagesDocument,
+  hdoc: HydratedDoc,
+  ctx: ViewerCtx,
+  g: PageGeom,
+  secIndex: number | undefined,
+  pageInSection: number,
+): void {
+  const hf = hfTemplateFor(doc, secIndex, pageInSection);
+  if (!hf) return;
+  const m = doc.pageMargins;
+  if (hf.headers.some(hasText)) {
+    const h = hfRow(hf.headers, hdoc, ctx, "pages-header");
+    h.style.top = `${m?.header ?? 36}px`;
+    h.style.left = `${g.left}px`;
+    h.style.width = `${g.contentW}px`;
+    inner.appendChild(h);
+  }
+  if (hf.footers.some(hasText)) {
+    const f = hfRow(hf.footers, hdoc, ctx, "pages-footer");
+    f.style.bottom = `${m?.footer ?? 36}px`;
+    f.style.left = `${g.left}px`;
+    f.style.width = `${g.contentW}px`;
+    inner.appendChild(f);
+  }
+}
+
 function pageCanvas(
   doc: PagesDocument,
   hdoc: HydratedDoc,
@@ -257,6 +403,7 @@ function pageCanvas(
   drawables: Drawable[],
   pageIndex: number | undefined,
   templateDrawables?: Drawable[],
+  pageCount?: number,
 ): HTMLElement {
   const frame = document.createElement("div");
   frame.className = "canvas-frame pages-page";
@@ -277,6 +424,17 @@ function pageCanvas(
     // template underlay paints first, beneath the page's own drawables
     for (const d of templateDrawables ?? []) inner.appendChild(renderCanvasDrawable(d, hdoc, ctx));
     for (const d of drawables) inner.appendChild(renderCanvasDrawable(d, hdoc, ctx));
+    // Page-layout canvases carry their section's headers and footers too
+    // (26a356dc's newsletter prints "JUN / JUL 26 · ISSUE 3 · ©" in the
+    // header and the page number in the footer). Each canvas is one
+    // section in this flavor (converter: sections[min(page, last)]), so the
+    // page index picks the section and the first-page template.
+    const geom = pageGeom(doc);
+    if (geom && pageIndex !== undefined && doc.sections.length) {
+      const secIndex = Math.min(pageIndex, doc.sections.length - 1);
+      appendHeadersFooters(inner, doc, hdoc, ctx, geom, secIndex, pageIndex);
+      fillPageFields(inner, pageIndex + 1, pageCount ?? pageIndex + 1);
+    }
     frame.appendChild(inner);
     frame.style.height = `${doc.pageSize.height * scale}px`;
     frame.dataset.pageIndex = pageIndex === undefined ? "" : String(pageIndex);
@@ -313,7 +471,7 @@ function floatingSection(
     label.textContent = group.pageIndex !== undefined ? `Page ${group.pageIndex + 1}` : `Group ${i + 1}`;
     wrap.appendChild(label);
     wrap.appendChild(
-      pageCanvas(doc, hdoc, ctx, group.drawables, group.pageIndex, group.templateDrawables),
+      pageCanvas(doc, hdoc, ctx, group.drawables, group.pageIndex, group.templateDrawables, groups.length),
     );
   });
   mount.appendChild(wrap);
@@ -722,6 +880,17 @@ function paginatedBody(
     meas.remove();
   }
 
+  // floating drawables per page (TP.FloatingDrawablesArchive page groups);
+  // the ones that wrap the body become exclusions in that page's flow
+  const floatingByPage = new Map<number, Drawable[]>();
+  let maxFloatPage = -1;
+  for (const gr of doc.floating) {
+    const idx = gr.pageIndex ?? 0;
+    floatingByPage.set(idx, [...(floatingByPage.get(idx) ?? []), ...gr.drawables]);
+    if (idx > maxFloatPage) maxFloatPage = idx;
+  }
+  const exclusionOf = (pageIdx: number) => pageExclusion(floatingByPage.get(pageIdx) ?? [], g);
+
   /** A page-sized printable-area container (the page's content element). */
   const newPageContent = (): HTMLElement => {
     const content = document.createElement("div");
@@ -740,9 +909,12 @@ function paginatedBody(
   const pages: PageBlock[][] = [[]];
   const pageOfPara: number[] = new Array(els.length).fill(0);
   const fullBleedByPage = new Map<number, Drawable[]>();
+  // pages whose wrapping floating objects leave no room for body text
+  const fullPages = new Set<number>();
   const pageHasContent = () =>
     pages[pages.length - 1].some((b) => b.els.length > 0) ||
-    fullBleedByPage.has(pages.length - 1);
+    fullBleedByPage.has(pages.length - 1) ||
+    fullPages.has(pages.length - 1);
   const newPage = () => pages.push([]);
   // Flow pagination is INCREMENTAL, in a live page-sized container: each
   // paragraph (with its anchor float) is appended and the page is read
@@ -757,7 +929,17 @@ function paginatedBody(
     if (!seg.spec) {
       let blk: PageBlock | null = null;
       const startBlock = () => {
+        // a page its floating objects fill entirely holds no body text:
+        // skip it (bounded by the last page that has floating objects)
+        for (let guard = 0; guard < 64; guard++) {
+          const ex = exclusionOf(pages.length - 1);
+          if (!ex?.full) break;
+          fullPages.add(pages.length - 1);
+          newPage();
+        }
         const container = newPageContent();
+        const ex = exclusionOf(pages.length - 1);
+        if (ex) for (const fl of ex.fls) container.appendChild(fl);
         meas.appendChild(container);
         const b: PageBlock = { cols: null, heightPx: g.contentH, els: [], paras: [], container };
         pages[pages.length - 1].push(b);
@@ -791,6 +973,30 @@ function paginatedBody(
           // earlier one — pin it back to its paragraph (exclusion lost lies
           // inside the earlier float's anyway)
           if (withFloat && fl) fixAnchorDrift(b.container!);
+          // A table (or a wide inline image) pushed below an earlier
+          // paragraph's anchor float overlaps it in Pages: drop that
+          // float's exclusion and let the block move back up.
+          if (!(withFloat && fl)) {
+            // the previous PARAGRAPH: an anchor float placed after its
+            // paragraph sits between the two (964b85d1's seal boxes)
+            let prev = piece.previousElementSibling as HTMLElement | null;
+            while (prev && (prev.classList.contains("pages-anchor") || prev.classList.contains("pages-exclusion"))) {
+              prev = prev.previousElementSibling as HTMLElement | null;
+            }
+            const wide = (piece.querySelector("table") as HTMLElement | null) ||
+              Array.from(piece.querySelectorAll<HTMLElement>(".inline-image")).find((im) => im.offsetWidth > g.contentW * 0.5);
+            if (prev && wide) {
+              // the block sits inside its paragraph box, which starts in
+              // place; the float pushes the TABLE down within it
+              const blockTop = wide.getBoundingClientRect().top - b.container!.getBoundingClientRect().top;
+              const gap = blockTop - (prev.offsetTop + prev.offsetHeight);
+              if (gap > 8) {
+                b.container!.querySelectorAll<HTMLElement>(".pages-anchor:not([data-collapsed])").forEach((afl) => {
+                  if (afl.offsetTop + afl.offsetHeight > prev.offsetTop + prev.offsetHeight - 0.5) collapseFloat(afl);
+                });
+              }
+            }
+          }
           const bottom = piece.offsetTop + piece.offsetHeight;
           // the text must fit the printable area; an anchor float may hang
           // into the bottom margin (b31db822's cover logos do, by 27pt)
@@ -869,13 +1075,6 @@ function paginatedBody(
 
   // 4. page frames: printable area positioned at the margins; floating
   // drawables anchored to page i render into the same canvas
-  const floatingByPage = new Map<number, Drawable[]>();
-  let maxFloatPage = -1;
-  for (const gr of doc.floating) {
-    const idx = gr.pageIndex ?? 0;
-    floatingByPage.set(idx, [...(floatingByPage.get(idx) ?? []), ...gr.drawables]);
-    if (idx > maxFloatPage) maxFloatPage = idx;
-  }
   const pageCount = Math.max(pagesEls.length, maxFloatPage + 1);
 
   // Footnotes render at the bottom of their anchor's page (Apple's default);
@@ -998,24 +1197,7 @@ function paginatedBody(
 
     // headers/footers from the section's page templates, at the header/
     // footer margins (TP.DocumentArchive fields 36/37)
-    const hf = hfTemplateFor(doc, sec, pageInSection[i]);
-    if (hf) {
-      const m = doc.pageMargins;
-      if (hf.headers.some(hasText)) {
-        const h = hfRow(hf.headers, hdoc, ctx, "pages-header");
-        h.style.top = `${m?.header ?? 36}px`;
-        h.style.left = `${g.left}px`;
-        h.style.width = `${g.contentW}px`;
-        inner.appendChild(h);
-      }
-      if (hf.footers.some(hasText)) {
-        const f = hfRow(hf.footers, hdoc, ctx, "pages-footer");
-        f.style.bottom = `${m?.footer ?? 36}px`;
-        f.style.left = `${g.left}px`;
-        f.style.width = `${g.contentW}px`;
-        inner.appendChild(f);
-      }
-    }
+    appendHeadersFooters(inner, doc, hdoc, ctx, g, sectionOfPage[i], pageInSection[i]);
 
     fillPageFields(inner, i + 1, pageCount);
     frame.appendChild(inner);

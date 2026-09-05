@@ -177,6 +177,12 @@ manually. JSON emission stays compact (LS/PS escaping stays).
 | `DrawableAttachmentArchive` h/v offsets | `InlineObjectRun.offset` |
 | textual attachments (page number/count/footmark), smart fields | `FieldRun` |
 | footnotes (`table_footnote` → contained storage) | `PagesDocument.footnotes[]` |
+| `table_highlight` (23) → `TSWP.HighlightArchive` → `TSD.CommentStorageArchive` (text, creation_date, author → `TSK.AnnotationAuthorArchive.name`, replies) | `PagesDocument.comments[]` — `{ anchorParagraphIndex, text, author?, date?, quotedText?, replies? }`; body storage only (2026-09-05, fixture 381bbbac) |
+| `table_bookmark` (15) → `TSWP.BookmarkFieldArchive` (super uuid, name) | `PagesDocument.bookmarks[]` — `{ id, name?, paragraphIndex }`; a run `hyperlink` of `#<id>` targets one (2026-09-05, fixture eb2a7cde) |
+| `table_insertion` (21) / `table_deletion` (22) → `TSWP.ChangeArchive` ranges | tracked changes: the emitted text is the ACCEPTED view — deleted ranges are omitted, insertions kept — plus one `unsupported-feature` warning with the counts (2026-09-05, fixture 55d37c2b) |
+| `table_language` (19) entries (language tag string in field 2) | run `CharStyle.language` when the tag's primary subtag differs from the document locale's; equal-to-locale runs omit it (2026-09-05) |
+| `table_para_starts` (14) + list membership | `Paragraph.listNumber` — the computed item number for numbered paragraphs (stored restart, else continuation; deeper levels restart after a shallower item); `ListFormat.tiered` marks "1.1"-style labels (`tiered_numbers = 25`) (2026-09-05, fixture 48f5f124) |
+| `TSWP.TOCAttachmentArchive` (2241) → `TSWP.TOCInfoArchive` (2240, a ShapeInfo) | the rendered TOC is an inline `textbox` drawable; its `toc_entry_data` → `TSWP.TOCEntryInstanceArchive` fills `PagesDocument.tableOfContents.entries[]` `{ text, pageNumber, level, paragraphIndex }` (2026-09-05, fixture eb2a7cde) |
 
 **Compact text items:** `Paragraph.items` entries are a bare JSON string
 (plain unstyled run) or an object — `{ text, cStyle?, hyperlink?, language? }`

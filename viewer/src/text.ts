@@ -267,10 +267,12 @@ function fieldPlaceholderText(item: Extract<ParagraphItem, { type: "field" }>): 
 export interface ListNumberingState {
   counters: Map<string, number>;
   lastKey: string | null;
+  /** Last number printed at each nesting level (tiered "1.1" labels). */
+  levels: number[];
 }
 
 export function newListNumberingState(): ListNumberingState {
-  return { counters: new Map(), lastKey: null };
+  return { counters: new Map(), lastKey: null, levels: [] };
 }
 
 function toRoman(n: number, upper: boolean): string {
@@ -400,13 +402,20 @@ export function renderParagraph(
     // previous" semantics (G5: "Four (Numbered, continued)" resumes 4 after
     // a nested run; "Restart One" carries start=1).
     const key = `${list!.level}:${list!.markerKind}:${list!.markerKind === "number" ? list!.numberKind : list!.markerText}`;
-    const n = list!.start !== undefined
-      ? list!.start
-      : (listState.counters.get(key) ?? 0) + 1;
+    // The converter counts the numbers (Paragraph.listNumber); the counter
+    // below is the fallback for models written before it did.
+    const n = p.listNumber
+      ?? (list!.start !== undefined ? list!.start : (listState.counters.get(key) ?? 0) + 1);
     listState.counters.set(key, n);
     listState.lastKey = key;
+    listState.levels.length = Math.min(listState.levels.length, list!.level + 1);
+    listState.levels[list!.level] = n;
+    // Tiered numbering shows the path through the enclosing levels: "1.1",
+    // "1.1.1" (48f5f124). Levels the walk never saw print as 1.
     const markerText = list!.markerKind === "number"
-      ? numberMarker(n, list!.numberKind, list!.numberSurround)
+      ? list!.tiered
+        ? Array.from({ length: list!.level + 1 }, (_, l) => numberMarker(listState.levels[l] ?? 1, list!.numberKind, "none")).join(".") + "."
+        : numberMarker(n, list!.numberKind, list!.numberSurround)
       : (list!.markerText ?? "•");
 
     // marker hangs in a flex row; paragraph margins live on the wrapper

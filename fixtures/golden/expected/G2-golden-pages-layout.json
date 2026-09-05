@@ -46,6 +46,14 @@
   "styles": {
     "para": [
       {
+        "tabs": [
+          {
+            "positionPt": 451.0,
+            "alignment": "right"
+          }
+        ]
+      },
+      {
         "horizontalAlignment": "center",
         "defaultTabStopPt": 46.0,
         "keepLinesTogether": true
@@ -61,6 +69,12 @@
       }
     ],
     "char": [
+      {
+        "fontName": "HelveticaNeue",
+        "bold": false,
+        "italic": false,
+        "fontColor": "#000000"
+      },
       {
         "fontName": "HelveticaNeue",
         "fontSizePt": 11.0,
@@ -145,7 +159,7 @@
         "items": [
           {
             "text": "[where is this mystery text]",
-            "cStyle": 0
+            "cStyle": 1
           }
         ]
       }
@@ -181,7 +195,7 @@
                 "items": [
                   {
                     "text": "Shapes can hold text too.",
-                    "cStyle": 0
+                    "cStyle": 1
                   }
                 ]
               },
@@ -189,23 +203,23 @@
                 "items": [
                   {
                     "text": "Paragraphs ",
-                    "cStyle": 0
-                  },
-                  {
-                    "text": "a",
                     "cStyle": 1
                   },
                   {
-                    "text": "n",
+                    "text": "a",
                     "cStyle": 2
                   },
                   {
-                    "text": "d",
+                    "text": "n",
                     "cStyle": 3
                   },
                   {
+                    "text": "d",
+                    "cStyle": 4
+                  },
+                  {
                     "text": " spans",
-                    "cStyle": 0
+                    "cStyle": 1
                   }
                 ]
               }
@@ -250,11 +264,11 @@
           "text": {
             "paragraphs": [
               {
-                "pStyle": 0,
+                "pStyle": 1,
                 "items": [
                   {
                     "text": "",
-                    "cStyle": 4
+                    "cStyle": 5
                   }
                 ]
               }
@@ -361,11 +375,11 @@
           "text": {
             "paragraphs": [
               {
-                "pStyle": 0,
+                "pStyle": 1,
                 "items": [
                   {
                     "text": "",
-                    "cStyle": 5
+                    "cStyle": 6
                   }
                 ]
               }
@@ -442,11 +456,11 @@
           "text": {
             "paragraphs": [
               {
-                "pStyle": 0,
+                "pStyle": 1,
                 "items": [
                   {
                     "text": "",
-                    "cStyle": 5
+                    "cStyle": 6
                   }
                 ]
               }
@@ -501,11 +515,11 @@
           "text": {
             "paragraphs": [
               {
-                "pStyle": 0,
+                "pStyle": 1,
                 "items": [
                   {
                     "text": "Text",
-                    "cStyle": 4
+                    "cStyle": 5
                   }
                 ]
               }
@@ -609,11 +623,11 @@
           "text": {
             "paragraphs": [
               {
-                "pStyle": 0,
+                "pStyle": 1,
                 "items": [
                   {
                     "text": "",
-                    "cStyle": 5
+                    "cStyle": 6
                   }
                 ]
               }
@@ -697,11 +711,11 @@
           "text": {
             "paragraphs": [
               {
-                "pStyle": 0,
+                "pStyle": 1,
                 "items": [
                   {
                     "text": "",
-                    "cStyle": 5
+                    "cStyle": 6
                   }
                 ]
               }
@@ -822,11 +836,11 @@
           "text": {
             "paragraphs": [
               {
-                "pStyle": 0,
+                "pStyle": 1,
                 "items": [
                   {
                     "text": "",
-                    "cStyle": 5
+                    "cStyle": 6
                   }
                 ]
               }
@@ -926,11 +940,11 @@
           "text": {
             "paragraphs": [
               {
-                "pStyle": 0,
+                "pStyle": 1,
                 "items": [
                   {
                     "text": "",
-                    "cStyle": 5
+                    "cStyle": 6
                   }
                 ]
               }
@@ -1095,11 +1109,11 @@
           "text": {
             "paragraphs": [
               {
-                "pStyle": 0,
+                "pStyle": 1,
                 "items": [
                   {
                     "text": "",
-                    "cStyle": 5
+                    "cStyle": 6
                   }
                 ]
               }
@@ -1133,7 +1147,7 @@
                 "items": [
                   {
                     "text": "Source (CC0):",
-                    "cStyle": 6
+                    "cStyle": 7
                   }
                 ]
               },
@@ -1141,7 +1155,7 @@
                 "items": [
                   {
                     "text": "https://commons.wikimedia.org/wiki/File:Tabby_cat_with_blue_eyes-3336579.jpg",
-                    "cStyle": 7,
+                    "cStyle": 8,
                     "hyperlink": "https://commons.wikimedia.org/wiki/File:Tabby_cat_with_blue_eyes-3336579.jpg"
                   }
                 ]
@@ -1256,11 +1270,11 @@
               "text": {
                 "paragraphs": [
                   {
-                    "pStyle": 0,
+                    "pStyle": 1,
                     "items": [
                       {
                         "text": "",
-                        "cStyle": 4
+                        "cStyle": 5
                       }
                     ]
                   }
@@ -1361,7 +1375,7 @@
                     "items": [
                       {
                         "text": "",
-                        "cStyle": 0
+                        "cStyle": 1
                       }
                     ]
                   }
@@ -1399,11 +1413,11 @@
           "text": {
             "paragraphs": [
               {
-                "pStyle": 1,
+                "pStyle": 2,
                 "items": [
                   {
                     "text": "Page 2",
-                    "cStyle": 8
+                    "cStyle": 9
                   }
                 ]
               }
@@ -1435,11 +1449,11 @@
           "text": {
             "paragraphs": [
               {
-                "pStyle": 2,
+                "pStyle": 3,
                 "items": [
                   {
                     "text": "Once upon a time, in a GitHub repo far away, there was a project that got vibed into existence by an agent. And the project was OK but not great, but it had tests so we went with it anyway!…",
-                    "cStyle": 0
+                    "cStyle": 1
                   }
                 ]
               }
@@ -1460,11 +1474,277 @@
       "headers": [],
       "footers": [],
       "headersFootersMatchPreviousPage": true
+    },
+    {
+      "name": "Template 2",
+      "drawables": [],
+      "placeholders": [],
+      "headers": [
+        {
+          "paragraphs": [
+            {
+              "pStyle": 0,
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "paragraphs": [
+            {
+              "pStyle": 0,
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "paragraphs": [
+            {
+              "pStyle": 0,
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "footers": [
+        {
+          "paragraphs": [
+            {
+              "pStyle": 0,
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "paragraphs": [
+            {
+              "pStyle": 0,
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "paragraphs": [
+            {
+              "pStyle": 0,
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "headersFootersMatchPreviousPage": false
+    },
+    {
+      "name": "Template 3",
+      "drawables": [],
+      "placeholders": [],
+      "headers": [
+        {
+          "paragraphs": [
+            {
+              "pStyle": 0,
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "paragraphs": [
+            {
+              "pStyle": 0,
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "paragraphs": [
+            {
+              "pStyle": 0,
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "footers": [
+        {
+          "paragraphs": [
+            {
+              "pStyle": 0,
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "paragraphs": [
+            {
+              "pStyle": 0,
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "paragraphs": [
+            {
+              "pStyle": 0,
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "headersFootersMatchPreviousPage": false
+    },
+    {
+      "name": "Template 4",
+      "drawables": [],
+      "placeholders": [],
+      "headers": [
+        {
+          "paragraphs": [
+            {
+              "pStyle": 0,
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "paragraphs": [
+            {
+              "pStyle": 0,
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "paragraphs": [
+            {
+              "pStyle": 0,
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "footers": [
+        {
+          "paragraphs": [
+            {
+              "pStyle": 0,
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "paragraphs": [
+            {
+              "pStyle": 0,
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "paragraphs": [
+            {
+              "pStyle": 0,
+              "items": [
+                {
+                  "text": "",
+                  "cStyle": 0
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "headersFootersMatchPreviousPage": false
     }
   ],
   "sections": [
     {
       "name": "Blank",
+      "evenPageTemplate": "Template 4",
+      "oddPageTemplate": "Template 4",
       "pageNumbering": {
         "restart": false,
         "startAt": 1.0,
