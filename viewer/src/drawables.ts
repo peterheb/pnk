@@ -62,6 +62,82 @@ function svgStrokeAttrs(e: SVGElement, stroke: Stroke | undefined, scale: number
   // Apple emits placeholder dash arrays of all zeros for solid strokes; SVG
   // would render those as invisible zero-length dashes.
   if (stroke.dash?.some((d) => d > 0)) e.setAttribute("stroke-dasharray", stroke.dash.map((d) => d * scale).join(" "));
+  // Hand-drawn ("smart") strokes: Keynote textures the line with a brush
+  // preset (Pencil, Chalk2, Crayon, Dry Brush, ...). The brush parameters
+  // are not in the model; a document-wide displacement filter gives the
+  // edge wobble and a lighter, uneven ink, which is what reads as
+  // hand-drawn at slide scale. Applied per element; the shape's fill goes
+  // through the same filter, so a filled shape's edge wobbles with its
+  // stroke, as Keynote's does.
+  if (stroke.smartStroke && /chalk|crayon|pencil|dry brush/i.test(stroke.smartStroke)) {
+    e.setAttribute("filter", `url(#${sketchStrokeFilterId(stroke.smartStroke)})`);
+    // Keynote's chalk texture reads as a pale, near-white line whatever the
+    // stroke colour: ripe76 (9d5dcf60) stores the circles' fill colour as
+    // the Chalk2 stroke colour and the export draws a white speckled ring.
+    // Lighten chalk 60% toward white. [inferred from one deck]
+    if (/chalk/i.test(stroke.smartStroke)) e.setAttribute("stroke", lightenHex(stroke.color, 0.6));
+  }
+  // Pen, Feathered Brush and the other smooth presets draw as plain strokes:
+  // at slide scale Keynote's export of them (greenberg 40c5f2ef, slide 12)
+  // differs from a plain stroke only by a slight taper.
+}
+
+/** Mix a #rrggbb colour toward white by `t` (0..1). */
+function lightenHex(hex: string, t: number): string {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i.exec(hex);
+  if (!m) return hex;
+  const mix = (h: string) => Math.round(parseInt(h, 16) + (255 - parseInt(h, 16)) * t).toString(16).padStart(2, "0");
+  return `#${mix(m[1])}${mix(m[2])}${mix(m[3])}`;
+}
+
+/** One shared <filter> per brush family, in a 0x0 <svg> on the body. */
+function sketchStrokeFilterId(preset: string): string {
+  const chalky = /chalk|crayon|pencil/i.test(preset);
+  const id = chalky ? "pnk-sketch-chalk" : "pnk-sketch-brush";
+  if (!document.getElementById(id)) {
+    const NS = "http://www.w3.org/2000/svg";
+    const holder = document.createElementNS(NS, "svg");
+    holder.setAttribute("width", "0");
+    holder.setAttribute("height", "0");
+    holder.setAttribute("aria-hidden", "true");
+    holder.style.position = "absolute";
+    const filter = document.createElementNS(NS, "filter");
+    filter.id = id;
+    filter.setAttribute("x", "-5%");
+    filter.setAttribute("y", "-5%");
+    filter.setAttribute("width", "110%");
+    filter.setAttribute("height", "110%");
+    const noise = document.createElementNS(NS, "feTurbulence");
+    noise.setAttribute("type", "fractalNoise");
+    noise.setAttribute("baseFrequency", chalky ? "0.08" : "0.03");
+    noise.setAttribute("numOctaves", "2");
+    noise.setAttribute("seed", "7");
+    noise.setAttribute("result", "noise");
+    const wobble = document.createElementNS(NS, "feDisplacementMap");
+    wobble.setAttribute("in", "SourceGraphic");
+    wobble.setAttribute("in2", "noise");
+    wobble.setAttribute("scale", chalky ? "3" : "2");
+    wobble.setAttribute("xChannelSelector", "R");
+    wobble.setAttribute("yChannelSelector", "G");
+    filter.appendChild(noise);
+    filter.appendChild(wobble);
+    if (chalky) {
+      // Chalk and pencil leave gaps: modulate the alpha with the noise.
+      const grain = document.createElementNS(NS, "feComposite");
+      grain.setAttribute("in2", "noise");
+      grain.setAttribute("operator", "arithmetic");
+      grain.setAttribute("k1", "0");
+      grain.setAttribute("k2", "0.85");
+      grain.setAttribute("k3", "0");
+      grain.setAttribute("k4", "0");
+      filter.appendChild(grain);
+    }
+    const defs = document.createElementNS(NS, "defs");
+    defs.appendChild(filter);
+    holder.appendChild(defs);
+    document.body.appendChild(holder);
+  }
+  return id;
 }
 
 function svgGradientDefs(svg: SVGSVGElement, style: DrawableCommon["style"]): void {
