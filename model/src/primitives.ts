@@ -462,6 +462,13 @@ export interface ListFormat {
   markerScale?: number;
   /** Marker baseline offset in points. [proto: LabelGeometry.baseline_offset] */
   markerBaselineOffsetPt?: number;
+  /**
+   * Tiered numbering at this level: the marker shows the full path
+   * ("1.1", "1.1.1") built from the enclosing levels' numbers.
+   * [proto: TSWP.ListStyleArchive.tiered_numbers = 25, one bool per level;
+   * fixture 48f5f124]
+   */
+  tiered?: boolean;
 }
 
 export type NumberKind =

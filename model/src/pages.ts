@@ -195,8 +195,51 @@ export interface PagesDocument extends DocumentEnvelope {
   /** Section breaks, in document order. */
   sections: PagesSection[];
 
-  /** Table of contents entries if present. [proto: TOCSmartFieldArchive] */
+  /**
+   * Table of contents entries as last laid out by Pages. [proto:
+   * TSWP.TOCInfoArchive.toc_entry_data → TSWP.TOCEntryInstanceArchive
+   * { paragraph_index, page_number, heading, indexed_paragraph_level }]
+   * The rendered TOC itself is an inline `textbox` drawable in the body.
+   */
   tableOfContents?: TableOfContents;
+  /**
+   * Reviewer comments anchored in the body, in document order. Comments on
+   * text-box and table-cell storages are not collected. [proto:
+   * TSWP.StorageArchive table_highlight (23) → TSWP.HighlightArchive →
+   * TSD.CommentStorageArchive; fixture 381bbbac]
+   */
+  comments?: Comment[];
+  /**
+   * Bookmark anchors in the body. A run `hyperlink` of the form `#<id>`
+   * targets the bookmark with that `id`. [proto: TSWP.StorageArchive
+   * table_bookmark (15) → TSWP.BookmarkFieldArchive; fixture eb2a7cde]
+   */
+  bookmarks?: Bookmark[];
+}
+
+/** A comment thread anchored at a body position. */
+export interface Comment {
+  /** Index into `body.paragraphs` of the paragraph holding the anchor. */
+  anchorParagraphIndex: number;
+  /** Comment text, plain. [proto: TSD.CommentStorageArchive.text] */
+  text: string;
+  /** Author display name. [proto: author → TSK.AnnotationAuthorArchive.name] */
+  author?: string;
+  /** Creation date. [proto: creation_date, TSP.Date seconds since 2001] */
+  date?: IsoDateString;
+  /** The body text the comment highlights, when its range is non-empty. */
+  quotedText?: string;
+  replies?: Comment[];
+}
+
+/** A bookmark anchor in the body. */
+export interface Bookmark {
+  /** The bookmark's UUID (the smart field's text_attribute_uuid_string). */
+  id: string;
+  /** User-visible name when Pages stored one. [proto: BookmarkFieldArchive.name] */
+  name?: string;
+  /** Index into `body.paragraphs` where the bookmark starts. */
+  paragraphIndex: number;
 }
 
 /** A rendered TOC entry. [proto: TSWP TOC archives — minimal viewer-level model] */
@@ -208,6 +251,8 @@ export interface TableOfContents {
     pageNumber?: number;
     /** Heading level (from the referenced paragraph's outlineLevel). */
     level?: number;
+    /** Index into `body.paragraphs` of the heading the entry points at. */
+    paragraphIndex?: number;
   }[];
 }
 
