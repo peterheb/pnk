@@ -1,6 +1,10 @@
+"""Font census over the corpus: runs pnk2json on every modern fixture in
+fixtures/success.tsv and aggregates the envelope `fonts` arrays.
+Usage: python3 scripts/font_census.py <out.json>
+"""
 import csv, json, subprocess, sys, collections, os
 from concurrent.futures import ThreadPoolExecutor
-REPO="/Users/phebert/pnk"; BIN=REPO+"/target/release/pnk2json"
+REPO=os.path.dirname(os.path.dirname(os.path.abspath(__file__))); BIN=REPO+"/target/release/pnk2json"
 rows=[r for r in csv.DictReader(open(REPO+"/fixtures/success.tsv"), delimiter="\t") if r["format"]!="legacy-unknown"]
 def one(r):
     path=f"{REPO}/fixtures/crawl/{r['sha256']}.{r['ext']}"
