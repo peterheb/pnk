@@ -934,12 +934,14 @@ impl Anchor {
 
 /// Geometry of a connection anchor drawable, whatever its wrapper depth:
 /// TSD.ShapeArchive nests DrawableArchive once, TSWP.ShapeInfoArchive twice,
-/// KN/TP placeholders three times. Walk down `super = 1` until a level
-/// parses as DrawableArchive.geometry (a nested message whose field 1/2
-/// decode as TSP.Point + TSP.Size); that level is the ShapeArchive, whose
-/// `pathsource = 3` gives the outline.
-fn anchor_shape(ctx: &Ctx, aid: u64) -> Option<Anchor> {
+/// KN/TP placeholders three times. Walk down `super = 1` until the level
+/// whose field 1 parses as DrawableArchive.geometry (TSP.Point + TSP.Size):
+/// that level is the DrawableArchive, the one above it the ShapeArchive
+/// (`pathsource = 3`, `style = 2`), and the one above that — when there is
+/// one — the TSWP.ShapeInfoArchive that owns the text storage.
+fn anchor_shape(ctx: &mut Ctx, aid: u64) -> Option<Anchor> {
     let mut cur = ctx.loaded.msg(aid)?.clone();
+    let mut levels: Vec<Msg> = Vec::new();
     for _ in 0..4 {
         if let Some(g) = cur.msg(1) {
             if let (Some((x, y)), Some((w, h))) = (g.point(1), g.size(2)) {
@@ -948,10 +950,36 @@ fn anchor_shape(ctx: &Ctx, aid: u64) -> Option<Anchor> {
                     width: w,
                     height: h,
                 };
-                let outline = cur
-                    .msg(3)
-                    .map(|ps| crate::tsd::shape_geometry(&ps))
-                    .and_then(|geo| outline_polygon(&geo, &position, &size));
+                let shape = levels.last();
+                let info = levels.len().checked_sub(2).map(|i| &levels[i]);
+                let geo = shape
+                    .and_then(|s| s.msg(3))
+                    .map(|ps| crate::tsd::shape_geometry(&ps));
+                if w == 0.0 && h == 0.0 {
+                    // A content-sized text box stores a 0x0 frame; Keynote
+                    // lays it out at the path source's natural size, placed
+                    // against the anchor by the text's alignment (centred
+                    // text is centred on the anchor, middle-aligned text
+                    // straddles it). Keynote's export connects to the centre
+                    // of THAT box and stops the line at its edge (kcsrk
+                    // slide 6: "computation" label, natural 132x36, centred
+                    // and middle-aligned; the export's arrow tip sits at the
+                    // text's left edge, the stored endpoint at its centre).
+                    if let (Some(shape), Some(nat)) = (shape, geo.as_ref().and_then(|g| g.natural_size)) {
+                        if nat.width > 0.0 && nat.height > 0.0 {
+                            let (ax, ay) = zero_box_anchor_fractions(ctx, shape, info);
+                            return Some(Anchor {
+                                position: Point {
+                                    x: x - nat.width * ax,
+                                    y: y - nat.height * ay,
+                                },
+                                size: nat,
+                                outline: None,
+                            });
+                        }
+                    }
+                }
+                let outline = geo.and_then(|geo| outline_polygon(&geo, &position, &size));
                 return Some(Anchor {
                     position,
                     size,
@@ -959,9 +987,44 @@ fn anchor_shape(ctx: &Ctx, aid: u64) -> Option<Anchor> {
                 });
             }
         }
+        levels.push(cur.clone());
         cur = cur.msg(1)?.clone();
     }
     None
+}
+
+/// Where a content-sized (0x0) text box hangs from its anchor point, as
+/// fractions of its laid-out width and height: horizontal from the first
+/// paragraph's alignment (centre 0.5, right 1, else 0), vertical from the
+/// text frame's vertical alignment (middle 0.5, bottom 1, else 0). Mirrors
+/// the viewer's zero-size text placement. `shape` is the ShapeArchive,
+/// `info` the TSWP.ShapeInfoArchive above it (owner of the storage).
+fn zero_box_anchor_fractions(ctx: &mut Ctx, shape: &Msg, info: Option<&Msg>) -> (f64, f64) {
+    let ay = match shape_text_frame_props(ctx, shape).vertical_alignment {
+        Some(VerticalAlignment::Middle) => 0.5,
+        Some(VerticalAlignment::Bottom) => 1.0,
+        _ => 0.0,
+    };
+    // Storage: owned_storage (4), else text_flow (3) -> FlowInfo.text_storage
+    // (1), else deprecated_storage (2) — the same order as the text path.
+    let storage_id = info.and_then(|i| {
+        i.reference(4)
+            .or_else(|| i.reference(3).and_then(|f| ctx.loaded.msg(f)).and_then(|f| f.reference(1)))
+            .or_else(|| i.reference(2))
+    });
+    // First paragraph style: TSWP.StorageArchive.table_para_style (5) is an
+    // ObjectAttributeTable whose entries (1) carry {character_index, object}.
+    let para_style_id = storage_id
+        .and_then(|sid| ctx.loaded.msg(sid))
+        .and_then(|s| s.msg(5))
+        .and_then(|t| t.msgs(1).into_iter().min_by_key(|e| e.varint(1).unwrap_or(0)))
+        .and_then(|e| e.reference(2));
+    let ax = match para_style_id.map(|id| crate::styles::resolve_para_style(ctx, id).horizontal_alignment) {
+        Some(Some(HorizontalAlignment::Center)) => 0.5,
+        Some(Some(HorizontalAlignment::Right)) => 1.0,
+        _ => 0.0,
+    };
+    (ax, ay)
 }
 
 /// Flatten a shape's explicit path (in its naturalSize space) into a slide-
@@ -1067,10 +1130,10 @@ fn connection_line_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
 
     let from_anchor = m.reference(2).and_then(|aid| anchor_shape(ctx, aid));
     let to_anchor = m.reference(3).and_then(|aid| anchor_shape(ctx, aid));
-    // A content-sized text box stores a 0x0 frame (Keynote lays it out at
-    // display time), so its centre and outline are unknown here: such an
-    // end keeps the stored endpoint, which Keynote baked at the text's
-    // edge (kcsrk slide 6: label boxes connected to code highlights).
+    // A content-sized text box stores a 0x0 frame; `anchor_shape` turns it
+    // into its laid-out box when the path source carries a natural size.
+    // One without a natural size has no known centre or outline: such an
+    // end keeps the stored endpoint.
     fn sized(a: &Option<Anchor>) -> Option<&Anchor> {
         a.as_ref()
             .filter(|a| a.size.width > 0.0 && a.size.height > 0.0)
