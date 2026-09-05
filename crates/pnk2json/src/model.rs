@@ -1023,6 +1023,12 @@ pub struct EquationInfo {
     pub font_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<HexColor>,
+    /// Factor Keynote applies to an INLINE equation at display time over
+    /// the stored PDF geometry: x-height of the run font over STIX Italic's
+    /// (0.428 em). `common.size` and `depth_pt` are already multiplied by it;
+    /// absent when 1 (canvas equations, unknown fonts).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_scale: Option<f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

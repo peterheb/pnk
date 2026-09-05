@@ -453,6 +453,17 @@ export interface EquationInfo {
   fontName?: string;
   /** Text color. [proto: equation_text_properties.font_color] */
   color?: HexColor;
+  /**
+   * Inline equations only: the factor Keynote applies at display time over
+   * the stored PDF geometry, x-height(fontName) / x-height(STIXGeneral-Italic
+   * = 0.428 em). HelveticaNeue 1.208, HelveticaNeue-Light 1.222, AvenirNext
+   * 1.093, TimesNewRomanPS-ItalicMT 1.005, measured in Keynote's PDF export of
+   * two decks (0ddd627b, 3775cc34). The converter has ALREADY multiplied
+   * `common.size` and `depthPt` by it; this field records what was applied.
+   * Absent when 1: canvas-level equations (drawn 1:1) and fonts whose
+   * x-height the converter does not know. [inferred, 2026-09-05]
+   */
+  displayScale?: number;
 }
 
 export interface MovieDrawable {

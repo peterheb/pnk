@@ -181,6 +181,21 @@ corpus deck sampled (52 of 484 Keynote decks carry equation members; e.g.
 (the image's bottom edge sits that far below the text baseline).
 [fixture-verified: atnf 0ddd627b, kcsrk-adjacent decks in the survey]
 
+Inline equation display size. The stored PDF is set in STIXGeneral at
+`font_size` (e.g. 45pt glyphs on a 203x40pt page), and the ImageArchive
+geometry equals that page. Keynote does not draw an inline equation at
+that size: its PDF export re-sets the same expression at
+`font_size * xheight(font_name) / xheight(STIXGeneral-Italic)`, i.e. so the
+math's x-height matches the run font's. Measured: HelveticaNeue 45 -> 54.36pt
+(x-height 0.517 / 0.428 = 1.208), HelveticaNeue-Light 40 -> 48.88 (0.523,
+1.222), AvenirNext-Regular 50 -> 54.67 (0.468, 1.093), TimesNewRomanPS-
+ItalicMT 30 -> 30.15 (0.4302, 1.005); each matches the CoreText x-height
+ratio to four digits. Canvas-level equations (not inside a text storage)
+are drawn 1:1 at their geometry. pnk2json applies the factor to inline
+equations from a table of x-heights (drawables.rs `FONT_X_HEIGHT`) and
+records it in `equation.displayScale`. [inferred: exports of 0ddd627b and
+3775cc34, 2026-09-05]
+
 Per-data metadata rides on the data object itself:
 `TSD.ImageDataAttributes` (lines 414-425) extends `TSP.DataAttributes` via
 extension field 100 with `pixel_size`, `image_is_srgb`,

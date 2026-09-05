@@ -557,6 +557,10 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
                         // Apple stacks the table in the flow), not placement.
                         let moved = |v: Option<f64>| v.map(|x| x.abs() >= 4.0).unwrap_or(false);
                         let wraps = drawable_wraps(&drawable);
+                        // Keynote draws an inline equation at a font-dependent
+                        // scale over its stored geometry (drawables.rs).
+                        let mut drawable = drawable;
+                        crate::drawables::scale_inline_equation(&mut drawable);
                         let anchored = (moved(h_off) || moved(v_off) || wraps).then_some(true);
                         items.push(ParagraphItem::InlineObject {
                             kind: InlineObjectTag::InlineObject,

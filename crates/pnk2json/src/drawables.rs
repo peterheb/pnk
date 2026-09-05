@@ -780,6 +780,121 @@ fn image_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
 
 /// Equation images (Insert > Equation) are TSD.ImageArchives whose media is
 /// a PDF the app rendered from the typed expression, which rides along as
+/// x-height (em fraction) of the fonts that set inline equations in the
+/// corpus, read from the installed faces with CoreText (`CTFontGetXHeight`,
+/// macOS 26.6, 2026-09-05); Calibri/Cambria from their OS/2 sxHeight
+/// (952/2048, 956/2048). Keynote sizes an inline equation so that STIX's
+/// x-height matches the run font's, so this table IS the display scale.
+const FONT_X_HEIGHT: &[(&str, f64)] = &[
+    ("HelveticaNeue", 0.5170),
+    ("HelveticaNeue-Bold", 0.5170),
+    ("HelveticaNeue-Light", 0.5230),
+    ("HelveticaNeue-Medium", 0.5170),
+    ("HelveticaNeue-Italic", 0.5170),
+    ("HelveticaNeue-BoldItalic", 0.5170),
+    ("HelveticaNeue-Thin", 0.5140),
+    ("HelveticaNeue-UltraLight", 0.5200),
+    ("Helvetica", 0.5229),
+    ("Helvetica-Bold", 0.5322),
+    ("Helvetica-Light", 0.5240),
+    ("Helvetica-Oblique", 0.5229),
+    ("GillSans", 0.4497),
+    ("GillSans-Bold", 0.5015),
+    ("GillSans-Light", 0.4536),
+    ("GillSans-Italic", 0.4561),
+    ("GillSans-BoldItalic", 0.5015),
+    ("Calibri", 0.4648),
+    ("Calibri-Bold", 0.4648),
+    ("Cambria", 0.4668),
+    ("CambriaMath", 0.4668),
+    ("Times-Roman", 0.4536),
+    ("Times-Bold", 0.4604),
+    ("Times-Italic", 0.4463),
+    ("Times-BoldItalic", 0.4629),
+    ("TimesNewRomanPSMT", 0.4473),
+    ("TimesNewRomanPS-BoldMT", 0.4565),
+    ("TimesNewRomanPS-ItalicMT", 0.4302),
+    ("TimesNewRomanPS-BoldItalicMT", 0.4390),
+    ("Palatino-Roman", 0.4712),
+    ("Palatino-Bold", 0.4712),
+    ("Palatino-Italic", 0.4766),
+    ("Chalkboard-Bold", 0.5260),
+    ("ChalkboardSE-Regular", 0.5017),
+    ("Skia-Regular", 0.5059),
+    ("AvenirNext-Regular", 0.4680),
+    ("AvenirNext-Medium", 0.4740),
+    ("AvenirNext-Bold", 0.4980),
+    ("AvenirNext-DemiBold", 0.4980),
+    ("AvenirNextCondensed-Regular", 0.4960),
+    ("AvenirNextCondensed-Bold", 0.5230),
+    ("Avenir-Book", 0.4680),
+    ("Avenir-Medium", 0.4740),
+    ("ArialMT", 0.5186),
+    ("Arial-BoldMT", 0.5186),
+    ("Arial-ItalicMT", 0.5186),
+    ("CourierNewPSMT", 0.4229),
+    ("CourierNewPS-BoldMT", 0.4434),
+    ("Courier", 0.4565),
+    ("Copperplate", 0.4400),
+    ("Futura-Medium", 0.4824),
+    ("IowanOldStyle-Roman", 0.4858),
+    ("IowanOldStyle-Italic", 0.4746),
+    ("Georgia", 0.4814),
+    ("Georgia-Bold", 0.4844),
+    ("Verdana", 0.5454),
+    ("Baskerville", 0.3999),
+    ("Optima-Regular", 0.4780),
+    ("Menlo-Regular", 0.5469),
+    ("AppleSDGothicNeo-Regular", 0.5020),
+    ("PingFangSC-Regular", 0.6000),
+    ("HiraginoSans-W3", 0.5450),
+    ("Graphik-Light", 0.5230),
+];
+
+/// x-height of STIXGeneral-Italic, the face Keynote's equation renderer
+/// sets its PDFs in (the stored `equation-N.pdf` files embed STIXGeneral
+/// Regular/Italic at `font_size` unscaled).
+const STIX_ITALIC_X_HEIGHT: f64 = 0.4280;
+
+/// Keynote draws an INLINE equation larger than its stored PDF geometry:
+/// the export re-sets it at font_size * x-height(run font) / x-height(STIX
+/// Italic), so the math's x-height matches the surrounding text. Measured in
+/// Keynote's PDF export: HelveticaNeue 45pt -> STIX 54.36pt (1.208), 28 ->
+/// 33.82, 30 -> 36.24, 66 -> 79.72; HelveticaNeue-Light 40 -> 48.88 (1.222);
+/// AvenirNext-Regular 50 -> 54.67 (1.093); TimesNewRomanPS-ItalicMT 30 ->
+/// 30.15 (1.005); every one equals the x-height ratio to four digits. Canvas
+/// equations are drawn 1:1 (fixtures 0ddd627b, 3775cc34). Applied by the
+/// text path to the image drawable at each U+FFFC attachment; the geometry
+/// and depth are multiplied and the factor recorded in `display_scale`.
+pub(crate) fn scale_inline_equation(d: &mut Drawable) {
+    let Drawable::Image {
+        common,
+        equation: Some(eq),
+        ..
+    } = d
+    else {
+        return;
+    };
+    let Some(font) = eq.font_name.as_deref() else {
+        return;
+    };
+    let Some((_, xh)) = FONT_X_HEIGHT.iter().find(|(n, _)| *n == font) else {
+        return;
+    };
+    let scale = xh / STIX_ITALIC_X_HEIGHT;
+    if (scale - 1.0).abs() < 0.002 {
+        return;
+    }
+    if let Some(s) = common.size.as_mut() {
+        s.width *= scale;
+        s.height *= scale;
+    }
+    if let Some(dp) = eq.depth_pt.as_mut() {
+        *dp *= scale;
+    }
+    eq.display_scale = Some((scale * 10000.0).round() / 10000.0);
+}
+
 /// TSWP.EquationInfoArchive extension fields: equation_source_text = 103
 /// (equation_source_old = 100 in older files, identical when both exist),
 /// equation_depth = 102 (baseline depth, pt), equation_text_properties =
@@ -804,6 +919,7 @@ fn equation_info(ctx: &mut Ctx, m: &Msg) -> Option<EquationInfo> {
         font_size_pt,
         font_name,
         color,
+        display_scale: None,
     })
 }
 
