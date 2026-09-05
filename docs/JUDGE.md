@@ -672,9 +672,127 @@ Proposals not implemented:
   fallback font as a capitalization error; the JSON carries no
   capitalization because the font, not the style, is uppercase.
 
+### Numbers, round 3 (2026-09-05, Qwen thinking off, up to 3 pages per document)
+
+Worked through the corpus-scoring list in order: formula-error cells,
+row height from wrapped text, category grouping, charts. Schema and
+converter first: every defect was checked against the JSON before the
+viewer was touched. Eleven documents from the corpus scoring were
+re-rendered against the same Numbers exports and re-scored.
+
+| defect | documents | cause | fix |
+| --- | --- | --- | --- |
+| "formula error" printed where Numbers prints nothing | 16c9478d6d21, 5a89929253a1, fcb2c1c1c3cd | A formula-error cell (type 8) carries no cached value and, in the whole corpus (37 cells in 4 files), no error record; the converter invented the string "formula error" | Converter emits `v: null, type: "error"`; the viewer prints it blank (docs/format/tables.md §Formula-error cells) |
+| Formula text absent from the model | 23 documents, 54,318 formula cells | `TsceFormulaRef` was a placeholder | New `formulas.rs` re-synthesizes the text from the TSCE AST; `status: "decoded"`, `sourceText`. Checked by re-evaluating the decoded text over the document's own grid: 47,496 formulas reproduce their cached values, 0 mismatches (the rest use functions the checker does not implement) |
+| Table names missing when the caption is hidden | every table with `table_name_enabled` off | Name dropped with the caption | `name` always carried; `nameHidden: true` marks a hidden caption. Needed because formula text names tables ("Pflichtfächer::Table 1::C13") |
+| Wrapped text clipped to one line, rows not grown | 90fbb6c53674 (and the same pattern in 5a89929253a1) | Per-cell styles whose chain does not set `text_wrap` over a wrapping body style; the converter left `textWrap` unset and the viewer read absent as "no wrap" | Converter resolves wrap through the section default (body/header/footer) when the cell chain is silent; rows then grow (a `<tr>` height is a minimum) |
+| Category grouping rows and totals missing | 6914f46e51ab | Not in the model | New `TableModel.grouping` (grouped columns, summary rules, group tree with model row indexes, the app's cached totals) from `GroupByArchive`; the viewer inserts the label row and group rows ("▼ Muster 4h 27m") |
+| Chart legend missing, no vertical gridlines, series colors "swapped", axis title inside the plot | baabe23e067f | JSON was right (legend visible, colors, `categoryGridlines: true`). The legend frame hangs below the chart frame and the sheet canvas clipped it; category gridlines were never drawn; the viewer painted the last series on top where Numbers paints the first; the category title assumed an in-frame legend | numbers.ts sizes the canvas to the legend frame; drawables.ts draws category gridlines, paints series in reverse order for line kinds, and places the title under the ticks when the legend is outside |
+
+Qwen scores on the same exports, before and after:
+
+| document | page | before | after | what the judge still names |
+| --- | ---: | ---: | ---: | --- |
+| 16c9478d6d21 | 1 | 4 | 6 | The bar chart in the 'Zusammenfassung' section is missing from the candidate render. |
+| 16c9478d6d21 | 2 | 9 | 9 | Candidate image is cropped at the top, cutting off the very top border of the main title row. |
+| 16c9478d6d21 | 3 | 8 | 8 | Text in the 'Module' column (e.g., '1.1 Grundlagen...') is significantly smaller in the candidate compared to the golden |
+| 5a89929253a1 | 1 | 9 | 9 | Candidate text is rendered at a significantly larger scale than the golden reference |
+| 5a89929253a1 | 2 | 7 | 9 | Boolean values in the rightmost columns are capitalized in the golden (e.g., 'TRUE') but lowercase in the candidate ('tr |
+| 5a89929253a1 | 3 | 4 | 2 | Data labels (values) are missing from the bars in both charts |
+| 5c152beb2a3b | 1 | 8 | 8 | Text in the 'Employee / Non-Employee' section is cut off on the right edge in the candidate |
+| 5c152beb2a3b | 2 | 8 | 8 | Minor numerical discrepancies in totals (e.g., $1,060.71 vs $1,060.70) |
+| 5c152beb2a3b | 3 | 8 | 8 | Numerical values differ slightly due to rounding (e.g., $8.48 vs $8.47, $228.71 vs $228.70, $849.71 vs $849.70) |
+| 6914f46e51ab | 1 | 7 | 8 | Introductory paragraph text wraps differently (4 lines in candidate vs 3 in golden) |
+| 6914f46e51ab | 2 | - | 6 | Data labels are placed outside the pie chart in the candidate, whereas they are inside in the golden. |
+| 90fbb6c53674 | 1 | 7 | 9 | Date format in header differs ('Feb 19' vs 'févr. 19') |
+| 90fbb6c53674 | 2 | 7 | 8 | Number formatting differs (e.g., '1,664.63' vs '1.664,63') |
+| b2abceb03dbb | 1 | 9 | 8 | Text wrapping differs slightly in numbered items 1, 3, 4, 5, 6, 7, and 8 due to minor width or font metric differences |
+| b2abceb03dbb | 2 | 5 | 5 | Extra table with raw variable names (e.g., 'turnover', 'taxTakenOffTradingIncome') appears on the right side |
+| b2abceb03dbb | 3 | 2 | 4 | Layout is broken: the 'INCOME' table is split, with the input cells separated from their labels. |
+| baabe23e067f | 1 | 8 | 8 | Y-axis scale on 'User Stories' chart differs (0-24 vs 0-21) |
+| baabe23e067f | 2 | 6 | 8 | Chart legend markers changed from hollow diamonds to solid lines |
+| baabe23e067f | 3 | 7 | 8 | Chart legend markers changed from hollow circles to solid lines |
+| c4b881955676 | 1 | 8 | 7 | Text truncation in the 'WHAT IS CAUSE VALIDATION MATRIX?' section header (missing 'X') |
+| c4b881955676 | 2 | 8 | 8 | Text truncation in the 'Project Title' field ('Reduction' is cut off) |
+| cab63a6dd0de | 1 | 8 | 7 | Text truncation in the 7th Grade table (e.g., 'PRAYER/STRETCH/WALK' is cut off) |
+| eb299192a219 | 1 | 7 | 7 | Text truncation in 'Total Charge' label (missing '(minimum charge is 4kg)') |
+| eb299192a219 | 2 | 8 | 8 | Number formatting differs (decimal comma in candidate vs decimal point in golden) |
+| eb299192a219 | 3 | 8 | 8 | Visible gridlines present in the candidate render (background artifact) |
+| fcb2c1c1c3cd | 1 | 8 | 9 | Slight vertical compression of row heights in the candidate compared to the golden |
+
+Mean over the 25 pages scored both times: 7.12 before, 7.48 after.
+
+The "after" renders come from this branch before the Pages round was
+merged; the two viewer-sensitive documents (6914f46e51ab, baabe23e067f)
+were re-rendered on the merged tree and the PNGs are byte-identical.
+Pages that moved by one point in either direction (c4b881955676 p1,
+cab63a6dd0de p1, b2abceb03dbb p1, 5a89929253a1 p3) name the same issues
+before and after; the renders of those cells did not change. c4b881955676
+and 5c152beb2a3b were flagged for "text wrapping" but their clipped cells
+are one-line cells that Numbers fits in slightly wider columns; nothing
+in the model was wrong. One regression was caught and fixed on the way:
+the first wrap fill ran after `strip_cell_defaults` had erased an explicit
+wrap=false, so cab63a6dd0de's Excel-imported no-wrap cells wrapped; the
+strip now happens at emission.
+
+#### Schema and converter findings
+
+- `TsceFormulaRef.status` gains `"decoded"`; `sourceText` holds the
+  formula text; `warning` is present only when status is `"unparsed"`
+  (it was required before; it was one constant row). Chart
+  `dataBinding` refs stay unparsed.
+- `TableModel.name` is emitted whenever stored; `nameHidden: true` when
+  the caption is off. Before, a hidden name was dropped, which left
+  cross-table formula references unresolvable.
+- `TableModel.grouping` (new, additive): `columns`, `aggregates`
+  (`rule` is the stored code; 2 = sum is inferred from one fixture,
+  other codes are unnamed), `groups` (value, model row indexes,
+  children, cached `totals` with sum/count/min/max), table-level
+  `totals`. One grouped table exists in the 158-file corpus, so the
+  decoder is verified on one file.
+- Formula-error cells: `v: null` with `type: "error"`; the string
+  "formula error" no longer appears in output.
+- Cell wrap: `textWrap` on a pooled cell style is now resolved through
+  the table's section default when the cell's chain is silent.
+- Row heights: the format has no per-row fit-to-content flag
+  (`HeaderStorageBucket.Header` is index/size/hidingState/numberOfCells).
+  The fitted heights exist only as a layout cache
+  (`TableInfoArchive.layout_engine.width_height_cache`) that 2 of 3
+  flagged files do not carry, so the model keeps the stored size and the
+  viewer grows rows from content. Documented in docs/format/tables.md.
+- Proposals not implemented: (1) the grouped view's category column
+  width (`SummaryModelArchive.category_column_width`, 50pt in the
+  fixture) could be carried instead of the viewer's 30pt constant;
+  (2) `sourceText` for chart data bindings (`TN.ChartMediatorArchive`
+  formulas) through the same decoder; (3) formula text for pre-BNC
+  (v4) cells is decoded too, but those cells cache no value, so a
+  consumer gets the formula and an empty cell.
+
+#### What remains (ranked)
+
+1. Value-axis top when no bound is pinned: Numbers ends baabe's "User
+   Stories" axis at the data maximum (0, 5.25, 10.5, 15.75, 21) but
+   rounds "Story Points" to 60 for a maximum of 56; the stored axis
+   archives are identical, so the rule is not in the fields we read.
+2. eb299192a219's rich-text cell "Total Charge (minimum charge is 4kg)"
+   wrapped in the round-2 viewer and is clipped now with an identical
+   model (cell style wrap on); viewer/src/text.ts changed in both
+   Keynote rounds (ba0f9a2, df3fd4f) and is the place to look.
+3. Column widths: several flagged "truncation" cells (c4b881955676's
+   "WHAT IS CAUSE VALIDATION MATRIX?", 5c152beb2a3b's disclaimer) are
+   one-line cells that fit in Numbers because its columns are a little
+   wider; measure the export's column positions against the stored widths.
+4. Table names containing operator characters in formula text: Numbers
+   may quote them; unverified (66ba951f59ea has names like "＋問題").
+5. Group summary rule codes other than 2 (sum) are unnamed; a fixture
+   with average/count/min/max groupings would settle them.
+6. Formula text for cells whose AST uses durations, LET/LAMBDA, linked or
+   category references, or the legacy handle-based reference nodes stays
+   `"unparsed"`; none occur in the corpus.
+
 ### Next
 
-Numbers: row height from wrapped text, then the cached formula results.
+Numbers: the value-axis top rule when no bound is pinned, then column widths behind the remaining "truncation" complaints.
 Keynote: inline equation scale, lines ending at content-sized text boxes.
 Pages: linked text boxes, then table row heights and cell wrapping. Score more of the corpus, one or two pages per document, with Qwen; use
 the ranked list to choose fidelity work; add a reference re-run with
