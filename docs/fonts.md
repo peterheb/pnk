@@ -17,12 +17,12 @@ sources are recorded in `docs/format/ATTRIBUTION.md`.
 
 ## The census
 
-`.fonts-census/census.py` converted every corpus fixture and collected the
+`scripts/font_census.py` converted every corpus fixture and collected the
 `fonts` array of each envelope: **960 documents** (323 Pages, 157 Numbers,
 480 Keynote), **491 distinct PostScript names**, **253 families** after
 normalizing face and foundry suffixes (`familyKey()` in `fontmap.ts`:
 `ArialMT`, `Arial-BoldMT` and `Arial-Black` all key as `arial`). Raw data is
-in `.fonts-census/census.json`, the per-name table in `.fonts-census/census.md`.
+in the script's JSON output (not committed), the per-name table in `docs/fonts-census.md`.
 
 `docs` below is the number of documents whose font list contains the name;
 a family's count is the maximum over its names, which is a lower bound on
