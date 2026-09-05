@@ -1229,8 +1229,10 @@ pub enum CellValue {
     Richtext {
         text: StyledText,
     },
+    /// `value` = the stored error record, when the cell has one; `None` =
+    /// error with no cached text (emitted as `v: null, type: "error"`).
     Error {
-        value: String,
+        value: Option<String>,
     },
 }
 

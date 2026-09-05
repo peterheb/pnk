@@ -185,6 +185,22 @@ masaccio/numbers-parser@3238795]
   numbers-parser writer model.py:1262-1306 + reader model.py:1071-1097; verify
   against fixtures for tables whose tiles are not row-block-aligned]
 
+## Formula-error cells
+
+A `formulaErrorCellType` (byte-1 value 8) cell is a formula whose last
+evaluation failed. Its buffer carries the formula id (flag 0x200), style and
+format ids, and a suggestion id (0x1000) — and, when Numbers stored one, a
+formula-error id (flag 0x800) into the `FORMULA_ERROR` (type 5) data list.
+There is NO number/string payload: nothing is cached. Corpus census
+(158 Numbers fixtures, 37 such cells in 4 files): none carries an 0x800
+record, none carries a value. Numbers' PDF export prints these cells blank
+(the in-app warning triangle is UI, not content). pnk2json emits
+`{ v: null, type: "error", formula }` — an earlier build invented the
+string "formula error" here, which the judge read as a rendering defect.
+`[fixture-verified: 16c9478d6d21 (17 cells), fcb2c1c1c3cd (1 cell) against
+Numbers 15.3.1 PDF exports; parser: numbers-parser@3238795 cell.py:928-929
+ErrorCell.value = None]`
+
 ## Formula linkage
 
 Cell buffers reference formulas by int32 id into the `FORMULA`-type

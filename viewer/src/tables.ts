@@ -398,7 +398,9 @@ function valueToText(cell: TableCell, format: CellFormat | undefined): string {
       const sign = n < 0 ? "-" : "";
       return `${sign}${sym}${body}`;
     }
-    case "error": return String(v);
+    // An error cell with no stored error record has no cached value:
+    // Numbers prints it blank (16c9478d6d21, fcb2c1c1c3cd exports).
+    case "error": return v === null ? "" : String(v);
     case "richtext": {
       const st = v as TableModel["grid"] extends never ? never : NonNullable<TableCell["v"]> & { paragraphs?: { items?: { type?: string; text?: string }[] }[] };
       return (st as { paragraphs?: { items?: { type?: string; text?: string }[] }[] }).paragraphs

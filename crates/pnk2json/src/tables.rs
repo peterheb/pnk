@@ -1525,11 +1525,14 @@ fn decode_cell(
             value: double.unwrap_or(0.0) > 0.0,
         },
         7 => CellValue::Duration { value: double? },
+        // Formula-error cell: the error record (flag 0x800 -> FORMULA_ERROR
+        // list) is the only stored text; without it the cell has NO cached
+        // value and Numbers prints it blank (docs/format/tables.md
+        // §Formula-error cells). Never invent a placeholder string here.
         8 => CellValue::Error {
             value: formula_error_id
                 .and_then(|id| formula_error_table.entries.get(&id))
-                .and_then(|e| e.string.clone())
-                .unwrap_or_else(|| "formula error".to_string()),
+                .and_then(|e| e.string.clone()),
         },
         9 => {
             let rid = rich_id?;
@@ -1710,7 +1713,11 @@ fn value_into_parts(value: CellValue) -> (GridValue, Option<CellTypeTag>, Option
         CellValue::Richtext { text } => {
             (GridValue::Richtext(text), Some(CellTypeTag::Richtext), None)
         }
-        CellValue::Error { value } => (GridValue::Scalar(value), Some(CellTypeTag::Error), None),
+        CellValue::Error { value } => (
+            value.map(GridValue::Scalar).unwrap_or(GridValue::None),
+            Some(CellTypeTag::Error),
+            None,
+        ),
     }
 }
 
