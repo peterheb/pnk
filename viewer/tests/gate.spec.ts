@@ -51,10 +51,13 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => window.localStorage.setItem("pnk.googleFonts", "0"));
 });
 
+// Same-origin requests are the viewer's own code (the pdf.js chunk and
+// worker load on demand); blob:/data: are local. Everything else counts.
+const ORIGIN = "http://127.0.0.1:8123/";
 function trackRequests(page: Page): void {
   page.on("request", (req) => {
     const url = req.url();
-    if (!url.startsWith("blob:") && !url.startsWith("data:")) networkRequests.push(url);
+    if (!url.startsWith("blob:") && !url.startsWith("data:") && !url.startsWith(ORIGIN)) networkRequests.push(url);
   });
 }
 
@@ -179,7 +182,7 @@ test("substitute fonts are requested from Google Fonts and nowhere else", async 
     { timeout: 20_000 },
   );
 
-  const external = networkRequests.filter((u) => !u.startsWith("http://127.0.0.1:8123/"));
+  const external = networkRequests.filter((u) => !u.startsWith(ORIGIN));
   expect(external.some((u) => u.startsWith("https://fonts.gstatic.com/"))).toBe(true);
   for (const url of external) {
     expect(url).toMatch(/^https:\/\/fonts\.(googleapis|gstatic)\.com\//);
