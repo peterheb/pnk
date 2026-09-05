@@ -177,16 +177,35 @@ function presetPathD(preset: string, g: ShapeGeometry, w: number, h: number): st
       return "M" + pts[preset].map(([x, y]) => `${f(x)},${f(y)}`).join(" L") + " Z";
     }
     case "callout": {
-      // rounded rect body + a triangular tail toward tailPosition
+      // Rounded-rect body plus a wedge whose apex is tailPosition (in
+      // naturalSize space, often far outside the body: kcsrk slide 7 points
+      // a 244x100 callout at (281, -277)) and whose base, tailSize wide,
+      // sits on the body edge facing the apex. [proto: TSD.CalloutPathSourceArchive]
       const tail = g.callout?.tailPosition;
-      const tailW = g.callout ? g.callout.tailSize.width : 0;
-      const tailH = g.callout ? g.callout.tailSize.height : 0;
-      const base = presetPathD("rect", g, w, h);
-      if (!tail || !tailH) return base;
-      const tx = clamp(tail.x * (w / (g.naturalSize?.width ?? w)), 0, w - tailW);
-      const ty = tail.y > (g.naturalSize?.height ?? h) / 2 ? h : 0;
-      const dir = ty === 0 ? -1 : 1;
-      return `${base} M${f(tx)},${f(ty)} L${f(tx + tailW)},${f(ty)} L${f(clamp(tail.x + tailW / 2, 0, w))},${f(ty + dir * tailH)} Z`;
+      const nw = g.naturalSize?.width || w || 1;
+      const nh = g.naturalSize?.height || h || 1;
+      const rBody = Math.min((g.callout?.cornerRadius ?? 8) * (w / nw), w / 2, h / 2);
+      const body = `M${f(rBody)},0 L${f(w - rBody)},0 Q${f(w)},0 ${f(w)},${f(rBody)} L${f(w)},${f(h - rBody)} Q${f(w)},${f(h)} ${f(w - rBody)},${f(h)} L${f(rBody)},${f(h)} Q0,${f(h)} 0,${f(h - rBody)} L0,${f(rBody)} Q0,0 ${f(rBody)},0 Z`;
+      if (!tail) return body;
+      const ax = tail.x * (w / nw);
+      const ay = tail.y * (h / nh);
+      if (ax >= 0 && ax <= w && ay >= 0 && ay <= h) return body; // apex inside: no visible tail
+      const tailW = Math.max(4, (g.callout?.tailSize.width || 10) * (w / nw));
+      // Base centre: the ray from the body centre to the apex, clipped to the border.
+      const cx = w / 2;
+      const cy = h / 2;
+      const dx = ax - cx;
+      const dy = ay - cy;
+      const t = Math.min(dx !== 0 ? Math.abs(cx / dx) : Infinity, dy !== 0 ? Math.abs(cy / dy) : Infinity);
+      const bx = cx + dx * t;
+      const by = cy + dy * t;
+      const len = Math.hypot(dx, dy) || 1;
+      const px = (-dy / len) * (tailW / 2);
+      const py = (dx / len) * (tailW / 2);
+      // Pull the base slightly inside so the wedge fuses with the body fill.
+      const ix = bx - (dx / len) * 2;
+      const iy = by - (dy / len) * 2;
+      return `${body} M${f(ix + px)},${f(iy + py)} L${f(ax)},${f(ay)} L${f(ix - px)},${f(iy - py)} Z`;
     }
     default:
       // rounded-rect + every preset we don't specialize
