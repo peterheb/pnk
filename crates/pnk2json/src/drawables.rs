@@ -1509,6 +1509,8 @@ fn empty_table() -> TableModel {
         formats: Vec::new(),
         cell_styles: Vec::new(),
         merges: Vec::new(),
+        controls: None,
+        sort_rules: None,
         style: None,
         name_style: None,
     }
@@ -1537,6 +1539,7 @@ fn chart_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
                 legend_visible: None,
                 series_colors: None,
                 data_binding: None,
+                bindings: None,
                 scatter_format: None,
                 title: None,
                 category_axis_title: None,

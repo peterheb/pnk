@@ -277,6 +277,12 @@ The tile/offset-buffer machinery is fully flattened:
 | `TableDataList` FORMAT/CUSTOM_FORMAT | `formats[]` deduped pool, referenced by `TableCell.fmt` (custom formats degrade to `kind:"custom"` + raw string) |
 | `merge_region_map` CellRanges (col<<16|row packedData) | `merges[]` anchor + span |
 | `category_owner` (86) → `CategoryOwnerRefArchive` → `GroupByArchive` (docs/format/tables.md §Category grouping) | `grouping?: TableGrouping` — grouped column indexes, summary rules (raw code; 2 = sum), the group tree with model row indexes, and the app's cached totals; `grid` stays the ungrouped data (2026-09-05) |
+| `TableInfoArchive.summary_model` (4) → `SummaryModelArchive.category_column_width` (10) | `grouping.categoryColumnWidthPt` (2026-09-05, round 4) |
+| cell storage flag 0x80000 → `DataStore.commentStorageTable` (19) → `TSD.CommentStorageArchive` { text 1, creation_date 2, author 3 → `TSK.AnnotationAuthorArchive.name` } | `TableCell.comment?: { text, author?, date? }` (round 4) |
+| cell storage flag 0x400 → `DataStore.control_cell_spec_table` (21) → `TST.CellSpecArchive` (interaction_type, range min/max/inc, pop-up model → `PopUpMenuModel.tsce_item`) | `TableModel.controls[]` pool (kind checkbox/stepper/slider/rating/popup, options, min/max/step) + `TableCell.control` index (round 4) |
+| `TableModelArchive.sort_order` (44) → `TableSortOrderArchive.rules[] { index, direction }` | `TableModel.sortRules?: { column, descending? }[]` — the Sort panel's stored rules (round 4) |
+| `TSK.CustomFormatArchive.name` (1) | `CellFormat.name` for custom formats (round 4) |
+| conditional-style sets (`DataStore.conditionalstyletable` 18) | NOT modeled beyond the fired rule's highlight (folded into `cellStyles`); a per-table `unsupported-feature` warning counts the cells and rule sets (round 4) |
 | `TableStyleNetworkArchive` role slots | `TableStyle` defaults; per-cell `cell_style`/`text_style` overrides resolved on top |
 | `TST.CellStylePropertiesArchive` fills/strokes/vertical alignment/padding | `cellStyles: TableCellStyle[]` deduped per-table pool, referenced by `TableCell.cellStyleIndex` |
 
@@ -299,7 +305,7 @@ formula becomes `cell.formula: TsceFormulaRef` (opaque).
 | `ChartGridArchive` row/column names + GridValue values | `categories` + `series[]` (role assignment follows `series_direction` [inferred per charts.md]) |
 | `series_direction` by_row/by_column | consumed during the assignment above |
 | Keynote charts (private grid) | `dataStatus: "inline"` |
-| Numbers mediator (`TN.ChartMediatorArchive` formulas) | `dataStatus: "table-bound"` + `dataBinding: TsceFormulaRef` (binding formulas are TSCE — opaque) |
+| Numbers mediator (`TN.ChartMediatorArchive` formulas) | `dataStatus: "table-bound"` + `dataBinding: TsceFormulaRef` — decoded since round 4 (2026-09-05): `sourceText` is the union of the series ranges; `bindings { series[], rowLabels[], columnLabels[] }` carries each role's formula text (docs/format/calcengine.md §Chart bindings) |
 | `legend_frame`, fill sets, axis/series generic property maps | `legendFrame`, `seriesColors` (best effort); everything else is **rendering** → deferred to the viewer, not modeled |
 
 ### 2.8 Calc engine (TSCE) — docs/format/calcengine.md

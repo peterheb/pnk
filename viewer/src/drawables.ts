@@ -771,7 +771,7 @@ function textWidth(str: string, size: number, family: string): number {
   return w;
 }
 
-function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null {
+function chartSvg(chart: ChartModel, w: number, h: number, numbersAxis = false): SVGSVGElement | null {
   const numeric = chart.series.every((s) => s.values.every((v) => v === null || typeof v === "number"));
   if (!numeric || chart.series.length === 0 || chart.categories.length === 0) return null;
   const NS = "http://www.w3.org/2000/svg";
@@ -993,9 +993,28 @@ function chartSvg(chart: ChartModel, w: number, h: number): SVGSVGElement | null
   // lands on 3x10^2 and ENOG's TLD chart on 7.5 (0..30 in four steps over data
   // that peaks at 28.1).
   const ladder = g ? [1, 1.5, 2, 2.5, 3, 4, 5, 6, 7.5, 8, 10] : [1, 2, 2.5, 5, 10];
-  const step = ladder.map((m) => m * mag).find((st) => (vmax - vmin) / st <= targetTicks + (g ? 1e-9 : 0.5)) ?? mag * 10;
-  if (chart.valueAxisMin === undefined) vmin = Math.floor(vmin / step) * step;
-  if (chart.valueAxisMax === undefined) vmax = g ? vmin + step * g : Math.ceil(vmax / step) * step;
+  let step = ladder.map((m) => m * mag).find((st) => (vmax - vmin) / st <= targetTicks + (g ? 1e-9 : 0.5)) ?? mag * 10;
+  if (numbersAxis && chart.valueAxisMax === undefined && vmin >= 0) {
+    // Numbers rounds the TOP, not the step: its exports label the axis at
+    // top x k/N whatever that gives (baabe23e067f "User Stories": 0, 5.25,
+    // 10.5, 15.75, 21 for a maximum of 21; 5a89929253a1: 0..19,000 in steps
+    // of 4,750). Measured on 40 exported charts (baabe23e067f, 5a89929253a1,
+    // plus the two Keynote cases above): the maximum rounds up to a
+    // multiple of 10^k (k = floor(log10 max)) when its leading digits are
+    // 2.7 or more, else to a multiple of 10^(k-1) — 56 -> 60, 37 -> 40,
+    // 4060 -> 5000, but 21 -> 21, 1798 -> 1800, 12539 -> 13000. 34 of the
+    // 40 match; the ladder rule above matched 15. The six misses land one
+    // unit higher (1650 -> 1800, 2097 -> 2200); the exact rule is not in
+    // the archives (docs/JUDGE.md, Numbers round 4). [inferred]
+    const k = Math.floor(Math.log10(Math.max(vmax, 1e-9)));
+    const u = vmax / Math.pow(10, k) >= 2.7 ? Math.pow(10, k) : Math.pow(10, k - 1);
+    vmax = Math.ceil(vmax / u - 1e-9) * u;
+    vmin = 0;
+    step = vmax / targetTicks;
+  } else {
+    if (chart.valueAxisMin === undefined) vmin = Math.floor(vmin / step) * step;
+    if (chart.valueAxisMax === undefined) vmax = g ? vmin + step * g : Math.ceil(vmax / step) * step;
+  }
   const ticks: number[] = [];
   for (let v = vmin; v <= vmax + step / 1000; v += step) ticks.push(Math.round(v * 1e6) / 1e6);
   // Axis decimals stay automatic: the stored decimal_places is 1 on 720 of
@@ -1526,7 +1545,7 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
     // the sheet canvas fits the drawn table.
     if ((doc as { kind?: string }).kind === "numbers") div.style.height = "auto";
   } else if (d.type === "chart") {
-    const svg = chartSvg(d.chart, w, h);
+    const svg = chartSvg(d.chart, w, h, (doc as { kind?: string }).kind === "numbers");
     if (svg) {
       svgGradientDefs(svg, c.style);
       div.appendChild(svg);

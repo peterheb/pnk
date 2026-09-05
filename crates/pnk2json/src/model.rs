@@ -1202,6 +1202,15 @@ pub struct TableModel {
     /// `TableCell.cellStyleIndex`, absent = table default style.
     pub cell_styles: Vec<TableCellStyle>,
     pub merges: Vec<TableMerge>,
+    /// Controls used by this table's cells, deduped; `TableCell.control`
+    /// indexes it. Absent when no cell is a control.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub controls: Option<Vec<CellControl>>,
+    /// The Sort panel's rules, first rule first. Numbers does not keep rows
+    /// sorted after later edits, so this is the stored setup, not a
+    /// guarantee about `grid` order. [proto: TableModelArchive.sort_order 44]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sort_rules: Option<Vec<SortRule>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub style: Option<TableStyle>,
     /// Look of the table NAME drawn above the table (Numbers furniture):
@@ -1241,6 +1250,66 @@ pub struct TableCell {
     pub cell_style_index: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub formula: Option<TsceFormulaRef>,
+    /// Comment attached to the cell. [proto: cell storage flag 0x80000 →
+    /// DataStore.commentStorageTable (19) → TSD.CommentStorageArchive]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comment: Option<CellComment>,
+    /// Index into `TableModel.controls` when the cell is a control
+    /// (checkbox, stepper, slider, star rating, pop-up menu).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub control: Option<u32>,
+}
+
+/// A cell comment (Numbers "Comment" on a cell).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CellComment {
+    pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    /// ISO 8601 UTC creation date.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub date: Option<String>,
+}
+
+/// A cell control, pooled per table (`TableCell.control` indexes it).
+/// [proto: cell storage flag 0x400 → DataStore.control_cell_spec_table (21)
+/// → TST.CellSpecArchive { interaction_type 1, range_control_min/max/inc
+/// 3-5, chooser_control_popup_model 6 → TST.PopUpMenuModel tsce_item 2 }]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CellControl {
+    pub kind: CellControlKind,
+    /// Pop-up menu items, in menu order.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub options: Option<Vec<GridPlain>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub step: Option<f64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CellControlKind {
+    Checkbox,
+    Stepper,
+    Slider,
+    Rating,
+    Popup,
+    Other,
+}
+
+/// One rule of the table's Sort panel. [proto: TST.TableSortOrderArchive
+/// .SortRuleArchive { index 1 (column), direction 2 (0 asc / 1 desc) }]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SortRule {
+    pub column: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub descending: Option<bool>,
 }
 
 /// The `v` payload: plain scalar, ISO string, or rich text.
@@ -1392,6 +1461,10 @@ pub struct CellFormat {
     pub accounting: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub format_string: Option<String>,
+    /// The custom format's name as shown in the Numbers format list
+    /// (kind = custom only). [proto: TSK.CustomFormatArchive.name 1]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1451,6 +1524,10 @@ pub struct ChartModel {
     pub series_colors: Option<Vec<HexColor>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data_binding: Option<TsceFormulaRef>,
+    /// Numbers-only: the mediator's binding formulas, decoded per role
+    /// (charts.rs). [proto: TN.ChartMediatorArchive.formulas 3]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bindings: Option<ChartBindings>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scatter_format: Option<ChartScatterFormat>,
     /// Chart title when shown. [proto: TSCH.Generated.ChartNonStyleArchive
@@ -1624,6 +1701,24 @@ pub struct TableGrouping {
     /// Whole-table cached summaries (the app's root accumulators).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub totals: Option<Vec<GroupTotal>>,
+    /// Width in points of the category column Numbers adds at the left of
+    /// a grouped table. [proto: TST.TableInfoArchive.summary_model (4) →
+    /// SummaryModelArchive.category_column_width (10)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub category_column_width_pt: Option<f64>,
+}
+
+/// A table-bound chart's binding formulas by role: one `series` entry per
+/// data series (a range, or a union of ranges), row labels and column
+/// labels (references or literal strings).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ChartBindings {
+    pub series: Vec<TsceFormulaRef>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub row_labels: Option<Vec<TsceFormulaRef>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub column_labels: Option<Vec<TsceFormulaRef>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

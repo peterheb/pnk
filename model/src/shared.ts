@@ -630,6 +630,14 @@ export interface TableModel {
   cellStyles: TableCellStyle[];
   /** Merged regions; only the anchor cell carries content in `grid`. */
   merges: TableMerge[];
+  /** Controls used by this table's cells, deduped; `TableCell.control` indexes it. */
+  controls?: CellControl[];
+  /**
+   * The Sort panel's rules, first rule first. Numbers does not re-sort after
+   * later edits, so this is the stored setup, not a guarantee about `grid`
+   * order. [proto: TableModelArchive.sort_order (44)]
+   */
+  sortRules?: SortRule[];
   /** Resolved table-level look. */
   style?: TableStyle;
   /**
@@ -669,6 +677,39 @@ export interface TableCell {
   cellStyleIndex?: number;
   /** Formula placeholder when the cell computes its value. */
   formula?: TsceFormulaRef;
+  /** Comment attached to the cell. [proto: storage flag 0x80000 → DataStore.commentStorageTable (19) → TSD.CommentStorageArchive] */
+  comment?: CellComment;
+  /** Index into `TableModel.controls` when the cell is a control (checkbox, stepper, slider, rating, pop-up). */
+  control?: number;
+}
+
+/** A cell comment. */
+export interface CellComment {
+  text: string;
+  author?: string;
+  /** ISO 8601 UTC creation date. */
+  date?: IsoDateString;
+}
+
+/**
+ * A cell control, pooled per table. [proto: storage flag 0x400 →
+ * DataStore.control_cell_spec_table (21) → TST.CellSpecArchive
+ * { interaction_type 1, range_control_min/max/inc 3-5,
+ * chooser_control_popup_model 6 → TST.PopUpMenuModel.tsce_item 2 }]
+ */
+export interface CellControl {
+  kind: "checkbox" | "stepper" | "slider" | "rating" | "popup" | "other";
+  /** Pop-up menu items, in menu order. */
+  options?: (string | number | boolean)[];
+  min?: number;
+  max?: number;
+  step?: number;
+}
+
+/** One rule of the table's Sort panel. [proto: TST.TableSortOrderArchive.SortRuleArchive { index 1 = column, direction 2 }] */
+export interface SortRule {
+  column: number;
+  descending?: boolean;
 }
 
 export interface RowColInfo {
@@ -718,6 +759,8 @@ export interface CellFormat {
   accounting?: boolean;
   /** Raw custom format string when kind = "custom". */
   formatString?: string;
+  /** The custom format's name in the Numbers format list (kind = "custom"). [proto: TSK.CustomFormatArchive.name 1] */
+  name?: string;
 }
 
 /** Category grouping of a table's rows. */
@@ -730,6 +773,8 @@ export interface TableGrouping {
   groups: TableGroup[];
   /** Whole-table cached summaries. */
   totals?: GroupTotal[];
+  /** Width of the category column Numbers adds at the left of a grouped table. [proto: TST.SummaryModelArchive.category_column_width 10] */
+  categoryColumnWidthPt?: number;
 }
 
 export interface GroupAggregate {
@@ -808,8 +853,15 @@ export interface ChartModel {
   legendVisible?: boolean;
   /** Series colors as stored in per-series styles, best effort. */
   seriesColors?: HexColor[];
-  /** Numbers-only: the table this chart reads from, as a placeholder. */
+  /**
+   * Numbers-only: the table ranges this chart reads. When every series
+   * formula decodes, `status` is "decoded" and `sourceText` is the union of
+   * the series ranges ("Table 1::G3:G23,Table 1::M3:M23"); `bindings`
+   * carries them per role.
+   */
   dataBinding?: TsceFormulaRef;
+  /** Numbers-only: binding formulas by role. [proto: TN.ChartMediatorArchive.formulas 3] */
+  bindings?: ChartBindings;
   /** Scatter layout. [proto: TSCH.ScatterFormat] */
   scatterFormat?: "separate-x" | "shared-x";
   /** Chart title when shown. [proto: TSCH.Generated.ChartNonStyleArchive title 46 / showtitle 35] */
@@ -847,6 +899,19 @@ export interface ChartModel {
    * ChartAxisNonStyleArchive showlabels 9/10/11]
    */
   axes?: { valueGridlines: boolean; categoryGridlines: boolean; valueAxisLine: boolean; categoryAxisLine: boolean; valueLabels: boolean; categoryLabels: boolean };
+}
+
+/**
+ * A table-bound chart's binding formulas: one `series` entry per data
+ * series (a range or a union of ranges), row labels and column labels
+ * (references or literal strings). The chart-series wrapper function
+ * (TSCE function id 175, one per formula) is not printed. [inferred:
+ * every binding formula in the 158-file corpus ends in it]
+ */
+export interface ChartBindings {
+  series: TsceFormulaRef[];
+  rowLabels?: TsceFormulaRef[];
+  columnLabels?: TsceFormulaRef[];
 }
 
 export interface ChartNumberFormat {
