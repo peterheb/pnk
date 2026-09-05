@@ -81,6 +81,17 @@ a single one. `--max-pages N` caps pages per document. Results append to
 `judge-out/judgments.jsonl`; a second invocation sends only requests that
 have no successful result yet, so judges can be added one at a time.
 
+`--align-content` (Pages runs only; add `--with pymupdf` to the `uv run`)
+pairs each export page with the viewer page whose text overlaps it most
+instead of page N with page N: the export's text comes from
+`apple/export.pdf`, the viewer's from the `ours/page-N.txt` dumps that
+visual_diff writes next to each screenshot (runs made before 2026-09-05
+have none and keep the default pairing). Overlap is shared words over the
+smaller page's words; a page with fewer than 8 words on either side keeps
+its own number. The record's `candidate_page` says which viewer page was
+scored. Use it to score the render itself when the viewer's pagination
+drifts from the app's; the default pairing scores pagination too.
+
 A judge is `--judge name=<spec>`:
 
 | spec | meaning |

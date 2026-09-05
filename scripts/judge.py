@@ -65,8 +65,12 @@ JPEG_QUALITY = 85
 
 # ----------------------------------------------------------------- pairing
 
-def find_pairs(run: Path):
-    """(golden, candidate, page) triples for one visual_diff run dir."""
+def find_pairs(run: Path, align_content: bool = False):
+    """(golden, candidate, page, candidate_page) tuples for one visual_diff
+    run dir. Page N pairs with page N; with `align_content`, a Pages run
+    pairs each export page with the viewer page whose text overlaps it most
+    (see align_pages), so pagination drift no longer makes every later pair
+    compare different content."""
     apple = sorted((run / "apple").glob("page-*.png"), key=lambda p: int(p.stem.split("-")[-1]))
     ours_dir = run / "ours"
     kind = None
@@ -77,12 +81,61 @@ def find_pairs(run: Path):
     if kind is None or not apple:
         return kind, []
     ours = {int(p.stem.split("-")[-1]): p for p in ours_dir.glob(f"{kind}-*.png")}
+    mapping = align_pages(run, [int(g.stem.split("-")[-1]) for g in apple], sorted(ours)) \
+        if align_content and kind == "page" else {}
     pairs = []
     for g in apple:
         n = int(g.stem.split("-")[-1])
-        if n in ours:
-            pairs.append((g, ours[n], n))
+        m = mapping.get(n, n)
+        if m in ours:
+            pairs.append((g, ours[m], n, m))
     return kind, pairs
+
+
+def _words(text: str) -> set[str]:
+    return {w for w in re.findall(r"[^\W_]{2,}", text.lower())}
+
+
+def align_pages(run: Path, apple_pages: list[int], ours_pages: list[int]) -> dict[int, int]:
+    """Export page -> viewer page with the most shared words. The export's
+    text comes from apple/export.pdf (pymupdf), the viewer's from
+    ours/page-N.txt (written by visual_diff's screenshot step). Overlap is
+    |A & B| / min(|A|, |B|); a page with fewer than 8 words on either side,
+    or no overlap, keeps its own number (covers, blank pages). Ties go to
+    the nearer page."""
+    pdf = run / "apple" / "export.pdf"
+    if not pdf.exists():
+        return {}
+    try:
+        import pymupdf
+    except ImportError:
+        print("[judge] --align-content needs pymupdf (uv run --with pymupdf ...)", file=sys.stderr)
+        return {}
+    ours_words: dict[int, set[str]] = {}
+    for m in ours_pages:
+        t = run / "ours" / f"page-{m}.txt"
+        if t.exists():
+            ours_words[m] = _words(t.read_text(errors="replace"))
+    if not ours_words:
+        return {}
+    mapping: dict[int, int] = {}
+    with pymupdf.open(pdf) as doc:
+        for n in apple_pages:
+            if n - 1 >= len(doc):
+                continue
+            a = _words(doc[n - 1].get_text())
+            if len(a) < 8:
+                continue
+            best, best_score = n, 0.0
+            for m, b in ours_words.items():
+                if len(b) < 8:
+                    continue
+                score = len(a & b) / min(len(a), len(b))
+                if score > best_score or (score == best_score and score > 0 and abs(m - n) < abs(best - n)):
+                    best, best_score = m, score
+            if best_score > 0:
+                mapping[n] = best
+    return mapping
 
 
 def app_of(kind: str | None) -> str:
@@ -355,20 +408,21 @@ def cmd_run(args) -> int:
     # build the work list: real pairs + controls
     tasks = []
     for run in runs:
-        kind, pairs = find_pairs(run)
+        kind, pairs = find_pairs(run, args.align_content)
         if not pairs:
             continue
         if args.max_pages:
             pairs = pairs[: args.max_pages]
-        for g, c, n in pairs:
-            tasks.append({"doc": run.name, "app": app_of(kind), "page": n, "golden": g, "candidate": c, "control": None})
+        for g, c, n, m in pairs:
+            tasks.append({"doc": run.name, "app": app_of(kind), "page": n, "golden": g, "candidate": c, "control": None,
+                          "candidate_page": m})
         if args.controls and len(pairs) >= 1:
-            g, c, n = pairs[0]
+            g, c, n, m = pairs[0]
             tasks.append({"doc": run.name, "app": app_of(kind), "page": n, "golden": g, "candidate": g, "control": "identity"})
             if len(pairs) >= 2:
-                other = rng.choice([p for p in pairs if p[2] != n])
+                other = rng.choice([p for p in pairs if p[3] != m])
                 tasks.append({"doc": run.name, "app": app_of(kind), "page": n, "golden": g, "candidate": other[1],
-                              "control": "misaligned", "candidate_page": other[2]})
+                              "control": "misaligned", "candidate_page": other[3]})
     print(f"[judge] {len(runs)} runs, {len(tasks)} pairs (controls {'on' if args.controls else 'off'}), "
           f"{len(judges)} judges: {', '.join(j.name for j in judges)}", flush=True)
 
@@ -554,6 +608,9 @@ def main() -> int:
     r.add_argument("--out", required=True, help="output dir (judgments.jsonl is appended and used as a cache)")
     r.add_argument("--controls", action="store_true", help="add identity and misaligned control pairs per run")
     r.add_argument("--max-pages", type=int, default=0, help="cap pages per run (0 = all)")
+    r.add_argument("--align-content", action="store_true",
+                   help="Pages runs: pair each export page with the viewer page whose text overlaps it most "
+                        "(needs pymupdf and the page-N.txt dumps visual_diff writes); default pairs page N with N")
     r.add_argument("--concurrency", action="append", default=[],
                    help="parallel requests per LLM judge: a number for all, or name=N for one judge "
                         "(repeatable; default 1 — a memory-tight box will page its weights out under 2+)")
