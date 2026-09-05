@@ -837,6 +837,23 @@ pub struct TextWrap {
     pub kind: TextWrapKind,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub margin_pt: Option<f64>,
+    /// How the wrap outline is found: absent = "alpha" (the object's
+    /// visible contour: an image's opaque pixels, a shape's path), the app
+    /// default; "bounding-box" = its frame. [TSD.ExteriorTextWrapArchive
+    /// fit_type: 1 / 0]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fit: Option<TextWrapFit>,
+    /// Alpha above which an image pixel counts as opaque for the contour
+    /// (0..1). Absent = 0.5, the app default. [fit_type alpha_threshold (5)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alpha_threshold: Option<f64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TextWrapFit {
+    BoundingBox,
+    Alpha,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

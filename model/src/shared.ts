@@ -289,6 +289,21 @@ export interface DrawableCommon {
   textWrap?: {
     kind: "none" | "around" | "above-below" | "left" | "right" | "largest";
     marginPt?: number;
+    /**
+     * Where the wrap outline comes from. Absent = "alpha": the object's
+     * visible contour — an image's opaque pixels (see `alphaThreshold`), a
+     * shape's path — which is the app default (`fit_type` 1 on 99% of the
+     * corpus' wraps in all three apps); "bounding-box" = the object's frame
+     * (`fit_type` 0). [inferred 2026-09-05: f82b2fa4's cover, a PNG frame
+     * with a transparent interior that Pages fills with the title, stores 1]
+     */
+    fit?: "bounding-box" | "alpha";
+    /**
+     * Alpha above which an image pixel is inside the contour, 0..1. Absent
+     * = 0.5, the app default; the corpus otherwise stores 0.0.
+     * [proto: alpha_threshold]
+     */
+    alphaThreshold?: number;
   };
   /** Visual styling (resolved; undefined = no styling specified). */
   style?: DrawableStyle;

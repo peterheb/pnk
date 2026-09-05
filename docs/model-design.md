@@ -216,6 +216,7 @@ headroom ≠ 1 → clamp + warning. Alpha byte appended when `a ≠ 1`.
 | proto | model |
 |---|---|
 | `TSD.DrawableArchive` geometry (position/size/radians-angle) | `DrawableCommon.position/size/angleDeg` |
+| `TSD.ExteriorTextWrapArchive` type (1), margin (4), fit_type (3), alpha_threshold (5) | `DrawableCommon.textWrap { kind, marginPt?, fit?, alphaThreshold? }` — `fit` absent = "alpha" (the visible contour; `fit_type` 1, the app default), "bounding-box" for 0; `alphaThreshold` absent = 0.5. A renderer wrapping body text around an image with the default fit should use the image's alpha: f82b2fa4's cover is a transparent PNG frame whose interior Pages fills with the title (2026-09-05, [inferred] from that export) |
 | `TSD.ShapeArchive` + `PathSourceArchive` variants | `ShapeDrawable.geometry: ShapeGeometry` (see §2.5) |
 | `TSWP.ShapeInfoArchive` (is_text_box) + owned storage | `TextboxDrawable` (or `ShapeDrawable.text` for shapes with text) |
 | `TSWP.ShapeInfoArchive.text_flow` → `TSWP.FlowInfoArchive { text_storage, textboxes[], user_interface_identifier }` | the flow's `text_storage` is the box's text and wins over `owned_storage` (corpus 2026-09-05: every Pages box with a `text_flow` keeps an empty owned storage beside it — 19 boxes in 9 documents). A flow with 2+ textboxes is a chain of linked boxes: `TextboxDrawable.flow { id, index, count }`, text emitted once on `index` 0, continuation boxes carry an empty `text` and show the previous box's overflow when rendered (fixtures 26a356dc, 277d7233) |

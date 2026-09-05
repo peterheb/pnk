@@ -161,9 +161,26 @@ fn drawable_common(_ctx: &mut Ctx, m: &Msg) -> Result<DrawableCommon, ()> {
             5 => TextWrapKind::Largest,
             _ => TextWrapKind::Around,
         };
+        // fit_type (3): 1 = the wrap follows the object's alpha (contour),
+        // 0 = its bounding box. Corpus 2026-09-05, all 964 fixtures: 1 on
+        // 99% of objects in all three apps (Pages 5,300 of 6,600 wraps) and
+        // f82b2fa4's cover, a PNG frame with a transparent interior that
+        // Pages fills with the title, stores 1 [inferred from that export].
+        // alpha_threshold (5) is 0.5 on all but ~300 Pages objects (0.0).
+        // Both are emitted only when they differ from those defaults.
+        let fit = match w.varint(3) {
+            Some(0) => Some(TextWrapFit::BoundingBox),
+            _ => None,
+        };
+        let alpha_threshold = w
+            .f32v(5)
+            .map(|v| v as f64)
+            .filter(|v| (v - 0.5).abs() > 1e-6);
         c.text_wrap = Some(TextWrap {
             kind,
             margin_pt: w.f32v(4).map(|v| v as f64),
+            fit,
+            alpha_threshold,
         });
         any = true;
     }
