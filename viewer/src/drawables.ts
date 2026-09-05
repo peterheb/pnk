@@ -8,6 +8,7 @@
 // Shapes become inline SVG paths from the flattened curve data; images come
 // from ViewerCtx object URLs; tables/charts delegate to their renderers.
 
+import { isPdfBytes, pdfMediaEl } from "./pdfmedia";
 import type {
   ChartModel,
   ChartNumberFormat,
@@ -176,16 +177,35 @@ function presetPathD(preset: string, g: ShapeGeometry, w: number, h: number): st
       return "M" + pts[preset].map(([x, y]) => `${f(x)},${f(y)}`).join(" L") + " Z";
     }
     case "callout": {
-      // rounded rect body + a triangular tail toward tailPosition
+      // Rounded-rect body plus a wedge whose apex is tailPosition (in
+      // naturalSize space, often far outside the body: kcsrk slide 7 points
+      // a 244x100 callout at (281, -277)) and whose base, tailSize wide,
+      // sits on the body edge facing the apex. [proto: TSD.CalloutPathSourceArchive]
       const tail = g.callout?.tailPosition;
-      const tailW = g.callout ? g.callout.tailSize.width : 0;
-      const tailH = g.callout ? g.callout.tailSize.height : 0;
-      const base = presetPathD("rect", g, w, h);
-      if (!tail || !tailH) return base;
-      const tx = clamp(tail.x * (w / (g.naturalSize?.width ?? w)), 0, w - tailW);
-      const ty = tail.y > (g.naturalSize?.height ?? h) / 2 ? h : 0;
-      const dir = ty === 0 ? -1 : 1;
-      return `${base} M${f(tx)},${f(ty)} L${f(tx + tailW)},${f(ty)} L${f(clamp(tail.x + tailW / 2, 0, w))},${f(ty + dir * tailH)} Z`;
+      const nw = g.naturalSize?.width || w || 1;
+      const nh = g.naturalSize?.height || h || 1;
+      const rBody = Math.min((g.callout?.cornerRadius ?? 8) * (w / nw), w / 2, h / 2);
+      const body = `M${f(rBody)},0 L${f(w - rBody)},0 Q${f(w)},0 ${f(w)},${f(rBody)} L${f(w)},${f(h - rBody)} Q${f(w)},${f(h)} ${f(w - rBody)},${f(h)} L${f(rBody)},${f(h)} Q0,${f(h)} 0,${f(h - rBody)} L0,${f(rBody)} Q0,0 ${f(rBody)},0 Z`;
+      if (!tail) return body;
+      const ax = tail.x * (w / nw);
+      const ay = tail.y * (h / nh);
+      if (ax >= 0 && ax <= w && ay >= 0 && ay <= h) return body; // apex inside: no visible tail
+      const tailW = Math.max(4, (g.callout?.tailSize.width || 10) * (w / nw));
+      // Base centre: the ray from the body centre to the apex, clipped to the border.
+      const cx = w / 2;
+      const cy = h / 2;
+      const dx = ax - cx;
+      const dy = ay - cy;
+      const t = Math.min(dx !== 0 ? Math.abs(cx / dx) : Infinity, dy !== 0 ? Math.abs(cy / dy) : Infinity);
+      const bx = cx + dx * t;
+      const by = cy + dy * t;
+      const len = Math.hypot(dx, dy) || 1;
+      const px = (-dy / len) * (tailW / 2);
+      const py = (dx / len) * (tailW / 2);
+      // Pull the base slightly inside so the wedge fuses with the body fill.
+      const ix = bx - (dx / len) * 2;
+      const iy = by - (dy / len) * 2;
+      return `${body} M${f(ix + px)},${f(iy + py)} L${f(ax)},${f(ay)} L${f(ix - px)},${f(iy - py)} Z`;
     }
     default:
       // rounded-rect + every preset we don't specialize
@@ -448,12 +468,13 @@ function shapeSvg(g: ShapeGeometry, w: number, h: number, style: DrawableCommon[
 // Content pieces
 // ---------------------------------------------------------------------------
 
-function imageEl(
+export function imageEl(
   dataId: string | undefined,
   fileName: string | undefined,
   ctx: ViewerCtx,
   alt?: string,
   thumbnail?: { dataId: string; fileName?: string; preferredFileName?: string },
+  cssSize?: { width: number; height: number },
 ): HTMLElement {
   const url = dataId ? ctx.url(dataId) : undefined;
   const vector = /\.(pdf|ai|eps)$/i.test(fileName ?? "");
@@ -482,14 +503,20 @@ function imageEl(
     return img;
   }
   if (vector && fileName) {
-    // Placed vector art with no raster twin: a neutral gray shape with a
-    // small filename caption — not an error card (the artwork exists, we
-    // just cannot rasterize PDF/AI/EPS in-browser).
-    const box = el("div", "media-vector");
-    const cap = el("span", "media-vector-caption");
-    cap.textContent = fileName.replace(/\.(pdf|ai|eps)$/i, "").replace(/-\d+$/, "");
-    box.appendChild(cap);
-    return box;
+    // Placed vector art with no raster twin: pdf.js draws PDFs (Keynote
+    // equations, pasted PDF art) into a canvas; anything it cannot open
+    // gets a neutral gray shape with a small filename caption — not an
+    // error card (the artwork exists, we just cannot show it).
+    const placeholder = () => {
+      const box = el("div", "media-vector");
+      const cap = el("span", "media-vector-caption");
+      cap.textContent = fileName.replace(/\.(pdf|ai|eps)$/i, "").replace(/-\d+$/, "");
+      box.appendChild(cap);
+      return box;
+    };
+    const bytes = dataId ? ctx.bytes(dataId) : undefined;
+    if (bytes && isPdfBytes(bytes)) return pdfMediaEl(bytes, cssSize?.width ?? 0, cssSize?.height ?? 0, placeholder);
+    return placeholder();
   }
   const miss = el("div", "media-missing");
   miss.textContent = fileName ? `${fileName} (media missing)` : "media missing";
@@ -1402,7 +1429,7 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
       div.appendChild(layer);
     }
   } else if (d.type === "image") {
-    const img = imageEl(d.image.dataId, d.image.preferredFileName ?? d.image.fileName, ctx, d.image.preferredFileName, d.thumbnail);
+    const img = imageEl(d.image.dataId, d.image.preferredFileName ?? d.image.fileName, ctx, d.image.preferredFileName, d.thumbnail, { width: w, height: h });
     const m = d.mask?.common;
     if (m?.position && m.size && m.size.width > 0 && m.size.height > 0) {
       // TSD.ImageArchive.mask: the mask frame is in the image drawable's own
