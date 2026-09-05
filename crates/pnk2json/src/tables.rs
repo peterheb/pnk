@@ -1234,6 +1234,7 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
             _ => None,
         },
         name: stored_name,
+        grouping: crate::categories::extract(ctx, &m),
         row_count,
         column_count,
         header_row_count: m.varint(9).unwrap_or(0) as u32,
@@ -1268,6 +1269,7 @@ fn empty_table() -> TableModel {
     TableModel {
         name: None,
         name_hidden: None,
+        grouping: None,
         row_count: 0,
         column_count: 0,
         header_row_count: 0,

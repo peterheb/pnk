@@ -1089,6 +1089,10 @@ pub struct TableModel {
     /// name is still carried because formulas reference tables by it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name_hidden: Option<bool>,
+    /// Category grouping ("Organize by"), when enabled; the grid stays the
+    /// ungrouped data (categories.rs).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub grouping: Option<TableGrouping>,
     pub row_count: u32,
     pub column_count: u32,
     pub header_row_count: u32,
@@ -1524,6 +1528,63 @@ pub enum ChartType {
     Bubble,
     Radar,
     Other,
+}
+
+// --- Category grouping (Numbers "Organize by") ---
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TableGrouping {
+    /// Model column indexes grouped by, outermost first.
+    pub columns: Vec<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aggregates: Option<Vec<GroupAggregate>>,
+    pub groups: Vec<TableGroup>,
+    /// Whole-table cached summaries (the app's root accumulators).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub totals: Option<Vec<GroupTotal>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupAggregate {
+    pub column: u32,
+    /// Stored summary rule code (ColumnAggregateArchive.agg_type); 2 = sum
+    /// [inferred from one fixture], other codes unnamed.
+    pub rule: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub level: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TableGroup {
+    /// Group key: the grouped column's value; `null` = the blank group.
+    pub value: GridValue,
+    /// True when `value` is an ISO date string.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub date: Option<bool>,
+    /// Model row indexes of the group's rows (leaf groups).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rows: Option<Vec<u32>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub children: Option<Vec<TableGroup>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub totals: Option<Vec<GroupTotal>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupTotal {
+    pub column: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sum: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max: Option<f64>,
 }
 
 // --- TSCE placeholder ---

@@ -185,6 +185,37 @@ masaccio/numbers-parser@3238795]
   numbers-parser writer model.py:1262-1306 + reader model.py:1071-1097; verify
   against fixtures for tables whose tiles are not row-block-aligned]
 
+## Category grouping ("Organize by")
+
+`TableModelArchive.category_owner` (f86, TSP.Reference) → `TST.CategoryOwnerRefArchive`
+{ group_by = 1: repeated TSP.Reference } → `TST.GroupByArchive` [proto]:
+`group_by_uid` 1, `group_column` 2 [{ column_uid 1, grouping_type 2 }],
+`group_node_root` 3 (inline) or `group_node_root_ref` 18, `aggregator` 4
+[{ column_uid 1, agg_node 2 }], `column_agg_type` 5 [{ column_uid 1, level 2,
+agg_type 3, show_as_type 4 }], `is_enabled` 6, `row_uid_lookup` 15 { uuids 1 }.
+A model can reference several GroupBy archives; only the enabled one applies.
+
+`GroupNodeArchive`: `group_uid` 1, `child` 3 (inline) / `child_ref` 10,
+`row_uid` 4, `agg_formula_coords` 5, `group_cell_value` 7 (TSCE.CellValueArchive:
+cell_value_type 1 = NIL 1 / BOOLEAN 2 / DATE 3 / NUMBER 4 / STRING 5, value
+sub-messages 2-5), `row_lookup_uids` 9 (TSCE.IndexSetArchive entries
+{ range_begin 1, range_end 2 } — INCLUSIVE ranges indexing `row_uid_lookup`).
+Row/column uids resolve through the model's `base_column_row_uids` (f46) →
+`TST.ColumnRowUIDMapArchive` { sorted_column_uids 1 / column_index_for_uid 2,
+sorted_row_uids 4 / row_index_for_uid 5 }. Lookup order is NOT model order.
+
+Cached summaries: each aggregator's `AggNodeArchive` tree { formula_coord 1,
+accum 2 (AccumulatorArchive: number_count 2, min_value 6, max_value 7,
+number_total_value 8 — CellValueArchives), child 3 } is matched to group
+nodes by coordinate (a group node's `agg_formula_coords` names its agg node);
+child ORDER differs between the two trees. `agg_type` 2 shows as "Sum" in the
+fixture; other codes are unnamed. The grouped view's extra left column width
+is `TST.SummaryModelArchive.category_column_width` (f10, 50pt in the fixture;
+not carried). Groups display sorted by key with the blank group last.
+`[fixture-verified: 6914f46e51ab (Numbers 15.x, one grouped table in the
+158-file corpus) against its PDF export: groups "Muster" 4h27m / blank 3h57m,
+table 8h24m; parser: none — numbers-parser does not read categories]`
+
 ## Formula-error cells
 
 A `formulaErrorCellType` (byte-1 value 8) cell is a formula whose last

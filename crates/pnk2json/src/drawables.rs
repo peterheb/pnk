@@ -1094,6 +1094,7 @@ fn empty_table() -> TableModel {
     TableModel {
         name: None,
         name_hidden: None,
+        grouping: None,
         row_count: 0,
         column_count: 0,
         header_row_count: 0,

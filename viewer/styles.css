@@ -535,3 +535,8 @@ table.sheet-table > caption.table-caption { color: #1d1d1f; }
 
 /* accounting-style currency cells: symbol at the left edge, amount at the right */
 table.sheet-table .acct { display: flex; justify-content: space-between; gap: 0.5em; }
+
+/* ---- Numbers agent, 2026-09-05: category grouping rows ---- */
+.sheet-table tr.group-row td.cell-group { background: #f3f3f3; white-space: nowrap; }
+.sheet-table tr.group-label-row td.cell-group { color: #444; white-space: nowrap; }
+.sheet-table .cell-category { padding: 0; }

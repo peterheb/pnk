@@ -509,6 +509,14 @@ export interface TableModel {
   name?: string;
   /** True when Numbers does not show the name above the table. [proto: table_name_enabled (22) not true] */
   nameHidden?: boolean;
+  /**
+   * Category grouping ("Organize by" a column), when enabled. `grid` stays
+   * the ungrouped data; this is the group tree Numbers lays over it, with
+   * the summary rules and the app's cached totals. [proto: TableModelArchive
+   * category_owner (86) → CategoryOwnerRefArchive → GroupByArchive; see
+   * crates/pnk2json/src/categories.rs]
+   */
+  grouping?: TableGrouping;
   rowCount: number;
   columnCount: number;
   headerRowCount: number;
@@ -635,6 +643,45 @@ export interface CellFormat {
   accounting?: boolean;
   /** Raw custom format string when kind = "custom". */
   formatString?: string;
+}
+
+/** Category grouping of a table's rows. */
+export interface TableGrouping {
+  /** Model column indexes grouped by, outermost first. */
+  columns: number[];
+  /** Summary rules per column shown in group rows. */
+  aggregates?: GroupAggregate[];
+  /** Group tree, one level per entry of `columns`, in display order. */
+  groups: TableGroup[];
+  /** Whole-table cached summaries. */
+  totals?: GroupTotal[];
+}
+
+export interface GroupAggregate {
+  column: number;
+  /** Stored rule code (ColumnAggregateArchive.agg_type): 2 = sum [inferred from one fixture]; other codes unnamed. */
+  rule: number;
+  level?: number;
+}
+
+export interface TableGroup {
+  /** Group key: the grouped column's value; `null` = the blank group. */
+  value: string | number | boolean | null;
+  /** True when `value` is an ISO date string. */
+  date?: boolean;
+  /** Model row indexes (into `grid`) of the group's rows; leaf groups only. */
+  rows?: number[];
+  children?: TableGroup[];
+  /** Cached summaries per aggregated column, from the app's accumulators. */
+  totals?: GroupTotal[];
+}
+
+export interface GroupTotal {
+  column: number;
+  sum?: number;
+  count?: number;
+  min?: number;
+  max?: number;
 }
 
 /** Merged region: anchor (top-left) + span. [proto: TST.MergeRegionMapArchive CellRange] */

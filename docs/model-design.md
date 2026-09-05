@@ -260,6 +260,7 @@ The tile/offset-buffer machinery is fully flattened:
 | `TableDataList` STRING/RICH_TEXT_PAYLOAD entries | cell `v` string / `{ v: StyledText, type: "richtext" }` |
 | `TableDataList` FORMAT/CUSTOM_FORMAT | `formats[]` deduped pool, referenced by `TableCell.fmt` (custom formats degrade to `kind:"custom"` + raw string) |
 | `merge_region_map` CellRanges (col<<16|row packedData) | `merges[]` anchor + span |
+| `category_owner` (86) → `CategoryOwnerRefArchive` → `GroupByArchive` (docs/format/tables.md §Category grouping) | `grouping?: TableGrouping` — grouped column indexes, summary rules (raw code; 2 = sum), the group tree with model row indexes, and the app's cached totals; `grid` stays the ungrouped data (2026-09-05) |
 | `TableStyleNetworkArchive` role slots | `TableStyle` defaults; per-cell `cell_style`/`text_style` overrides resolved on top |
 | `TST.CellStylePropertiesArchive` fills/strokes/vertical alignment/padding | `cellStyles: TableCellStyle[]` deduped per-table pool, referenced by `TableCell.cellStyleIndex` |
 
