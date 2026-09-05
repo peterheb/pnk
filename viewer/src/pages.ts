@@ -983,10 +983,13 @@ function paginatedBody(
             while (prev && (prev.classList.contains("pages-anchor") || prev.classList.contains("pages-exclusion"))) {
               prev = prev.previousElementSibling as HTMLElement | null;
             }
-            const wide = piece.querySelector("table") ||
-              Array.from(piece.querySelectorAll<HTMLElement>(".inline-image")).some((im) => im.offsetWidth > g.contentW * 0.5);
+            const wide = (piece.querySelector("table") as HTMLElement | null) ||
+              Array.from(piece.querySelectorAll<HTMLElement>(".inline-image")).find((im) => im.offsetWidth > g.contentW * 0.5);
             if (prev && wide) {
-              const gap = piece.offsetTop - (prev.offsetTop + prev.offsetHeight);
+              // the block sits inside its paragraph box, which starts in
+              // place; the float pushes the TABLE down within it
+              const blockTop = wide.getBoundingClientRect().top - b.container!.getBoundingClientRect().top;
+              const gap = blockTop - (prev.offsetTop + prev.offsetHeight);
               if (gap > 8) {
                 b.container!.querySelectorAll<HTMLElement>(".pages-anchor:not([data-collapsed])").forEach((afl) => {
                   if (afl.offsetTop + afl.offsetHeight > prev.offsetTop + prev.offsetHeight - 0.5) collapseFloat(afl);
