@@ -149,6 +149,28 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> KeynoteDocument {
         slides.push(slide);
     }
 
+    // Slide-number fields: TSWP page-number/page-count fields carry no value
+    // in the archive (Keynote computes them at display time). Resolve them
+    // here — the 1-based position in the show and the show's slide count —
+    // for every text on the slide and its master underlay, so the viewer
+    // and the dumpers print "2" rather than a placeholder. Keynote numbers
+    // skipped slides too (the navigator shows their numbers) and its export
+    // prints the stored number, so the count includes them. [fixture:
+    // icecube c3582f31 slide 2, a free text box holding a slide-number
+    // field that the export prints as "2"]
+    let count = slides.len() as u32;
+    for (i, slide) in slides.iter_mut().enumerate() {
+        let number = i as u32 + 1;
+        for d in slide.drawables.iter_mut() {
+            resolve_slide_number_fields(d, number, count);
+        }
+        if let Some(md) = slide.master_drawables.as_mut() {
+            for d in md.iter_mut() {
+                resolve_slide_number_fields(d, number, count);
+            }
+        }
+    }
+
     // Playback settings (KN.ShowArchive fields 6/8/9/10/11).
     let playback = {
         let any = show.has(9) || show.has(8) || show.has(10) || show.has(11) || show.has(6);
@@ -494,6 +516,36 @@ fn styled_text_is_blank(st: &StyledText) -> bool {
             _ => false,
         })
     })
+}
+
+/// Fill the value of page-number / page-count fields in a drawable's text
+/// (and its group children) with the slide's number and the show's count.
+fn resolve_slide_number_fields(d: &mut Drawable, number: u32, count: u32) {
+    let text = match d {
+        Drawable::Textbox { text, .. } => Some(text),
+        Drawable::Shape { text: Some(t), .. } => Some(t),
+        Drawable::Group { children, .. } => {
+            for c in children.iter_mut() {
+                resolve_slide_number_fields(c, number, count);
+            }
+            None
+        }
+        _ => None,
+    };
+    let Some(text) = text else { return };
+    for p in text.paragraphs.iter_mut() {
+        for it in p.items.iter_mut() {
+            if let ParagraphItem::Field { field, value, .. } = it {
+                if value.is_none() {
+                    match field {
+                        FieldKind::PageNumber => *value = Some(number.to_string()),
+                        FieldKind::PageCount => *value = Some(count.to_string()),
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn empty_slide() -> Slide {
