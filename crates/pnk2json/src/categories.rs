@@ -58,7 +58,7 @@ fn uid_index_map(m: &Msg, uid_field: u32, index_field: u32) -> HashMap<u128, u32
 }
 
 /// TSCE.CellValueArchive → (value, "date" tag). NIL → None.
-fn cell_value(cv: &Msg) -> (GridValue, bool) {
+pub(crate) fn cell_value(cv: &Msg) -> (GridValue, bool) {
     match cv.varint(1) {
         Some(2) => (
             GridValue::Bool(cv.msg(2).and_then(|b| b.boolean(1)).unwrap_or(false)),
@@ -217,9 +217,26 @@ impl Walk<'_> {
     }
 }
 
+/// The grouped view's category column width: the TableInfo (6000/6007)
+/// whose tableModel (f2) is this model → summary_model (f4) →
+/// SummaryModelArchive.category_column_width (f10). The info is found by
+/// scanning records; convert_table receives only the model id.
+fn category_column_width(ctx: &Ctx, model_id: u64) -> Option<f64> {
+    ctx.loaded
+        .records
+        .values()
+        .filter(|r| matches!(r.type_id, 6000 | 6007))
+        .filter_map(|r| r.msg.as_ref())
+        .find(|info| info.reference(2) == Some(model_id))
+        .and_then(|info| info.reference(4))
+        .and_then(|sm| ctx.loaded.msg(sm))
+        .and_then(|sm| sm.f64v(10))
+        .filter(|w| *w > 0.0)
+}
+
 /// The enabled grouping of a table model, or None when the table is not
 /// organized by a column.
-pub fn extract(ctx: &Ctx, m: &Msg) -> Option<TableGrouping> {
+pub fn extract(ctx: &Ctx, m: &Msg, model_id: u64) -> Option<TableGrouping> {
     let owner = ctx.loaded.msg(m.reference(86)?)?;
     let group_by = owner
         .references(1)
@@ -281,5 +298,6 @@ pub fn extract(ctx: &Ctx, m: &Msg) -> Option<TableGrouping> {
         aggregates: (!aggregates.is_empty()).then_some(aggregates),
         groups: root_group.children.unwrap_or_default(),
         totals: root_group.totals,
+        category_column_width_pt: category_column_width(ctx, model_id),
     })
 }
