@@ -885,7 +885,9 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
         };
         let debug = std::env::var("PNK_DEBUG_FORMULA").is_ok();
         for (r, c, cell, _) in cells.iter_mut() {
-            let Some(fref) = cell.formula.as_mut() else { continue };
+            let Some(fref) = cell.formula.as_mut() else {
+                continue;
+            };
             let Some(fm) = fref
                 .id
                 .parse::<i32>()
@@ -894,7 +896,10 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
                 .and_then(|e| e.formula.as_ref())
             else {
                 if debug {
-                    eprintln!("formula r{r}c{c} key {}: no FormulaArchive in the FORMULA list", fref.id);
+                    eprintln!(
+                        "formula r{r}c{c} key {}: no FormulaArchive in the FORMULA list",
+                        fref.id
+                    );
                 }
                 continue;
             };
@@ -2079,7 +2084,11 @@ fn custom_branch(cf: &Msg, value: Option<f64>) -> Option<String> {
 /// Numbers shows in its format list — looked up the same two ways as the
 /// pattern: the inline archive (f42) or the document list by uid (f41).
 fn custom_name(ctx: &Ctx, f: &Msg) -> Option<String> {
-    if let Some(n) = f.msg(42).and_then(|cf| cf.string(1)).filter(|n| !n.is_empty()) {
+    if let Some(n) = f
+        .msg(42)
+        .and_then(|cf| cf.string(1))
+        .filter(|n| !n.is_empty())
+    {
         return Some(n);
     }
     let uid = f.msg(41)?;
@@ -2088,12 +2097,17 @@ fn custom_name(ctx: &Ctx, f: &Msg) -> Option<String> {
         if rec.type_id != 222 {
             continue;
         }
-        let Some(list) = rec.msg.as_ref() else { continue };
+        let Some(list) = rec.msg.as_ref() else {
+            continue;
+        };
         let uuids = list.msgs(1);
         let formats = list.msgs(2);
         for (i, u) in uuids.iter().enumerate() {
             if (u.varint(1), u.varint(2)) == (Some(key.0), Some(key.1)) {
-                return formats.get(i).and_then(|cf| cf.string(1)).filter(|n| !n.is_empty());
+                return formats
+                    .get(i)
+                    .and_then(|cf| cf.string(1))
+                    .filter(|n| !n.is_empty());
             }
         }
     }

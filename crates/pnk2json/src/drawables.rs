@@ -970,7 +970,10 @@ fn equation_info(ctx: &mut Ctx, m: &Msg) -> Option<EquationInfo> {
     };
     let props = m.msg(101);
     let font_size_pt = props.as_ref().and_then(|p| p.f32v(3)).map(|v| v as f64);
-    let font_name = props.as_ref().and_then(|p| p.string(5)).filter(|n| !n.is_empty());
+    let font_name = props
+        .as_ref()
+        .and_then(|p| p.string(5))
+        .filter(|n| !n.is_empty());
     let color = props.as_ref().and_then(|p| crate::tsd::color_of(ctx, p, 7));
     Some(EquationInfo {
         source,
@@ -1141,7 +1144,9 @@ fn anchor_shape(ctx: &mut Ctx, aid: u64) -> Option<Anchor> {
                     // slide 6: "computation" label, natural 132x36, centred
                     // and middle-aligned; the export's arrow tip sits at the
                     // text's left edge, the stored endpoint at its centre).
-                    if let (Some(shape), Some(nat)) = (shape, geo.as_ref().and_then(|g| g.natural_size)) {
+                    if let (Some(shape), Some(nat)) =
+                        (shape, geo.as_ref().and_then(|g| g.natural_size))
+                    {
                         if nat.width > 0.0 && nat.height > 0.0 {
                             let (ax, ay) = zero_box_anchor_fractions(ctx, shape, info);
                             return Some(Anchor {
@@ -1185,7 +1190,11 @@ fn zero_box_anchor_fractions(ctx: &mut Ctx, shape: &Msg, info: Option<&Msg>) -> 
     // (1), else deprecated_storage (2) — the same order as the text path.
     let storage_id = info.and_then(|i| {
         i.reference(4)
-            .or_else(|| i.reference(3).and_then(|f| ctx.loaded.msg(f)).and_then(|f| f.reference(1)))
+            .or_else(|| {
+                i.reference(3)
+                    .and_then(|f| ctx.loaded.msg(f))
+                    .and_then(|f| f.reference(1))
+            })
             .or_else(|| i.reference(2))
     });
     // First paragraph style: TSWP.StorageArchive.table_para_style (5) is an
@@ -1193,9 +1202,15 @@ fn zero_box_anchor_fractions(ctx: &mut Ctx, shape: &Msg, info: Option<&Msg>) -> 
     let para_style_id = storage_id
         .and_then(|sid| ctx.loaded.msg(sid))
         .and_then(|s| s.msg(5))
-        .and_then(|t| t.msgs(1).into_iter().min_by_key(|e| e.varint(1).unwrap_or(0)))
+        .and_then(|t| {
+            t.msgs(1)
+                .into_iter()
+                .min_by_key(|e| e.varint(1).unwrap_or(0))
+        })
         .and_then(|e| e.reference(2));
-    let ax = match para_style_id.map(|id| crate::styles::resolve_para_style(ctx, id).horizontal_alignment) {
+    let ax = match para_style_id
+        .map(|id| crate::styles::resolve_para_style(ctx, id).horizontal_alignment)
+    {
         Some(Some(HorizontalAlignment::Center)) => 0.5,
         Some(Some(HorizontalAlignment::Right)) => 1.0,
         _ => 0.0,
@@ -1359,7 +1374,10 @@ fn connection_line_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
             let p0 = from_geo_anchor.map(|a| a.center()).unwrap_or(s0);
             let p2 = to_geo_anchor.map(|a| a.center()).unwrap_or(s2);
             let mid = similarity_map(sm, s0, s2, p0, p2);
-            let ctrl = (2.0 * mid.0 - (p0.0 + p2.0) / 2.0, 2.0 * mid.1 - (p0.1 + p2.1) / 2.0);
+            let ctrl = (
+                2.0 * mid.0 - (p0.0 + p2.0) / 2.0,
+                2.0 * mid.1 - (p0.1 + p2.1) / 2.0,
+            );
             let (path, bb_min, bb_max) = trimmed_quad(
                 p0,
                 ctrl,
@@ -1436,7 +1454,13 @@ fn connection_line_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
 /// Map point `p` by the 2D similarity (rotate + uniform scale + translate)
 /// that carries segment (s0, s2) onto (p0, p2); a pure translation when the
 /// source segment is degenerate.
-fn similarity_map(p: (f64, f64), s0: (f64, f64), s2: (f64, f64), p0: (f64, f64), p2: (f64, f64)) -> (f64, f64) {
+fn similarity_map(
+    p: (f64, f64),
+    s0: (f64, f64),
+    s2: (f64, f64),
+    p0: (f64, f64),
+    p2: (f64, f64),
+) -> (f64, f64) {
     let vs = (s2.0 - s0.0, s2.1 - s0.1);
     let ls2 = vs.0 * vs.0 + vs.1 * vs.1;
     if ls2 < 1e-9 {
@@ -1515,7 +1539,11 @@ fn trimmed_quad(
     if !straight {
         // Axis extrema of the sub-curve at t = (q0 - q1) / (q0 - 2 q1 + q2).
         for axis in 0..2 {
-            let (v0, v1, v2) = if axis == 0 { (q0.0, q1.0, q2.0) } else { (q0.1, q1.1, q2.1) };
+            let (v0, v1, v2) = if axis == 0 {
+                (q0.0, q1.0, q2.0)
+            } else {
+                (q0.1, q1.1, q2.1)
+            };
             let den = v0 - 2.0 * v1 + v2;
             if den.abs() > 1e-9 {
                 let t = (v0 - v1) / den;

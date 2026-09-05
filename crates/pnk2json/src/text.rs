@@ -48,7 +48,12 @@ fn language_entries_of(table: Option<Msg>) -> Vec<(usize, Option<String>)> {
     let mut out: Vec<(usize, Option<String>)> = table
         .msgs(1)
         .into_iter()
-        .map(|e| (e.varint(1).unwrap_or(0) as usize, e.string(2).filter(|l| is_language_tag(l))))
+        .map(|e| {
+            (
+                e.varint(1).unwrap_or(0) as usize,
+                e.string(2).filter(|l| is_language_tag(l)),
+            )
+        })
         .collect();
     out.sort_by_key(|e| e.0);
     out
@@ -59,7 +64,9 @@ fn language_entries_of(table: Option<Msg>) -> Vec<(usize, Option<String>)> {
 pub fn is_language_tag(tag: &str) -> bool {
     !tag.is_empty()
         && !tag.starts_with('_')
-        && tag.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        && tag
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
 /// Primary language subtag of a locale or language tag ("en_US" → "en").
@@ -82,7 +89,10 @@ fn change_ranges(ctx: &Ctx, entries: &[Entry], want_kind: u64) -> Vec<(usize, us
         if kind != want_kind {
             continue;
         }
-        let end = entries.get(i + 1).map(|n| n.utf16_off).unwrap_or(usize::MAX);
+        let end = entries
+            .get(i + 1)
+            .map(|n| n.utf16_off)
+            .unwrap_or(usize::MAX);
         if end > e.utf16_off {
             out.push((e.utf16_off, end));
         }
@@ -91,7 +101,13 @@ fn change_ranges(ctx: &Ctx, entries: &[Entry], want_kind: u64) -> Vec<(usize, us
 }
 
 /// TSD.CommentStorageArchive → Comment (replies recurse one level per hop).
-fn comment_of(ctx: &Ctx, id: u64, anchor: u32, quoted: Option<String>, depth: u32) -> Option<Comment> {
+fn comment_of(
+    ctx: &Ctx,
+    id: u64,
+    anchor: u32,
+    quoted: Option<String>,
+    depth: u32,
+) -> Option<Comment> {
     let m = ctx.loaded.msg(id)?;
     let author = m
         .reference(3)
@@ -116,7 +132,11 @@ fn comment_of(ctx: &Ctx, id: u64, anchor: u32, quoted: Option<String>, depth: u3
         author,
         date,
         quoted_text: quoted.filter(|q| !q.trim().is_empty()),
-        replies: if replies.is_empty() { None } else { Some(replies) },
+        replies: if replies.is_empty() {
+            None
+        } else {
+            Some(replies)
+        },
     })
 }
 
@@ -177,11 +197,16 @@ fn entry_at(entries: &[Entry], off: usize) -> Option<&Entry> {
 /// placeholder is one paragraph holding one field, and its 30pt white look
 /// lives on the run/paragraph chain, not on the attachment (ripe82
 /// 5e6cf24f: the number drew at the browser default size and colour).
-fn field_c_style(ctx: &mut Ctx, attachment_style: CharStyle, run_c_style: Option<u32>) -> Option<u32> {
+fn field_c_style(
+    ctx: &mut Ctx,
+    attachment_style: CharStyle,
+    run_c_style: Option<u32>,
+) -> Option<u32> {
     if attachment_style == CharStyle::default() {
         run_c_style
     } else {
-        ctx.char_pool.intern(crate::ctx::strip_char_defaults(attachment_style))
+        ctx.char_pool
+            .intern(crate::ctx::strip_char_defaults(attachment_style))
     }
 }
 
@@ -317,7 +342,10 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
         .iter()
         .filter_map(|e| {
             let m = ctx.loaded.msg(e.object_id?)?;
-            let id = m.msg(1).and_then(|sup| sup.string(1)).filter(|s| !s.is_empty())?;
+            let id = m
+                .msg(1)
+                .and_then(|sup| sup.string(1))
+                .filter(|s| !s.is_empty())?;
             Some(Bookmark {
                 id,
                 name: m.string(2).filter(|s| !s.is_empty()),
@@ -330,15 +358,23 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
     // own date (55d37c2b: 3 insertions and 1 deletion by one author; the
     // deletion is a newline, which the accepted view drops).
     let mut changes: Vec<TrackedChange> = Vec::new();
-    for (entries, kind) in [(&insertion_entries, ChangeKind::Insertion), (&deletion_entries, ChangeKind::Deletion)] {
+    for (entries, kind) in [
+        (&insertion_entries, ChangeKind::Insertion),
+        (&deletion_entries, ChangeKind::Deletion),
+    ] {
         for (i, e) in entries.iter().enumerate() {
             let Some(oid) = e.object_id else { continue };
-            let Some(m) = ctx.loaded.msg(oid) else { continue };
+            let Some(m) = ctx.loaded.msg(oid) else {
+                continue;
+            };
             let stored = m.varint(1).unwrap_or(0);
             if stored != if kind == ChangeKind::Insertion { 1 } else { 2 } {
                 continue;
             }
-            let end = entries.get(i + 1).map(|n| n.utf16_off).unwrap_or(e.utf16_off);
+            let end = entries
+                .get(i + 1)
+                .map(|n| n.utf16_off)
+                .unwrap_or(e.utf16_off);
             let a = u16_to_char_index(&map, e.utf16_off);
             let b = u16_to_char_index(&map, end.max(e.utf16_off));
             let changed: String = text.chars().skip(a).take(b.saturating_sub(a)).collect();
@@ -510,7 +546,8 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
             // PARAGRAPH style's char_properties chain — heading/title fonts
             // and placeholder text sizes live there (G5 goldens; RIPE deck).
             let char_sid = entry_at(&char_entries, b0).and_then(|e| e.object_id);
-            let mut char_style = crate::styles::resolve_effective_char_style(ctx, char_sid, style_ref);
+            let mut char_style =
+                crate::styles::resolve_effective_char_style(ctx, char_sid, style_ref);
             // Run language from table_language, only when it differs from
             // the document locale (omit-default: the locale covers the rest).
             if char_style.language.is_none() {
@@ -757,7 +794,11 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
                 }
                 list_counters.truncate(lv + 1);
                 if lf.marker_kind == ListMarkerKind::Number {
-                    let n = if number > 0 { number as u32 } else { list_counters[lv] + 1 };
+                    let n = if number > 0 {
+                        number as u32
+                    } else {
+                        list_counters[lv] + 1
+                    };
                     list_counters[lv] = n;
                     list_number = Some(n);
                 }
@@ -914,7 +955,9 @@ fn resolve_attachment(
             };
             if let Some(info) = ctx.loaded.msg(did).cloned() {
                 for eid in info.references(3) {
-                    let Some(e) = ctx.loaded.msg(eid) else { continue };
+                    let Some(e) = ctx.loaded.msg(eid) else {
+                        continue;
+                    };
                     side.toc.push(TocEntry {
                         text: e.string(4).unwrap_or_default(),
                         page_number: e.varint(2).map(|n| n as u32),

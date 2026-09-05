@@ -520,7 +520,9 @@ pub fn resolve_list_format(ctx: &mut Ctx, list_id: u64, level: u32) -> Option<Li
         .map(|v| v as f64)
         .filter(|v| *v != 0.0);
     // tiered_numbers (25): one bool per level; "1.1" style labels.
-    let tiered = at_level(&varints(&msgs, 25), level).map(|v| v != 0).filter(|t| *t);
+    let tiered = at_level(&varints(&msgs, 25), level)
+        .map(|v| v != 0)
+        .filter(|t| *t);
     Some(ListFormat {
         tiered,
         number_surround,

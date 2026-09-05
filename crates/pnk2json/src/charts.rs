@@ -390,18 +390,20 @@ fn chart_bindings(ctx: &mut Ctx, mid: u64) -> (Option<TsceFormulaRef>, Option<Ch
     let column_labels = decode_all(fs.msgs(4), "columnLabel");
     let all_decoded = !series.is_empty() && series.iter().all(|r| r.source_text.is_some());
     let data_binding = if all_decoded {
-        let union: Vec<String> = series.iter().filter_map(|r| r.source_text.clone()).collect();
+        let union: Vec<String> = series
+            .iter()
+            .filter_map(|r| r.source_text.clone())
+            .collect();
         TsceFormulaRef::decoded(id, union.join(","))
     } else {
         TsceFormulaRef::unparsed(id)
     };
-    let bindings = (!series.is_empty() || !row_labels.is_empty() || !column_labels.is_empty()).then(
-        || ChartBindings {
+    let bindings = (!series.is_empty() || !row_labels.is_empty() || !column_labels.is_empty())
+        .then(|| ChartBindings {
             series,
             row_labels: (!row_labels.is_empty()).then_some(row_labels),
             column_labels: (!column_labels.is_empty()).then_some(column_labels),
-        },
-    );
+        });
     (Some(data_binding), bindings)
 }
 

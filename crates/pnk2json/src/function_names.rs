@@ -355,5 +355,8 @@ pub const FUNCTION_NAMES: &[(u32, &str)] = &[
 ];
 
 pub fn function_name(index: u32) -> Option<&'static str> {
-    FUNCTION_NAMES.binary_search_by_key(&index, |(k, _)| *k).ok().map(|i| FUNCTION_NAMES[i].1)
+    FUNCTION_NAMES
+        .binary_search_by_key(&index, |(k, _)| *k)
+        .ok()
+        .map(|i| FUNCTION_NAMES[i].1)
 }
