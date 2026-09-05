@@ -502,11 +502,19 @@ function applyCellStyle(td: HTMLTableCellElement, style: TableCellStyle | undefi
   // when false, so absent means "one line": Numbers keeps unwrapped text on
   // a single line, clipped at the cell edge unless the cells to the right
   // are empty, in which case it spills over them (see spillUnwrappedCells).
+  // Applied twice per cell (section default, then the cell's own style):
+  // the later pass must REPLACE the earlier class, not add to it. Round 3
+  // left both on a wrapping cell over a non-wrapping body style, and the
+  // `.cell-nowrap .styled-text { white-space: pre }` rule then clipped
+  // eb299192a219's rich-text "Total Charge (minimum charge is 4kg)" to one
+  // line (and spillUnwrappedCells treated it as unwrapped).
   if (style?.textWrap) {
     s.whiteSpace = "normal";
+    td.classList.remove("cell-nowrap");
     td.classList.add("cell-wrap");
   } else {
     s.whiteSpace = "nowrap";
+    td.classList.remove("cell-wrap");
     td.classList.add("cell-nowrap");
   }
   if (header) td.classList.add("cell-header");
