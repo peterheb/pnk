@@ -90,24 +90,19 @@ pub fn convert_chart(ctx: &mut Ctx, ca: &Msg) -> ChartModel {
         ChartDataStatus::Unavailable
     };
 
-    // Numbers table-bound charts: dataBinding placeholder (opaque).
-    let data_binding = if data_status == ChartDataStatus::TableBound {
-        let id = ca
-            .reference(8)
-            .map(|mid| {
-                // TN.ChartMediatorArchive extends the TSCH mediator and adds
-                // the binding formulas (docs/format/charts.md).
-                ctx.loaded
-                    .msg(mid)
-                    .and_then(|mm| mm.msg(3))
-                    .and_then(|fs| fs.msg(1))
-                    .map(|f| format!("formula:{}", f.varint(1).unwrap_or(0)))
-                    .unwrap_or_else(|| format!("mediator:{mid}"))
-            })
-            .unwrap_or_else(|| "mediator".to_string());
-        Some(TsceFormulaRef::unparsed(id))
-    } else {
-        None
+    // Numbers table-bound charts: the mediator's binding formulas, decoded
+    // through the cell-formula walker (docs/format/calcengine.md §Chart
+    // bindings). dataBinding is the union of the series ranges.
+    // A Numbers chart keeps BOTH: the inline grid is the cached last data
+    // (dataStatus "inline"), the mediator says where it came from — so the
+    // binding is read whenever a mediator exists, not only when the grid is
+    // missing (baabe23e067f: every chart has a grid and a mediator).
+    let (data_binding, bindings) = match ca.reference(8) {
+        Some(mid) => chart_bindings(ctx, mid),
+        None if data_status == ChartDataStatus::TableBound => {
+            (Some(TsceFormulaRef::unparsed("mediator")), None)
+        }
+        None => (None, None),
     };
 
     let series_colors = series_colors(ctx, ca, ctype, series.len());
@@ -337,6 +332,7 @@ pub fn convert_chart(ctx: &mut Ctx, ca: &Msg) -> ChartModel {
         legend_visible,
         series_colors,
         data_binding,
+        bindings,
         scatter_format,
         title,
         category_axis_title,
@@ -350,6 +346,63 @@ pub fn convert_chart(ctx: &mut Ctx, ca: &Msg) -> ChartModel {
         text_sizes,
         axes,
     }
+}
+
+/// `TN.ChartMediatorArchive` (mid) → (dataBinding, bindings). The
+/// mediator's `formulas` (f3, TN.ChartMediatorFormulaStorage) hold one
+/// `TSCE.FormulaArchive` per series in `data_formulae` (1), plus
+/// `row_label_formulae` (3) and `col_label_formulae` (4). They are decoded
+/// like cell formulas with no owning table (every reference carries its
+/// table uuid, so every one gets a `Table::` prefix) and the formula's own
+/// host coordinates (f2 column / f3 row; absent in the whole corpus, so the
+/// relative coordinates read as absolute). A label formula may be a string
+/// literal (a typed series name) or `#REF!`; a formula over a category
+/// reference (node 66, grouped tables) stays "unparsed". [proto: TNArchives
+/// .proto ChartMediatorFormulaStorage; fixture-verified: baabe23e067f
+/// "User Stories" = Sprint Summaries 2019::G3:G23]
+fn chart_bindings(ctx: &mut Ctx, mid: u64) -> (Option<TsceFormulaRef>, Option<ChartBindings>) {
+    let id = format!("mediator:{mid}");
+    let Some(fs) = ctx.loaded.msg(mid).and_then(|mm| mm.msg(3)) else {
+        return (Some(TsceFormulaRef::unparsed(id)), None);
+    };
+    let names = crate::formulas::names(ctx);
+    let scope = crate::formulas::TableScope {
+        names: &names,
+        self_uid: None,
+        sheet: None,
+        chart: true,
+    };
+    let decode_all = |list: Vec<Msg>, label: &str| -> Vec<TsceFormulaRef> {
+        list.iter()
+            .enumerate()
+            .map(|(i, f)| {
+                let col = f.varint(2).unwrap_or(0) as u32;
+                let row = f.varint(3).unwrap_or(0) as u32;
+                match crate::formulas::decode(&scope, f, row, col) {
+                    Ok(text) => TsceFormulaRef::decoded(format!("{label}[{i}]"), text),
+                    Err(_) => TsceFormulaRef::unparsed(format!("{label}[{i}]")),
+                }
+            })
+            .collect()
+    };
+    let series = decode_all(fs.msgs(1), "data");
+    let row_labels = decode_all(fs.msgs(3), "rowLabel");
+    let column_labels = decode_all(fs.msgs(4), "columnLabel");
+    let all_decoded = !series.is_empty() && series.iter().all(|r| r.source_text.is_some());
+    let data_binding = if all_decoded {
+        let union: Vec<String> = series.iter().filter_map(|r| r.source_text.clone()).collect();
+        TsceFormulaRef::decoded(id, union.join(","))
+    } else {
+        TsceFormulaRef::unparsed(id)
+    };
+    let bindings = (!series.is_empty() || !row_labels.is_empty() || !column_labels.is_empty()).then(
+        || ChartBindings {
+            series,
+            row_labels: (!row_labels.is_empty()).then_some(row_labels),
+            column_labels: (!column_labels.is_empty()).then_some(column_labels),
+        },
+    );
+    (Some(data_binding), bindings)
 }
 
 /// `TSK.FormatStructArchive` → the chart-side number format. Format-type ids

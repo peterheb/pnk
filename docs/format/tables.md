@@ -248,6 +248,55 @@ string "formula error" here, which the judge read as a rendering defect.
 Numbers 15.3.1 PDF exports; parser: numbers-parser@3238795 cell.py:928-929
 ErrorCell.value = None]`
 
+## Cell comments, controls, sort rules, hidden states (round 4, 2026-09-05)
+
+Corpus census over the 158 Numbers fixtures (`crates/pnk2json/examples/
+ncensus.rs`, `nmeta.rs`): sort rules in 6 files, cell comments in 1,
+control cells in 5, conditional-style sets in 12, pop-up option lists in 3,
+hidden rows in 4, hidden columns in 1, filter sets with rules in 0.
+
+- **Comments.** Cell storage flag 0x80000 is a comment id (0x100000 an
+  import-warning id) — both after the 0x40000 bool-format id [parser:
+  masaccio/numbers-parser@3238795 cell.py:912 names and skips them]. The id
+  keys `DataStore.commentStorageTable` (f19, list type 10) whose entries
+  carry `comment_storage` (f10, TSP.Reference) → `TSD.CommentStorageArchive`
+  { text 1, creation_date 2 (TSP.Date seconds since 2001), author 3 →
+  `TSK.AnnotationAuthorArchive.name` 1, replies 4 } [proto TSDArchives.proto
+  :564]. `[fixture-verified: 16c9478d6d21, two comments by "Microsoft
+  Office-Anwender"]`
+- **Controls.** Flag 0x400 is a control id keying
+  `DataStore.control_cell_spec_table` (f21, list type 12); the entry's
+  `cell_spec` (f12) is a `TST.CellSpecArchive` { interaction_type 1,
+  range_control_min/max/inc 3-5, chooser_control_popup_model 6 →
+  `TST.PopUpMenuModel` whose `tsce_item` (2) entries are
+  `TSCE.CellValueArchive`s, chooser_control_start_w_first 7 }.
+  interaction_type per numbers-parser's CellInteractionType: 4 stepper, 5
+  slider, 6 rating, 7 pop-up, 8 toggle (checkbox). [proto TSTArchives.proto
+  :724, :155; parser: numbers-parser constants.py:404-413]
+  `[fixture-verified: eb299192a219 — three pop-ups, one with nine unit
+  models]`. The `multipleChoiceListFormatTable` (f16, list type 7) holds the
+  same PopUpMenuModels keyed for the format side; pnk2json reads the spec.
+- **Sort rules.** `TableModelArchive.sort_order` (44, inline
+  `TableSortOrderArchive` { type 1 (0 entire table / 1 row range), rules 2
+  [{ index 1 = column, direction 2 (0 ascending / 1 descending) }] }). A
+  stored setup, not a live order: 9f9ef28d93d7 keeps rules on columns 2-3
+  while its rows sit in column-1 (rank) order. [proto :398; inferred on the
+  column semantics from that fixture]
+- **Hidden rows/columns.** `HeaderStorageBucket.Header.hidingState` (3)
+  is what pnk2json emits as `rows[].hidden` / `columns[].hidden`; the
+  model's `hidden_states_owner` (70) → `HiddenStatesArchive` extents
+  { base_hidden_states [{ uid, user_hidden, filtered }], filter_set 8 →
+  `FilterSetArchive` } agree with it on every corpus file (534d58ee7d21:
+  15 rows + 7 columns both ways). Every filter set in the corpus has zero
+  rules. [proto :955-987, :932]
+- **Conditional formatting.** The fired rule is folded into the cell's
+  pooled style (see `conditional_style` in tables.rs); the rules are not
+  modeled and a per-table `unsupported-feature` warning counts the cells
+  and rule sets. Caution on pre-BNC (v4) files: 021084ac7183's 1×1 pop-up
+  tables store fired-rule index 15 against 48- and 55-rule sets and Numbers'
+  export paints those cells white where the stored rule gives yellow, so
+  the v4 fired-rule field is not reliable there. [inferred, one fixture]
+
 ## Formula linkage
 
 Cell buffers reference formulas by int32 id into the `FORMULA`-type

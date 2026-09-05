@@ -21,6 +21,10 @@ struct ListEntry {
     custom_format: Option<Msg>,
     /// FORMULA lists: the inline TSCE.FormulaArchive (entry field 5).
     formula: Option<Msg>,
+    /// CONTROL_CELL_SPEC lists: the inline TST.CellSpecArchive (field 12).
+    cell_spec: Option<Msg>,
+    /// COMMENT_STORAGE lists: the TSD.CommentStorageArchive reference (field 10).
+    comment_storage: Option<u64>,
 }
 
 /// A decoded TableDataList (string/style/formula/format tables).
@@ -43,6 +47,8 @@ fn load_data_list(ctx: &Ctx, list_id: Option<u64>) -> DataList {
             format: e.msg(6),
             custom_format: e.msg(8),
             formula: e.msg(5),
+            cell_spec: e.msg(12),
+            comment_storage: e.reference(10),
         });
     }
     // Segmented lists (large tables): segments = 4 → TableDataListSegment
@@ -59,11 +65,90 @@ fn load_data_list(ctx: &Ctx, list_id: Option<u64>) -> DataList {
                     format: e.msg(6),
                     custom_format: e.msg(8),
                     formula: e.msg(5),
+                    cell_spec: e.msg(12),
+                    comment_storage: e.reference(10),
                 });
             }
         }
     }
     out
+}
+
+/// Per-table state the cell decoder accumulates: the pooled controls and
+/// the conditional-formatting census behind the table's warning.
+#[derive(Default)]
+struct TableAux {
+    controls: Vec<CellControl>,
+    control_index: HashMap<i32, u32>,
+    cond_cells: u32,
+    cond_sets: std::collections::HashSet<i32>,
+}
+
+fn plain_of(v: GridValue) -> Option<GridPlain> {
+    match v {
+        GridValue::Scalar(s) => Some(GridPlain::Text(s)),
+        GridValue::Number(n) => Some(GridPlain::Number(number_from_f64(n))),
+        GridValue::Bool(b) => Some(GridPlain::Bool(b)),
+        _ => None,
+    }
+}
+
+/// `TST.CellSpecArchive` → a pooled control: interaction_type (f1; the
+/// numbers-parser CellInteractionType enum: 4 stepper, 5 slider, 6 rating,
+/// 7 pop-up, 8 toggle/checkbox), range_control_min/max/inc (f3-f5),
+/// chooser_control_popup_model (f6 → TST.PopUpMenuModel whose tsce_item
+/// (f2) entries are TSCE.CellValueArchives). [proto + parser:
+/// masaccio/numbers-parser@3238795 constants.py CellInteractionType;
+/// fixture-verified: eb299192a219's three pop-ups list their unit models]
+fn control_of(ctx: &Ctx, spec: &Msg) -> CellControl {
+    let kind = match spec.varint(1) {
+        Some(4) => CellControlKind::Stepper,
+        Some(5) => CellControlKind::Slider,
+        Some(6) => CellControlKind::Rating,
+        Some(7) => CellControlKind::Popup,
+        Some(8) => CellControlKind::Checkbox,
+        _ => CellControlKind::Other,
+    };
+    let options: Vec<GridPlain> = spec
+        .reference(6)
+        .and_then(|id| ctx.loaded.msg(id))
+        .map(|menu| {
+            menu.msgs(2)
+                .iter()
+                .filter_map(|cv| plain_of(crate::categories::cell_value(cv).0))
+                .collect()
+        })
+        .unwrap_or_default();
+    CellControl {
+        kind,
+        options: (!options.is_empty()).then_some(options),
+        min: spec.f64v(3),
+        max: spec.f64v(4),
+        step: spec.f64v(5),
+    }
+}
+
+/// Comment id (storage flag 0x80000) → `TSD.CommentStorageArchive` { text
+/// 1, creation_date 2 (TSP.Date seconds since 2001), author 3 →
+/// TSK.AnnotationAuthorArchive.name 1 }. [proto TSDArchives.proto:564;
+/// parser: numbers-parser cell.py:912 names the flag and skips it;
+/// fixture-verified: 16c9478d6d21's two comments]
+fn comment_of(ctx: &Ctx, comment_table: &DataList, id: i32) -> Option<CellComment> {
+    let rec = comment_table.entries.get(&id)?.comment_storage?;
+    let m = ctx.loaded.msg(rec)?;
+    let text = m.string(1)?;
+    Some(CellComment {
+        text,
+        author: m
+            .reference(3)
+            .and_then(|a| ctx.loaded.msg(a))
+            .and_then(|a| a.string(1))
+            .filter(|n| !n.is_empty()),
+        date: m
+            .msg(2)
+            .and_then(|d| d.f64v(1))
+            .map(crate::colors::iso_from_apple_seconds),
+    })
 }
 
 /// HeaderStorage field 2 entries: buckets may be TSP.References (v5/BNC)
@@ -681,6 +766,9 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
     let rich_text_table = load_data_list(ctx, store.as_ref().and_then(|s| s.reference(17)));
     let custom_format_table = load_data_list(ctx, store.as_ref().and_then(|s| s.reference(15)));
     let cond_style_table = load_data_list(ctx, store.as_ref().and_then(|s| s.reference(18)));
+    let control_table = load_data_list(ctx, store.as_ref().and_then(|s| s.reference(21)));
+    let comment_table = load_data_list(ctx, store.as_ref().and_then(|s| s.reference(19)));
+    let mut aux = TableAux::default();
 
     // Row/column maps from header buckets.
     let row_map = store
@@ -745,12 +833,30 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
                 &custom_format_table,
                 &rich_text_table,
                 &cond_style_table,
+                &control_table,
+                &comment_table,
+                &mut aux,
                 &mut cell_pool,
                 &mut cells,
                 &mut saw_pre_bnc,
                 &mut buffer_ordinal,
             );
         }
+    }
+    // Conditional formatting: the rule that FIRED is folded into the cell's
+    // pooled style (conditional_style); the rules themselves (predicates,
+    // thresholds, the other rules' looks) are not modeled. Say so once per
+    // table so a consumer knows the highlight is a snapshot.
+    if aux.cond_cells > 0 {
+        ctx.warn_detail(
+            WarningCode::UnsupportedFeature,
+            format!(
+                "conditional formatting: {} cells reference {} rule set(s); only the highlight of the rule that fired is carried (in cellStyles), not the rules",
+                aux.cond_cells,
+                aux.cond_sets.len()
+            ),
+            format!("table '{}'", m.string(8).unwrap_or_default()),
+        );
     }
     if saw_pre_bnc {
         ctx.warn(
@@ -775,6 +881,7 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
             names: &names,
             self_uid,
             sheet: self_uid.and_then(|u| names.sheet_of(u)),
+            chart: false,
         };
         let debug = std::env::var("PNK_DEBUG_FORMULA").is_ok();
         for (r, c, cell, _) in cells.iter_mut() {
@@ -1199,6 +1306,8 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
                 fmt: None,
                 cell_style_index: cell_pool.intern(s),
                 formula: None,
+                comment: None,
+                control: None,
             }));
         }
     }
@@ -1248,7 +1357,7 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
             _ => None,
         },
         name: stored_name,
-        grouping: crate::categories::extract(ctx, &m),
+        grouping: crate::categories::extract(ctx, &m, model_id),
         row_count,
         column_count,
         header_row_count: m.varint(9).unwrap_or(0) as u32,
@@ -1264,6 +1373,24 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
         formats,
         cell_styles: std::mem::take(&mut cell_pool.items),
         merges,
+        controls: (!aux.controls.is_empty()).then_some(std::mem::take(&mut aux.controls)),
+        // The Sort panel's rules (TableSortOrderArchive f44: rules f2
+        // { index f1 = column, direction f2: 0 ascending / 1 descending }).
+        // A stored setup, not a live order: 9f9ef28d93d7 keeps rules on
+        // columns 2-3 while its rows sit in column-1 (rank) order.
+        sort_rules: m.msg(44).and_then(|so| {
+            let rules: Vec<SortRule> = so
+                .msgs(2)
+                .iter()
+                .filter_map(|r| {
+                    Some(SortRule {
+                        column: r.varint(1)? as u32,
+                        descending: (r.varint(2) == Some(1)).then_some(true),
+                    })
+                })
+                .collect();
+            (!rules.is_empty()).then_some(rules)
+        }),
         style,
         // The table's NAME has its own style network slot: shape style
         // (table_name_shape_style = 36) for the box, table_name_style
@@ -1299,6 +1426,8 @@ fn empty_table() -> TableModel {
         formats: Vec::new(),
         cell_styles: Vec::new(),
         merges: Vec::new(),
+        controls: None,
+        sort_rules: None,
         style: None,
         name_style: None,
     }
@@ -1319,6 +1448,9 @@ fn convert_tile(
     custom_format_table: &DataList,
     rich_text_table: &DataList,
     cond_style_table: &DataList,
+    control_table: &DataList,
+    comment_table: &DataList,
+    aux: &mut TableAux,
     cell_pool: &mut StylePool<TableCellStyle>,
     out: &mut Vec<(u32, u32, TableCell, Option<CellFormat>)>,
     saw_pre_bnc: &mut bool,
@@ -1447,6 +1579,9 @@ fn convert_tile(
                     custom_format_table,
                     rich_text_table,
                     cond_style_table,
+                    control_table,
+                    comment_table,
+                    aux,
                     cell_pool,
                 )
             };
@@ -1471,6 +1606,9 @@ fn decode_cell(
     custom_format_table: &DataList,
     rich_text_table: &DataList,
     cond_style_table: &DataList,
+    control_table: &DataList,
+    comment_table: &DataList,
+    aux: &mut TableAux,
     cell_pool: &mut StylePool<TableCellStyle>,
 ) -> Option<(u32, u32, TableCell, Option<CellFormat>)> {
     if buf[0] != 5 {
@@ -1531,7 +1669,7 @@ fn decode_cell(
     } else {
         None
     };
-    let _control = if flags & 0x400 != 0 {
+    let control_id = if flags & 0x400 != 0 {
         take_i32!()
     } else {
         None
@@ -1576,7 +1714,23 @@ fn decode_cell(
     } else {
         None
     };
+    // 0x80000 comment id, 0x100000 import-warning id [parser: numbers-parser
+    // cell.py:912 names both and skips them]
+    let comment_id = if flags & 0x80000 != 0 {
+        take_i32!()
+    } else {
+        None
+    };
+    let _import_warning = if flags & 0x100000 != 0 {
+        take_i32!()
+    } else {
+        None
+    };
     let _ = off; // the final take's advance is intentionally unread
+    if let Some(set) = cond_style {
+        aux.cond_cells += 1;
+        aux.cond_sets.insert(set);
+    }
 
     // Value by cell type (TST.CellType byte 1; 10 = currency per
     // numbers-parser CURRENCY_CELL_TYPE).
@@ -1719,6 +1873,20 @@ fn decode_cell(
 
     // Formula placeholder (TSCE stays opaque; model-design §2.8).
     let formula = formula_id.map(|id| TsceFormulaRef::unparsed(id.to_string()));
+    let comment = comment_id.and_then(|id| comment_of(ctx, comment_table, id));
+    // Controls are pooled per table by their spec key (many cells share
+    // one pop-up model).
+    let control = control_id.and_then(|id| {
+        if let Some(i) = aux.control_index.get(&id) {
+            return Some(*i);
+        }
+        let spec = control_table.entries.get(&id)?.cell_spec.as_ref()?;
+        let c = control_of(ctx, spec);
+        let i = aux.controls.len() as u32;
+        aux.controls.push(c);
+        aux.control_index.insert(id, i);
+        Some(i)
+    });
 
     // Format hint: per-type format id wins; custom formats degrade to "custom"
     // + raw string (docs/model-design.md §2.6). Malformed formats (negative /
@@ -1762,6 +1930,8 @@ fn decode_cell(
         && cell_style_index.is_none()
         && formula.is_none()
         && format.is_none()
+        && comment.is_none()
+        && control.is_none()
     {
         return None;
     }
@@ -1775,6 +1945,8 @@ fn decode_cell(
             fmt: None,
             cell_style_index,
             formula,
+            comment,
+            control,
         },
         format,
     ))
@@ -1897,6 +2069,31 @@ fn custom_branch(cf: &Msg, value: Option<f64>) -> Option<String> {
                 .filter(|s| !s.is_empty())
             {
                 return Some(p);
+            }
+        }
+    }
+    None
+}
+
+/// The custom format's NAME (TSK.CustomFormatArchive.name, f1) — the label
+/// Numbers shows in its format list — looked up the same two ways as the
+/// pattern: the inline archive (f42) or the document list by uid (f41).
+fn custom_name(ctx: &Ctx, f: &Msg) -> Option<String> {
+    if let Some(n) = f.msg(42).and_then(|cf| cf.string(1)).filter(|n| !n.is_empty()) {
+        return Some(n);
+    }
+    let uid = f.msg(41)?;
+    let key = (uid.varint(1)?, uid.varint(2)?);
+    for rec in ctx.loaded.records.values() {
+        if rec.type_id != 222 {
+            continue;
+        }
+        let Some(list) = rec.msg.as_ref() else { continue };
+        let uuids = list.msgs(1);
+        let formats = list.msgs(2);
+        for (i, u) in uuids.iter().enumerate() {
+            if (u.varint(1), u.varint(2)) == (Some(key.0), Some(key.1)) {
+                return formats.get(i).and_then(|cf| cf.string(1)).filter(|n| !n.is_empty());
             }
         }
     }
@@ -2077,6 +2274,10 @@ fn pick_format(
                 grouping: f.boolean(5),
                 accounting: f.boolean(6).filter(|b| *b),
                 format_string,
+                name: match ft {
+                    Some(270..=274) => custom_name(ctx, &f),
+                    _ => None,
+                },
             }),
             false,
         );
@@ -2094,6 +2295,7 @@ fn pick_format(
             // CustomFormatArchive: the pattern is default_format (f3)
             // .custom_format_string (f18) — f3 is a message, not a string
             format_string: cf.msg(3).and_then(|df| df.string(18)),
+            name: cf.string(1).filter(|n| !n.is_empty()),
         });
     (custom, false)
 }
@@ -2273,6 +2475,7 @@ fn decode_cell_v3(
                 format_string: f
                     .string(18)
                     .or_else(|| f.string(14).filter(|s| !s.is_empty())),
+                name: None,
             })
         })
     });
@@ -2288,6 +2491,8 @@ fn decode_cell_v3(
             fmt: None,
             cell_style_index,
             formula: None,
+            comment: None,
+            control: None,
         },
         format,
     ))
@@ -2695,6 +2900,7 @@ fn decode_cell_v4(
                                 .unwrap_or(false)
                                 .then(|| "sign-plus".to_string())
                         }),
+                    name: None,
                 })
             })
         }),
@@ -2712,6 +2918,8 @@ fn decode_cell_v4(
             fmt: None,
             cell_style_index,
             formula,
+            comment: None,
+            control: None,
         },
         format,
     ))

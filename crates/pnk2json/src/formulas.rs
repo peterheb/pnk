@@ -167,6 +167,13 @@ pub struct TableScope<'a> {
     pub self_uid: Option<u128>,
     /// This table's sheet name (same-sheet references skip the sheet prefix).
     pub sheet: Option<&'a str>,
+    /// Chart-binding scope: the formula belongs to a `TN.ChartMediatorArchive`,
+    /// not a cell. Function id 175 — absent from numbers-parser's table and
+    /// present as the outermost node of every one of the 4,170 binding
+    /// formulas in the 158-file corpus, wrapping one range (or two for a
+    /// union) — is the chart-series wrapper; in this scope it prints as its
+    /// argument list. Anywhere else it stays unknown. [inferred]
+    pub chart: bool,
 }
 
 fn sint(m: &Msg, n: u32) -> Option<i64> {
@@ -447,6 +454,11 @@ pub fn decode(scope: &TableScope, formula: &Msg, row: u32, col: u32) -> Result<S
             15 => {
                 let a = stack.pop().ok_or("percent with an empty stack")?;
                 stack.push(format!("{a}%"));
+            }
+            16 if scope.chart && node.varint(2) == Some(175) => {
+                let nargs = node.varint(3).unwrap_or(0) as usize;
+                let args = popn(&mut stack, nargs)?;
+                stack.push(args.join(","));
             }
             16 | 31 => {
                 let (name, nargs) = if kind == 16 {
