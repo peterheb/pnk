@@ -977,7 +977,12 @@ function paginatedBody(
           // paragraph's anchor float overlaps it in Pages: drop that
           // float's exclusion and let the block move back up.
           if (!(withFloat && fl)) {
-            const prev = piece.previousElementSibling as HTMLElement | null;
+            // the previous PARAGRAPH: an anchor float placed after its
+            // paragraph sits between the two (964b85d1's seal boxes)
+            let prev = piece.previousElementSibling as HTMLElement | null;
+            while (prev && (prev.classList.contains("pages-anchor") || prev.classList.contains("pages-exclusion"))) {
+              prev = prev.previousElementSibling as HTMLElement | null;
+            }
             const wide = piece.querySelector("table") ||
               Array.from(piece.querySelectorAll<HTMLElement>(".inline-image")).some((im) => im.offsetWidth > g.contentW * 0.5);
             if (prev && wide) {

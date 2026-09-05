@@ -697,12 +697,30 @@ fn convert_section(
     } else {
         None
     };
+    // section_template_first_page_different (18) and
+    // section_template_even_odd_pages_different (19) [proto]: when a flag
+    // is explicitly false the section still references a first/even master
+    // (26a356dc keeps a template-era header "6 JANUARY 2026 · CURABITUR
+    // LEO" on its unused first-page master) but Pages lays every page out
+    // with the odd master. Resolve the flags here so the viewer never sees
+    // the unused master.
+    let odd = name_of(m.reference(25));
+    let first_page_template = if m.boolean(18) == Some(false) {
+        None
+    } else {
+        name_of(m.reference(23))
+    };
+    let even_page_template = if m.boolean(19) == Some(false) {
+        odd.clone()
+    } else {
+        name_of(m.reference(24))
+    };
     PagesSection {
         columns: None,
         name: m.string(26),
-        first_page_template: name_of(m.reference(23)),
-        even_page_template: name_of(m.reference(24)),
-        odd_page_template: name_of(m.reference(25)),
+        first_page_template,
+        even_page_template,
+        odd_page_template: odd,
         page_numbering,
         inherit_previous_header_footer: m.boolean(17),
         background_fill: m.msg(30).and_then(|f| crate::tsd::fill_of(ctx, &f)),

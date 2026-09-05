@@ -1741,8 +1741,7 @@
   "sections": [
     {
       "name": "Blank",
-      "firstPageTemplate": "Template 2",
-      "evenPageTemplate": "Template 3",
+      "evenPageTemplate": "Template 4",
       "oddPageTemplate": "Template 4",
       "pageNumbering": {
         "restart": false,
