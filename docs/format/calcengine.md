@@ -144,6 +144,37 @@ pnk2json re-synthesizes formula text from the AST and emits it as
   refs, legacy handle-based refs 27/28) are refused, leaving the ref
   `"unparsed"` — never a partial text.
 
+## Chart bindings (pnk2json `charts.rs`, 2026-09-05, round 4)
+
+A Numbers chart keeps two things: the inline `ChartGridArchive` (the cached
+last data, which pnk2json emits as `categories`/`series` with `dataStatus:
+"inline"`) and a `TN.ChartMediatorArchive` whose `formulas` (f3,
+`TN.ChartMediatorFormulaStorage`) say where the data comes from:
+`data_formulae` (1, one per series), `row_label_formulae` (3),
+`col_label_formulae` (4), each a `TSCE.FormulaArchive`. [proto: TNArchives
+.proto:182-200]
+
+- Every one of the 4,170 binding formulas in the 158-file corpus (718
+  mediators) ends in `FUNCTION_NODE` with `AST_function_node_index` 175,
+  wrapping one range (4,162) or two (8: a union such as `U3:AC3,AG3`). Id
+  175 is absent from numbers-parser's function table. pnk2json prints it,
+  in chart scope only, as its argument list. [inferred: corpus census,
+  examples/ncharts.rs]
+- The references are `CELL_REFERENCE_NODE`s / `COLON_NODE` pairs with
+  cross-table extra info on every node; the host coordinates (f2-f5) are
+  absent throughout the corpus, so relative coordinates read as absolute.
+  Column-only nodes are whole-column ranges (baabe23e067f's "User Stories"
+  chart reads `Sprint Summaries 2019::B` and `::C`). Label formulas are
+  references, string literals (a typed series name), or `#REF!`.
+  [fixture-verified: baabe23e067f, 5a89929253a1 (206 series), 0ab5dd52841e
+  (1,272 series); parser: none]
+- Charts over a grouped ("Organize by") table bind through
+  `CATEGORY_REF_NODE` (66); these stay `"unparsed"` (6914f46e51ab).
+
+Emitted as `ChartModel.dataBinding` (status "decoded", `sourceText` = the
+series ranges joined with ",") and `ChartModel.bindings { series, rowLabels,
+columnLabels }` (docs/model-design.md §2.7).
+
 ## Known unknowns (fixture-verification queue)
 
 - Whether `packedData` in `TSCE.CellCoordinateArchive` uses the same

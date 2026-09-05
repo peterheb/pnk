@@ -502,11 +502,19 @@ function applyCellStyle(td: HTMLTableCellElement, style: TableCellStyle | undefi
   // when false, so absent means "one line": Numbers keeps unwrapped text on
   // a single line, clipped at the cell edge unless the cells to the right
   // are empty, in which case it spills over them (see spillUnwrappedCells).
+  // Applied twice per cell (section default, then the cell's own style):
+  // the later pass must REPLACE the earlier class, not add to it. Round 3
+  // left both on a wrapping cell over a non-wrapping body style, and the
+  // `.cell-nowrap .styled-text { white-space: pre }` rule then clipped
+  // eb299192a219's rich-text "Total Charge (minimum charge is 4kg)" to one
+  // line (and spillUnwrappedCells treated it as unwrapped).
   if (style?.textWrap) {
     s.whiteSpace = "normal";
+    td.classList.remove("cell-nowrap");
     td.classList.add("cell-wrap");
   } else {
     s.whiteSpace = "nowrap";
+    td.classList.remove("cell-wrap");
     td.classList.add("cell-nowrap");
   }
   if (header) td.classList.add("cell-header");
@@ -537,7 +545,27 @@ export function spillUnwrappedCells(root: HTMLElement): void {
       room += sib.getBoundingClientRect().width;
       sib = sib.nextElementSibling as HTMLTableCellElement | null;
     }
-    if (room <= 0) continue;
+    if (room <= 0) {
+      // No room to spill: Numbers still fits the text, so the overflow is
+      // a substitute font's wider metrics (c4b881955676's "WHAT IS CAUSE
+      // VALIDATION MATRIX?" is Calibri Bold 9pt, 141.7pt wide in the
+      // export, in a 159pt column; Calibri is not installed here and
+      // Helvetica Neue runs ~10% wider). Bounded horizontal shrink of the
+      // content, as applyTextFit does for shapes; past the bound it stays
+      // a clip.
+      const cs0 = getComputedStyle(td);
+      const inner0 = td.clientWidth - parseFloat(cs0.paddingLeft) - parseFloat(cs0.paddingRight);
+      const s = inner0 > 0 ? inner0 / (inner0 + need) : 0;
+      if (s >= 0.82) {
+        const fit = document.createElement("div");
+        fit.className = "cell-fit";
+        fit.append(...Array.from(td.childNodes));
+        td.appendChild(fit);
+        fit.style.transform = `scaleX(${s.toFixed(4)})`;
+        fit.style.transformOrigin = "left center";
+      }
+      continue;
+    }
     // Move the content into a clipping box that is as wide as the run of
     // empty cells allows; the cell itself lets it overflow.
     const box = document.createElement("div");
@@ -557,7 +585,7 @@ export function spillUnwrappedCells(root: HTMLElement): void {
  * which case the renderer falls back to the auto table layout.
  */
 export function tableDrawnWidth(model: TableModel): number {
-  let total = model.grouping?.groups.length ? GROUP_COLUMN_PT : 0;
+  let total = model.grouping?.groups.length ? groupColumnWidth(model) : 0;
   for (let c = 0; c < model.columnCount; c++) {
     const info = model.columns?.[c];
     if (info?.hidden) continue;
@@ -590,8 +618,13 @@ export function tableDrawnHeight(model: TableModel): number {
   return total;
 }
 
-/** Width of the category column Numbers adds to the left of a grouped table. */
+/** Width of the category column Numbers adds to the left of a grouped
+ * table: the stored SummaryModelArchive.category_column_width when the
+ * model carries it (50pt in likvi's time sheet), else a fallback. */
 const GROUP_COLUMN_PT = 30;
+function groupColumnWidth(model: TableModel): number {
+  return model.grouping?.categoryColumnWidthPt || GROUP_COLUMN_PT;
+}
 
 function countGroups(groups: TableGroup[]): number {
   let n = 0;
@@ -711,8 +744,9 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedD
   const grouping = model.grouping?.groups.length ? model.grouping : undefined;
   if (grouping) {
     const col = document.createElement("col");
-    col.style.width = `${GROUP_COLUMN_PT}px`;
-    totalW += GROUP_COLUMN_PT;
+    const gw = groupColumnWidth(model);
+    col.style.width = `${gw}px`;
+    totalW += gw;
     cg.appendChild(col);
   }
   for (const c of visCols) {
@@ -767,6 +801,10 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedD
       }
       const tr = document.createElement("tr");
       tr.className = entry.kind === "group" ? "group-row" : "group-label-row";
+      // Group and label rows are default-height rows in Numbers' export
+      // (SummaryModelArchive.summary_row_height_list stores 0 = default);
+      // ours ran taller through the cell padding (likvi composite).
+      if (model.defaultRowHeightPt) tr.style.height = `${model.defaultRowHeightPt}px`;
       const lead = document.createElement("td");
       const leadCols = Math.max(1, model.headerColumnCount);
       lead.colSpan = 1 + visCols.filter((c) => c < leadCols).length;
@@ -862,9 +900,17 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedD
         if (!td.style.textAlign && numeric && norm.type !== "error") td.style.textAlign = "right";
         if (norm.type === "error") td.classList.add("cell-error");
         // Decoded formula text as a hover tooltip (the cell shows the
-        // cached result, as Numbers does).
-        if (norm.formula?.sourceText) td.title = "=" + norm.formula.sourceText;
-        const text = valueToText(norm, format);
+        // cached result, as Numbers does); a cell comment joins it.
+        const tips: string[] = [];
+        if (norm.formula?.sourceText) tips.push("=" + norm.formula.sourceText);
+        if (norm.comment) tips.push((norm.comment.author ? norm.comment.author + ": " : "") + norm.comment.text);
+        if (tips.length) td.title = tips.join("\n");
+        const control = norm.control !== undefined ? model.controls?.[norm.control] : undefined;
+        // A checkbox control draws its box, not the word TRUE/FALSE
+        // (Numbers' export prints a checked/unchecked square).
+        const text = control?.kind === "checkbox" && typeof norm.v === "boolean"
+          ? (norm.v ? "\u2611" : "\u2610")
+          : valueToText(norm, format);
         const rich = norm.type === "richtext" && typeof norm.v === "object" && norm.v !== null && "paragraphs" in norm.v
           ? norm.v : null;
         if (rich && hdoc && ctx) {
