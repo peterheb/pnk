@@ -76,3 +76,58 @@ CDN loads.
 | package | version | license | use |
 | --- | --- | --- | --- |
 | [`pdfjs-dist`](https://github.com/mozilla/pdf.js) (pdf.js) | 6.3.289 (npm, 2026-09-05) | Apache-2.0 (LICENSE in the package) | Rasterizes PDF media in-page: Keynote equations (`equation-N.pdf`, no raster twin) and pasted vector art. `build/pdf.min.mjs` is bundled; `build/pdf.worker.min.mjs` is embedded as text at build time (`viewer/src/gen/pdf.worker.txt`, gitignored) and started from a blob: URL. |
+
+## Substitute fonts (Google Fonts)
+
+`viewer/src/fontmap.ts` names Google Fonts families as substitutes for fonts
+a document asks for and the reader does not have; `viewer/src/webfonts.ts`
+loads them from `fonts.googleapis.com` at render time. **No font file is
+vendored into this repository** — nothing here is redistributed, only linked
+— but the licenses are recorded because the mapping is built around them and
+because self-hosting is an open option (see `docs/fonts.md`).
+
+Every family named by the mapping is published on Google Fonts under the
+**SIL Open Font License 1.1**, which permits redistribution and web use,
+including bundling the files with an application, as long as the license
+travels with them and the fonts are not sold on their own. Carlito carries a
+Reserved Font Name ("Carlito"), so a modified copy must be renamed.
+
+The seven metric-compatible clones the mapping depends on, with the upstream
+repository recorded in each family's `METADATA.pb` in
+[google/fonts](https://github.com/google/fonts) (read 2026-09-05):
+
+| family | substitutes | license | upstream repo |
+| --- | --- | --- | --- |
+| Arimo | Arial, Helvetica | OFL-1.1 | <https://github.com/googlefonts/arimo> |
+| Tinos | Times New Roman, Times | OFL-1.1 | <https://github.com/googlefonts/tinos> |
+| Cousine | Courier New, Courier | OFL-1.1 | <https://github.com/googlefonts/cousine> |
+| Carlito | Calibri | OFL-1.1, RFN "Carlito" | <https://github.com/googlefonts/carlito> |
+| Caladea | Cambria | OFL-1.1 | <https://github.com/googlefonts/caladea> (design: <https://github.com/huertatipografica/Caladea>) |
+| Gelasio | Georgia | OFL-1.1 | <https://github.com/SorkinType/Gelasio> |
+| Comic Relief | Comic Sans MS | OFL-1.1 | <https://github.com/loudifier/Comic-Relief> |
+
+Two license notes worth keeping:
+
+- Arimo, Tinos and Cousine were **relicensed from Apache-2.0 to OFL-1.1** and
+  moved from `apache/` to `ofl/` in google/fonts. Wikipedia and most
+  Debian/Fedora package descriptions still say Apache-2.0; that is stale.
+- `ofl/tinos/` in google/fonts ships **no license file** (only DESCRIPTION,
+  METADATA.pb and the TTFs). The authoritative text is upstream at
+  <https://github.com/googlefonts/tinos/blob/main/OFL.txt>.
+
+The other 86 families the mapping names (Inter, Cabin, Source Sans 3, Libre
+Baskerville, Vollkorn, the Noto scripts, and so on) are all OFL-1.1 on Google
+Fonts; each family's license and source repository are in its directory under
+`ofl/<family>/` in google/fonts. The catalogue itself — family names, static
+weights, italic availability, subsets — was read from
+<https://fonts.google.com/metadata/fonts> on 2026-09-05, and every family's
+weight list in `fontmap.ts` was verified by requesting it from
+`fonts.googleapis.com/css2` (a weight a family does not publish makes the
+whole request fail, which would silently disable substitution for that
+document).
+
+Claims of metric compatibility are sourced individually in `docs/fonts.md`;
+the cross-family reference used to decide which fonts have clones at all is
+the [ArchWiki metric-compatible fonts table](https://wiki.archlinux.org/title/Metric-compatible_fonts),
+derived from fontconfig's `30-metric-aliases.conf` (GPL-2.0-or-later
+documentation; consulted, not copied).

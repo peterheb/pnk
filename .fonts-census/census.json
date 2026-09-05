@@ -1,0 +1,2129 @@
+{
+ "docs_per_app": {
+  "pages": 323,
+  "numbers": 157,
+  "key": 480
+ },
+ "fonts": {
+  "Futura-Medium": {
+   "docs": 11,
+   "pages": 2,
+   "key": 9
+  },
+  "HelveticaNeue": {
+   "docs": 753,
+   "pages": 227,
+   "numbers": 143,
+   "key": 383
+  },
+  "TimesNewRomanPSMT": {
+   "docs": 110,
+   "pages": 55,
+   "key": 52,
+   "numbers": 3
+  },
+  "Helvetica": {
+   "docs": 364,
+   "pages": 130,
+   "key": 209,
+   "numbers": 25
+  },
+  "TimesNewRomanPS-BoldMT": {
+   "docs": 42,
+   "pages": 25,
+   "key": 17
+  },
+  "Tahoma": {
+   "docs": 21,
+   "pages": 10,
+   "key": 11
+  },
+  "Tahoma-Bold": {
+   "docs": 9,
+   "pages": 3,
+   "key": 6
+  },
+  "Arial-BoldMT": {
+   "docs": 125,
+   "numbers": 12,
+   "pages": 32,
+   "key": 81
+  },
+  "Calibri": {
+   "docs": 222,
+   "numbers": 97,
+   "pages": 39,
+   "key": 86
+  },
+  "ArialMT": {
+   "docs": 222,
+   "numbers": 18,
+   "pages": 61,
+   "key": 143
+  },
+  "HelveticaNeue-Italic": {
+   "docs": 67,
+   "key": 53,
+   "pages": 3,
+   "numbers": 11
+  },
+  "HelveticaNeue-Light": {
+   "docs": 149,
+   "key": 129,
+   "pages": 6,
+   "numbers": 14
+  },
+  "HelveticaNeue-Medium": {
+   "docs": 214,
+   "key": 174,
+   "pages": 25,
+   "numbers": 15
+  },
+  "HelveticaNeue-Thin": {
+   "docs": 60,
+   "key": 45,
+   "pages": 3,
+   "numbers": 12
+  },
+  "Arial-ItalicMT": {
+   "docs": 62,
+   "pages": 16,
+   "key": 45,
+   "numbers": 1
+  },
+  "Symbol": {
+   "docs": 13,
+   "pages": 3,
+   "key": 9,
+   "numbers": 1
+  },
+  "Calibri-Light": {
+   "docs": 28,
+   "pages": 4,
+   "key": 24
+  },
+  "Times-Italic": {
+   "docs": 5,
+   "pages": 2,
+   "key": 3
+  },
+  "AGaramondPro-Italic": {
+   "docs": 2,
+   "pages": 2
+  },
+  "StoneSansITCTT-Bold": {
+   "docs": 2,
+   "pages": 2
+  },
+  "PlantagenetCherokee": {
+   "docs": 2,
+   "pages": 2
+  },
+  "JazzLetPlain": {
+   "docs": 2,
+   "pages": 2
+  },
+  "Papyrus": {
+   "docs": 21,
+   "pages": 2,
+   "key": 19
+  },
+  "GaramondPremrPro": {
+   "docs": 2,
+   "pages": 2
+  },
+  "AGaramondPro-Regular": {
+   "docs": 2,
+   "pages": 2
+  },
+  "GaramondPremrPro-It": {
+   "docs": 2,
+   "pages": 2
+  },
+  "Cochin": {
+   "docs": 22,
+   "pages": 2,
+   "key": 20
+  },
+  "Garamond": {
+   "docs": 9,
+   "pages": 6,
+   "key": 3
+  },
+  "BellGothicStd-Black": {
+   "docs": 2,
+   "pages": 2
+  },
+  "BodoniSvtyTwoITCTT-Book": {
+   "docs": 7,
+   "pages": 2,
+   "key": 5
+  },
+  "Garamond-Bold": {
+   "docs": 4,
+   "pages": 4
+  },
+  "TrebuchetMS": {
+   "docs": 44,
+   "pages": 14,
+   "numbers": 5,
+   "key": 25
+  },
+  "TrebuchetMS-Bold": {
+   "docs": 27,
+   "pages": 9,
+   "numbers": 5,
+   "key": 13
+  },
+  "MicrosoftSansSerif": {
+   "docs": 2,
+   "pages": 1,
+   "key": 1
+  },
+  "Arial-Black": {
+   "docs": 17,
+   "pages": 4,
+   "key": 13
+  },
+  "Arial-BoldItalicMT": {
+   "docs": 15,
+   "pages": 8,
+   "key": 6,
+   "numbers": 1
+  },
+  "Calibri-Bold": {
+   "docs": 152,
+   "pages": 30,
+   "key": 35,
+   "numbers": 87
+  },
+  "HelveticaNeue-Bold": {
+   "docs": 202,
+   "pages": 38,
+   "key": 133,
+   "numbers": 31
+  },
+  "Helvetica-Bold": {
+   "docs": 186,
+   "numbers": 67,
+   "key": 94,
+   "pages": 25
+  },
+  "Helvetica-Light": {
+   "docs": 198,
+   "numbers": 15,
+   "key": 178,
+   "pages": 5
+  },
+  "Rockwell-Regular": {
+   "docs": 3,
+   "numbers": 1,
+   "key": 2
+  },
+  "Chalkduster": {
+   "docs": 10,
+   "numbers": 1,
+   "key": 8,
+   "pages": 1
+  },
+  "Rockwell-Bold": {
+   "docs": 3,
+   "numbers": 1,
+   "key": 2
+  },
+  "KBSticktoIt": {
+   "docs": 2,
+   "pages": 2
+  },
+  "Times-Roman": {
+   "docs": 78,
+   "pages": 32,
+   "key": 46
+  },
+  "CourierNewPSMT": {
+   "docs": 13,
+   "key": 11,
+   "numbers": 1,
+   "pages": 1
+  },
+  "Wingdings-Regular": {
+   "docs": 12,
+   "key": 7,
+   "pages": 5
+  },
+  "Menlo-Regular": {
+   "docs": 18,
+   "key": 17,
+   "pages": 1
+  },
+  "Consolas": {
+   "docs": 8,
+   "key": 8
+  },
+  "ComicSansMS": {
+   "docs": 9,
+   "key": 7,
+   "pages": 2
+  },
+  "ComicSansMS-Bold": {
+   "docs": 5,
+   "key": 4,
+   "pages": 1
+  },
+  "Verdana": {
+   "docs": 20,
+   "key": 12,
+   "pages": 6,
+   "numbers": 2
+  },
+  "Avenir-Roman": {
+   "docs": 15,
+   "key": 15
+  },
+  "Helvetica-Oblique": {
+   "docs": 22,
+   "pages": 7,
+   "key": 13,
+   "numbers": 2
+  },
+  "Helvetica-BoldOblique": {
+   "docs": 9,
+   "pages": 3,
+   "key": 5,
+   "numbers": 1
+  },
+  "Sathu": {
+   "docs": 1,
+   "pages": 1
+  },
+  "TimesNewRomanPS-ItalicMT": {
+   "docs": 17,
+   "pages": 6,
+   "key": 11
+  },
+  "Impact": {
+   "docs": 10,
+   "pages": 1,
+   "key": 9
+  },
+  "Georgia": {
+   "docs": 24,
+   "key": 18,
+   "pages": 6
+  },
+  "MarkerFelt-Thin": {
+   "docs": 4,
+   "key": 2,
+   "pages": 2
+  },
+  "Apple-Chancery": {
+   "docs": 3,
+   "key": 2,
+   "pages": 1
+  },
+  "BradleyHandITCTT-Bold": {
+   "docs": 8,
+   "key": 5,
+   "pages": 3
+  },
+  "LucidaCasual": {
+   "docs": 1,
+   "key": 1
+  },
+  "LucidaCalligraphy-Italic": {
+   "docs": 3,
+   "key": 3
+  },
+  "PartyLetPlain": {
+   "docs": 1,
+   "key": 1
+  },
+  "GillSans": {
+   "docs": 70,
+   "key": 68,
+   "pages": 2
+  },
+  "HiraMinProN-W3": {
+   "docs": 4,
+   "key": 2,
+   "pages": 2
+  },
+  "LucidaGrande": {
+   "docs": 60,
+   "key": 60
+  },
+  "CourierNewPS-BoldItalicMT": {
+   "docs": 1,
+   "key": 1
+  },
+  "AppleColorEmoji": {
+   "docs": 5,
+   "key": 5
+  },
+  "GillSans-Light": {
+   "docs": 34,
+   "key": 33,
+   "pages": 1
+  },
+  "CourierNewPS-BoldMT": {
+   "docs": 6,
+   "key": 6
+  },
+  "ScalaSansPro-Light": {
+   "docs": 1,
+   "key": 1
+  },
+  "ScalaSans-Bold": {
+   "docs": 1,
+   "key": 1
+  },
+  "ScalaSans": {
+   "docs": 1,
+   "key": 1
+  },
+  "ScalaSansPro-Bold": {
+   "docs": 1,
+   "key": 1
+  },
+  "ScalaSans-Caps": {
+   "docs": 1,
+   "key": 1
+  },
+  "ScalaSansPro": {
+   "docs": 1,
+   "key": 1
+  },
+  "Cambria": {
+   "docs": 19,
+   "pages": 16,
+   "key": 2,
+   "numbers": 1
+  },
+  "DINCondensed-Bold": {
+   "docs": 43,
+   "key": 40,
+   "pages": 3
+  },
+  "AvenirNext-Medium": {
+   "docs": 25,
+   "key": 14,
+   "pages": 11
+  },
+  "DINAlternate-Bold": {
+   "docs": 41,
+   "key": 41
+  },
+  "AvenirNext-Regular": {
+   "docs": 33,
+   "key": 13,
+   "pages": 19,
+   "numbers": 1
+  },
+  "AvenirNext-DemiBold": {
+   "docs": 19,
+   "key": 9,
+   "pages": 10
+  },
+  "AdobeClean-Light": {
+   "docs": 2,
+   "key": 2
+  },
+  "Cambria-BoldItalic": {
+   "docs": 1,
+   "pages": 1
+  },
+  "Cambria-Bold": {
+   "docs": 11,
+   "pages": 10,
+   "key": 1
+  },
+  "Cambria-Italic": {
+   "docs": 2,
+   "pages": 1,
+   "key": 1
+  },
+  "ArialNarrow": {
+   "docs": 3,
+   "key": 2,
+   "pages": 1
+  },
+  "ArialNarrow-Bold": {
+   "docs": 1,
+   "pages": 1
+  },
+  "Poppins-Regular": {
+   "docs": 5,
+   "pages": 2,
+   "key": 3
+  },
+  "Poppins-Bold": {
+   "docs": 4,
+   "pages": 2,
+   "key": 2
+  },
+  "FoundersGrotesk-Light": {
+   "docs": 1,
+   "key": 1
+  },
+  "FoundersGroteskText-Regular": {
+   "docs": 1,
+   "key": 1
+  },
+  "FoundersGroteskCond-Bold": {
+   "docs": 1,
+   "key": 1
+  },
+  "FoundersGrotesk-Semibold": {
+   "docs": 1,
+   "key": 1
+  },
+  "FoundersGroteskCond-Reg": {
+   "docs": 2,
+   "key": 1,
+   "pages": 1
+  },
+  "FoundersGrotesk-Regular": {
+   "docs": 1,
+   "key": 1
+  },
+  "Helvetica-LightOblique": {
+   "docs": 55,
+   "key": 55
+  },
+  "CMUSerif-Roman": {
+   "docs": 5,
+   "key": 5
+  },
+  "Times-Bold": {
+   "docs": 6,
+   "key": 5,
+   "pages": 1
+  },
+  "Times-BoldItalic": {
+   "docs": 2,
+   "key": 2
+  },
+  "Calibri-Italic": {
+   "docs": 56,
+   "key": 10,
+   "pages": 9,
+   "numbers": 37
+  },
+  "Trebuchet-BoldItalic": {
+   "docs": 4,
+   "key": 3,
+   "numbers": 1
+  },
+  "TrebuchetMS-Italic": {
+   "docs": 5,
+   "key": 2,
+   "numbers": 1,
+   "pages": 2
+  },
+  "STHeitiTC-Medium": {
+   "docs": 1,
+   "key": 1
+  },
+  "AmericanTypewriter": {
+   "docs": 33,
+   "key": 30,
+   "pages": 3
+  },
+  "HelveticaNeue-UltraLight": {
+   "docs": 6,
+   "key": 6
+  },
+  "FranklinGothic-BookItalic": {
+   "docs": 1,
+   "key": 1
+  },
+  "SFMono-Regular": {
+   "docs": 1,
+   "key": 1
+  },
+  "Seravek-Light": {
+   "docs": 1,
+   "key": 1
+  },
+  "Courier": {
+   "docs": 18,
+   "key": 14,
+   "pages": 4
+  },
+  "AvenirNext-Bold": {
+   "docs": 12,
+   "pages": 7,
+   "key": 5
+  },
+  "CenturySchoolbook": {
+   "docs": 2,
+   "pages": 1,
+   "key": 1
+  },
+  "Avenir-Book": {
+   "docs": 13,
+   "pages": 6,
+   "key": 7
+  },
+  "Avenir-BookOblique": {
+   "docs": 2,
+   "pages": 1,
+   "key": 1
+  },
+  "Calibri-BoldItalic": {
+   "docs": 13,
+   "numbers": 3,
+   "key": 5,
+   "pages": 5
+  },
+  "Verdana-Bold": {
+   "docs": 12,
+   "numbers": 2,
+   "key": 5,
+   "pages": 5
+  },
+  "Noteworthy-Bold": {
+   "docs": 4,
+   "pages": 1,
+   "numbers": 1,
+   "key": 2
+  },
+  "Rockwell-BoldItalic": {
+   "docs": 1,
+   "key": 1
+  },
+  "GillSans-SemiBold": {
+   "docs": 6,
+   "key": 5,
+   "pages": 1
+  },
+  "GillSans-Italic": {
+   "docs": 6,
+   "key": 6
+  },
+  "GillSans-Bold": {
+   "docs": 17,
+   "key": 14,
+   "numbers": 1,
+   "pages": 2
+  },
+  "Rockwell": {
+   "docs": 2,
+   "key": 2
+  },
+  "GillSansMT": {
+   "docs": 1,
+   "key": 1
+  },
+  "Corbel": {
+   "docs": 5,
+   "key": 5
+  },
+  "Constantia": {
+   "docs": 7,
+   "key": 7
+  },
+  "BerlinSansFBDemi-Bold": {
+   "docs": 10,
+   "key": 10
+  },
+  "KabelITCbyBT-Ultra": {
+   "docs": 1,
+   "key": 1
+  },
+  "IowanOldStyle-Roman": {
+   "docs": 35,
+   "key": 35
+  },
+  "AdelonLight": {
+   "docs": 3,
+   "key": 3
+  },
+  "Gentium-Italic": {
+   "docs": 1,
+   "key": 1
+  },
+  "HelveticaNeue-BoldItalic": {
+   "docs": 10,
+   "key": 10
+  },
+  "GalatiaSIL-Bold": {
+   "docs": 1,
+   "key": 1
+  },
+  "CalifornianFB-Italic": {
+   "docs": 1,
+   "key": 1
+  },
+  "Monaco": {
+   "docs": 8,
+   "key": 8
+  },
+  "PerpetuaTitlingMT-Light": {
+   "docs": 4,
+   "key": 4
+  },
+  "Palatino-Roman": {
+   "docs": 47,
+   "key": 45,
+   "pages": 2
+  },
+  "Boulder-Regular": {
+   "docs": 4,
+   "key": 4
+  },
+  "Copperplate": {
+   "docs": 21,
+   "key": 20,
+   "pages": 1
+  },
+  "Chalkboard": {
+   "docs": 22,
+   "key": 21,
+   "pages": 1
+  },
+  "CalifornianFB-Bold": {
+   "docs": 1,
+   "key": 1
+  },
+  "CalifornianFB-Reg": {
+   "docs": 1,
+   "key": 1
+  },
+  "PerpetuaTitlingMT-Bold": {
+   "docs": 1,
+   "key": 1
+  },
+  "Calligraphic421BT-RomanB": {
+   "docs": 1,
+   "key": 1
+  },
+  "BookAntiqua": {
+   "docs": 13,
+   "key": 13
+  },
+  "MonotypeGurmukhi": {
+   "docs": 1,
+   "key": 1
+  },
+  "Chalkboard-Bold": {
+   "docs": 4,
+   "key": 4
+  },
+  "CopperplateGothic-Bold": {
+   "docs": 1,
+   "key": 1
+  },
+  "ThamesNudeRoman": {
+   "docs": 14,
+   "key": 14
+  },
+  ".SFNSText-Semibold": {
+   "docs": 1,
+   "key": 1
+  },
+  "Baskerville-SemiBoldItalic": {
+   "docs": 3,
+   "key": 3
+  },
+  "Vivaldii": {
+   "docs": 4,
+   "key": 4
+  },
+  "BerlinSansFB-Reg": {
+   "docs": 1,
+   "key": 1
+  },
+  "Garamond-Italic": {
+   "docs": 5,
+   "key": 1,
+   "pages": 4
+  },
+  "CenturyGothic": {
+   "docs": 31,
+   "key": 29,
+   "pages": 2
+  },
+  "Baskerville": {
+   "docs": 52,
+   "key": 48,
+   "pages": 4
+  },
+  "Herculanum": {
+   "docs": 3,
+   "key": 2,
+   "pages": 1
+  },
+  "HoeflerText-Regular": {
+   "docs": 16,
+   "key": 14,
+   "pages": 2
+  },
+  "CharcoalCY": {
+   "docs": 13,
+   "key": 13
+  },
+  "Baskerville-SemiBold": {
+   "docs": 7,
+   "key": 6,
+   "pages": 1
+  },
+  "Didot-Bold": {
+   "docs": 3,
+   "key": 3
+  },
+  "CreditValley": {
+   "docs": 1,
+   "key": 1
+  },
+  "CreditValley-Bold": {
+   "docs": 1,
+   "key": 1
+  },
+  "RageItalic": {
+   "docs": 1,
+   "key": 1
+  },
+  "Black Chancery": {
+   "docs": 1,
+   "key": 1
+  },
+  "Arnprior": {
+   "docs": 1,
+   "key": 1
+  },
+  "Baskerville-Italic": {
+   "docs": 2,
+   "key": 1,
+   "pages": 1
+  },
+  "ArialRoundedMTBold": {
+   "docs": 4,
+   "key": 3,
+   "pages": 1
+  },
+  "HanzelExtendedNormal": {
+   "docs": 1,
+   "key": 1
+  },
+  "AbjectFailure": {
+   "docs": 1,
+   "key": 1
+  },
+  "UniversityRomanBT-Bold": {
+   "docs": 1,
+   "key": 1
+  },
+  "HoeflerText-BlackItalic": {
+   "docs": 3,
+   "key": 3
+  },
+  "CenturyGothic-Bold": {
+   "docs": 17,
+   "key": 16,
+   "pages": 1
+  },
+  "Mariah": {
+   "docs": 1,
+   "key": 1
+  },
+  "HoeflerText-Black": {
+   "docs": 5,
+   "key": 4,
+   "pages": 1
+  },
+  "HoeflerText-Italic": {
+   "docs": 6,
+   "key": 6
+  },
+  "AmericanTypewriter-Bold": {
+   "docs": 12,
+   "key": 12
+  },
+  "SonomaScript": {
+   "docs": 2,
+   "key": 2
+  },
+  "GoodTimes": {
+   "docs": 1,
+   "key": 1
+  },
+  "TimesNewRomanPS-BoldItalicMT": {
+   "docs": 11,
+   "key": 4,
+   "pages": 7
+  },
+  "Didot": {
+   "docs": 5,
+   "key": 3,
+   "pages": 2
+  },
+  "Denmark": {
+   "docs": 1,
+   "key": 1
+  },
+  "Pegasus": {
+   "docs": 1,
+   "key": 1
+  },
+  "Candara": {
+   "docs": 3,
+   "key": 3
+  },
+  "Pythagoras": {
+   "docs": 2,
+   "key": 2
+  },
+  "BlueHighwayLinocut": {
+   "docs": 1,
+   "key": 1
+  },
+  "Humanist521BT-Roman": {
+   "docs": 2,
+   "key": 2
+  },
+  "GrungeFace": {
+   "docs": 1,
+   "key": 1
+  },
+  "LucidaSans-Demi": {
+   "docs": 3,
+   "key": 3
+  },
+  "AmazoneBT-Regular": {
+   "docs": 1,
+   "key": 1
+  },
+  "SurfboardBold": {
+   "docs": 1,
+   "key": 1
+  },
+  "GalatiaSIL": {
+   "docs": 1,
+   "key": 1
+  },
+  "Papyrus-Regular": {
+   "docs": 3,
+   "key": 3
+  },
+  "BerlinFashion": {
+   "docs": 1,
+   "key": 1
+  },
+  "Phosphate-Inline": {
+   "docs": 1,
+   "key": 1
+  },
+  "Baskerville-Bold": {
+   "docs": 3,
+   "pages": 2,
+   "key": 1
+  },
+  "Graphik-Regular": {
+   "docs": 8,
+   "key": 8
+  },
+  "Graphik-Light": {
+   "docs": 5,
+   "key": 5
+  },
+  "Amienne": {
+   "docs": 1,
+   "key": 1
+  },
+  "Produkt-Light": {
+   "docs": 4,
+   "key": 4
+  },
+  "Produkt-Extralight": {
+   "docs": 4,
+   "key": 4
+  },
+  "Baskerville-BoldItalic": {
+   "docs": 1,
+   "pages": 1
+  },
+  "RingofKerry": {
+   "docs": 1,
+   "pages": 1
+  },
+  "OpenSans": {
+   "docs": 27,
+   "key": 27
+  },
+  "OpenSans-Bold": {
+   "docs": 7,
+   "key": 7
+  },
+  "Avenir-Heavy": {
+   "docs": 5,
+   "key": 3,
+   "pages": 2
+  },
+  "Avenir-BlackOblique": {
+   "docs": 1,
+   "key": 1
+  },
+  "Avenir-Light": {
+   "docs": 7,
+   "key": 7
+  },
+  "Avenir-Medium": {
+   "docs": 9,
+   "key": 8,
+   "pages": 1
+  },
+  "Noteworthy-Light": {
+   "docs": 6,
+   "key": 4,
+   "numbers": 1,
+   "pages": 1
+  },
+  "Raleway-Bold": {
+   "docs": 2,
+   "key": 2
+  },
+  "OpenSans-Light": {
+   "docs": 2,
+   "key": 2
+  },
+  "Palatino-Italic": {
+   "docs": 4,
+   "key": 4
+  },
+  "CooperBlackMS": {
+   "docs": 1,
+   "key": 1
+  },
+  "OpenSans-Semibold": {
+   "docs": 2,
+   "key": 2
+  },
+  "TOSCAZERO": {
+   "docs": 1,
+   "key": 1
+  },
+  "Inconsolata": {
+   "docs": 2,
+   "key": 2
+  },
+  "Avenir-MediumOblique": {
+   "docs": 4,
+   "key": 4
+  },
+  "Menlo-Bold": {
+   "docs": 4,
+   "key": 3,
+   "pages": 1
+  },
+  "Inconsolata-Regular": {
+   "docs": 5,
+   "key": 5
+  },
+  "Cochin-Italic": {
+   "docs": 2,
+   "key": 2
+  },
+  "SpongeboyMeBob": {
+   "docs": 1,
+   "key": 1
+  },
+  "Palatino-Bold": {
+   "docs": 9,
+   "key": 8,
+   "pages": 1
+  },
+  "Optima-Regular": {
+   "docs": 4,
+   "key": 4
+  },
+  "Montserrat-ExtraBold": {
+   "docs": 2,
+   "key": 2
+  },
+  "Montserrat-Italic": {
+   "docs": 2,
+   "key": 2
+  },
+  "Montserrat-Medium": {
+   "docs": 5,
+   "key": 5
+  },
+  "Optima-Bold": {
+   "docs": 2,
+   "key": 2
+  },
+  "Optima-Italic": {
+   "docs": 1,
+   "key": 1
+  },
+  "Montserrat-Bold": {
+   "docs": 4,
+   "key": 4
+  },
+  "Montserrat-Regular": {
+   "docs": 4,
+   "key": 4
+  },
+  "SourceCodePro-Regular": {
+   "docs": 1,
+   "key": 1
+  },
+  "PublicoText-Roman": {
+   "docs": 1,
+   "pages": 1
+  },
+  "ProximaNova-Regular": {
+   "docs": 4,
+   "pages": 1,
+   "key": 3
+  },
+  "ProximaNova-Bold": {
+   "docs": 4,
+   "pages": 1,
+   "key": 3
+  },
+  "Menlo-BoldItalic": {
+   "docs": 1,
+   "pages": 1
+  },
+  "CenturyGothic-Italic": {
+   "docs": 1,
+   "pages": 1
+  },
+  "MullerMedium": {
+   "docs": 1,
+   "key": 1
+  },
+  "AdobeClean-BoldIt": {
+   "docs": 1,
+   "key": 1
+  },
+  "AdobeClean-Bold": {
+   "docs": 1,
+   "key": 1
+  },
+  "AdobeClean-Regular": {
+   "docs": 1,
+   "key": 1
+  },
+  "HelveticaNeue-CondensedBold": {
+   "docs": 4,
+   "key": 4
+  },
+  "HelveticaNeue-CondensedBlack": {
+   "docs": 4,
+   "pages": 2,
+   "numbers": 1,
+   "key": 1
+  },
+  "GillSans-UltraBold": {
+   "docs": 2,
+   "key": 2
+  },
+  "ArialUnicodeMS": {
+   "docs": 5,
+   "pages": 3,
+   "key": 2
+  },
+  "Georgia-Bold": {
+   "docs": 8,
+   "pages": 5,
+   "key": 3
+  },
+  "NotoSans-Regular": {
+   "docs": 1,
+   "pages": 1
+  },
+  "Bauhaus93": {
+   "docs": 1,
+   "key": 1
+  },
+  "Rubik-Regular": {
+   "docs": 1,
+   "numbers": 1
+  },
+  "Rubik-Medium": {
+   "docs": 1,
+   "numbers": 1
+  },
+  "AvenirNext-UltraLight": {
+   "docs": 1,
+   "pages": 1
+  },
+  "Norwester-Regular": {
+   "docs": 1,
+   "key": 1
+  },
+  "Zapfino": {
+   "docs": 4,
+   "key": 3,
+   "pages": 1
+  },
+  "BookmanOldStyle-Bold": {
+   "docs": 1,
+   "key": 1
+  },
+  "LeagueGothic-Regular": {
+   "docs": 1,
+   "key": 1
+  },
+  "GillSans-SemiBoldItalic": {
+   "docs": 3,
+   "key": 2,
+   "numbers": 1
+  },
+  "RTGAIASERIFDEMO-Regular": {
+   "docs": 1,
+   "pages": 1
+  },
+  "FavoritMono-Light": {
+   "docs": 2,
+   "pages": 2
+  },
+  "FavoritMono-Medium": {
+   "docs": 2,
+   "pages": 2
+  },
+  "CanelaText-Regular": {
+   "docs": 3,
+   "key": 3
+  },
+  "Canela-Regular": {
+   "docs": 4,
+   "key": 4
+  },
+  "Graphik-Medium": {
+   "docs": 3,
+   "key": 3
+  },
+  "CanelaDeck-Regular": {
+   "docs": 4,
+   "key": 4
+  },
+  "Graphik-Semibold": {
+   "docs": 3,
+   "key": 3
+  },
+  "Canela-Bold": {
+   "docs": 4,
+   "key": 4
+  },
+  "Baloo-Regular": {
+   "docs": 1,
+   "pages": 1
+  },
+  "EuphemiaUCAS": {
+   "docs": 1,
+   "pages": 1
+  },
+  "GEtypo-lignes": {
+   "docs": 1,
+   "pages": 1
+  },
+  "Titi-de-Russie-RegularSWFTE": {
+   "docs": 1,
+   "pages": 1
+  },
+  "CambriaMath": {
+   "docs": 2,
+   "key": 2
+  },
+  "JuliaMono-Regular": {
+   "docs": 1,
+   "key": 1
+  },
+  "HoboStd": {
+   "docs": 1,
+   "key": 1
+  },
+  "EngraversMT": {
+   "docs": 1,
+   "key": 1
+  },
+  "BigCaslon-Medium": {
+   "docs": 2,
+   "key": 2
+  },
+  "Geneva": {
+   "docs": 3,
+   "key": 2,
+   "pages": 1
+  },
+  "SwiftEF-Regular": {
+   "docs": 1,
+   "key": 1
+  },
+  "Fruti-Normal": {
+   "docs": 1,
+   "key": 1
+  },
+  "LucidaSansUnicode": {
+   "docs": 1,
+   "key": 1
+  },
+  "EuclidSymbol": {
+   "docs": 1,
+   "key": 1
+  },
+  "Georgia-Italic": {
+   "docs": 6,
+   "key": 5,
+   "pages": 1
+  },
+  "GillSans-BoldItalic": {
+   "docs": 4,
+   "key": 2,
+   "numbers": 1,
+   "pages": 1
+  },
+  "LucidaHandwriting-Italic": {
+   "docs": 1,
+   "key": 1
+  },
+  "Wingdings": {
+   "docs": 4,
+   "key": 4
+  },
+  "AbadiMT-CondensedExtraBold": {
+   "docs": 2,
+   "key": 2
+  },
+  "LucidaFax-Italic": {
+   "docs": 1,
+   "key": 1
+  },
+  "CapitalsRegular": {
+   "docs": 1,
+   "key": 1
+  },
+  "HelveticaNeue-MediumItalic": {
+   "docs": 2,
+   "key": 2
+  },
+  "Charter-Roman": {
+   "docs": 4,
+   "pages": 4
+  },
+  "Charter-Italic": {
+   "docs": 3,
+   "pages": 3
+  },
+  "Palatino-BoldItalic": {
+   "docs": 2,
+   "pages": 2
+  },
+  "AcademyEngravedLetPlain": {
+   "docs": 1,
+   "pages": 1
+  },
+  "Raleway-Regular": {
+   "docs": 1,
+   "key": 1
+  },
+  "FreightSansLFPro-Light": {
+   "docs": 1,
+   "key": 1
+  },
+  "Geo-Regular": {
+   "docs": 1,
+   "key": 1
+  },
+  "SourceSansPro-Bold": {
+   "docs": 1,
+   "key": 1
+  },
+  "AvenirNextCondensed-Regular": {
+   "docs": 2,
+   "key": 2
+  },
+  "Georgia-BoldItalic": {
+   "docs": 2,
+   "key": 2
+  },
+  "HelveticaNeue-LightItalic": {
+   "docs": 2,
+   "key": 2
+  },
+  "ChalkboardSE-Regular": {
+   "docs": 4,
+   "pages": 1,
+   "key": 3
+  },
+  "Superclarendon-Light": {
+   "docs": 2,
+   "pages": 2
+  },
+  "IBMPlexSans-Bold": {
+   "docs": 1,
+   "key": 1
+  },
+  "IBMPlexSans-ExtraLight": {
+   "docs": 1,
+   "key": 1
+  },
+  "IBMPlexSans-Medium": {
+   "docs": 1,
+   "key": 1
+  },
+  "IBMPlexMono": {
+   "docs": 1,
+   "key": 1
+  },
+  "IBMPlexMono-Bold": {
+   "docs": 1,
+   "key": 1
+  },
+  "IBMPlexSans-Light": {
+   "docs": 1,
+   "key": 1
+  },
+  "IBMPlexSans": {
+   "docs": 1,
+   "key": 1
+  },
+  "IBMPlexSans-Italic": {
+   "docs": 1,
+   "key": 1
+  },
+  "HiraMaruPro-W4": {
+   "docs": 1,
+   "pages": 1
+  },
+  "Inconsolata-Bold": {
+   "docs": 3,
+   "key": 3
+  },
+  "Consolas-Bold": {
+   "docs": 1,
+   "key": 1
+  },
+  "MarkerFelt-Wide": {
+   "docs": 3,
+   "numbers": 1,
+   "key": 2
+  },
+  "ArialNarrow-Italic": {
+   "docs": 1,
+   "pages": 1
+  },
+  "MS-PGothic": {
+   "docs": 1,
+   "numbers": 1
+  },
+  "HiraKakuProN-W3": {
+   "docs": 22,
+   "numbers": 6,
+   "key": 9,
+   "pages": 7
+  },
+  "HiraKakuProN-W6": {
+   "docs": 5,
+   "key": 3,
+   "numbers": 2
+  },
+  "HiraKakuStd-W8": {
+   "docs": 3,
+   "key": 2,
+   "numbers": 1
+  },
+  "TsukuARdGothic-Bold": {
+   "docs": 1,
+   "key": 1
+  },
+  "AppleGothic": {
+   "docs": 1,
+   "pages": 1
+  },
+  "Webdings": {
+   "docs": 1,
+   "pages": 1
+  },
+  "MinionPro-Regular": {
+   "docs": 1,
+   "key": 1
+  },
+  "AvenirNext-Heavy": {
+   "docs": 1,
+   "key": 1
+  },
+  "Iosevka": {
+   "docs": 3,
+   "key": 3
+  },
+  "Iosevka-Medium": {
+   "docs": 1,
+   "key": 1
+  },
+  "UniverzaSans-Light": {
+   "docs": 1,
+   "key": 1
+  },
+  "UniverzaSans-Bold": {
+   "docs": 1,
+   "key": 1
+  },
+  "UniverzaSans-Regular": {
+   "docs": 1,
+   "key": 1
+  },
+  "FranklinGothic-Roman": {
+   "docs": 1,
+   "key": 1
+  },
+  "Helvetica-Condensed-Oblique": {
+   "docs": 1,
+   "key": 1
+  },
+  "OpenDyslexic-Regular": {
+   "docs": 5,
+   "pages": 4,
+   "key": 1
+  },
+  "squeakychalksound": {
+   "docs": 1,
+   "pages": 1
+  },
+  "AvenirNext-Italic": {
+   "docs": 9,
+   "pages": 5,
+   "key": 4
+  },
+  "Skia-Regular": {
+   "docs": 2,
+   "key": 2
+  },
+  "OpenDyslexic-Bold": {
+   "docs": 2,
+   "pages": 2
+  },
+  "Verdana-Italic": {
+   "docs": 1,
+   "key": 1
+  },
+  "Courier-BoldOblique": {
+   "docs": 2,
+   "pages": 1,
+   "key": 1
+  },
+  "Poppins-Medium": {
+   "docs": 1,
+   "key": 1
+  },
+  "Iosevka-Term": {
+   "docs": 2,
+   "key": 2
+  },
+  "Iosevka-Term-Bold": {
+   "docs": 2,
+   "key": 2
+  },
+  "Futura-Bold": {
+   "docs": 2,
+   "key": 2
+  },
+  "Menlo-Italic": {
+   "docs": 1,
+   "key": 1
+  },
+  "HiraginoSans-W4": {
+   "docs": 1,
+   "key": 1
+  },
+  "HiraginoSans-W5": {
+   "docs": 1,
+   "key": 1
+  },
+  "Poppins-SemiBold": {
+   "docs": 2,
+   "key": 2
+  },
+  "JetBrainsMono-Regular": {
+   "docs": 3,
+   "key": 3
+  },
+  "Roboto-Regular": {
+   "docs": 1,
+   "key": 1
+  },
+  "Roboto-Bold": {
+   "docs": 1,
+   "key": 1
+  },
+  "Roboto-Black": {
+   "docs": 1,
+   "key": 1
+  },
+  "LMMono10-Regular": {
+   "docs": 1,
+   "key": 1
+  },
+  "AvenirNext-MediumItalic": {
+   "docs": 2,
+   "key": 2
+  },
+  "RocGrotesk-Bold": {
+   "docs": 1,
+   "pages": 1
+  },
+  "RocGrotesk-Condensed": {
+   "docs": 1,
+   "pages": 1
+  },
+  "MyriadPro-Semibold": {
+   "docs": 1,
+   "pages": 1
+  },
+  "MyriadPro-Regular": {
+   "docs": 2,
+   "pages": 1,
+   "key": 1
+  },
+  "BebasNeue": {
+   "docs": 5,
+   "pages": 5
+  },
+  "Calibri-LightItalic": {
+   "docs": 2,
+   "key": 2
+  },
+  "IowanOldStyle-Italic": {
+   "docs": 34,
+   "key": 34
+  },
+  "IowanOldStyle-BoldItalic": {
+   "docs": 34,
+   "key": 34
+  },
+  "AndaleMono": {
+   "docs": 2,
+   "key": 2
+  },
+  "Produkt-Medium": {
+   "docs": 1,
+   "key": 1
+  },
+  "MulishRoman-Regular": {
+   "docs": 3,
+   "key": 3
+  },
+  "MulishItalic-Bold": {
+   "docs": 3,
+   "key": 3
+  },
+  "MulishRoman-Bold": {
+   "docs": 3,
+   "key": 3
+  },
+  "MulishRoman-SemiBold": {
+   "docs": 3,
+   "key": 3
+  },
+  "Carlito": {
+   "docs": 1,
+   "key": 1
+  },
+  "MulishRoman-ExtraBold": {
+   "docs": 1,
+   "key": 1
+  },
+  "MulishRoman-Black": {
+   "docs": 1,
+   "key": 1
+  },
+  "Charter-BoldItalic": {
+   "docs": 1,
+   "pages": 1
+  },
+  "Charter-Bold": {
+   "docs": 1,
+   "pages": 1
+  },
+  "Skia-Regular_Bold": {
+   "docs": 2,
+   "pages": 1,
+   "key": 1
+  },
+  "JuliusSansOne-Regular": {
+   "docs": 1,
+   "pages": 1
+  },
+  "ChaparralPro-Regular": {
+   "docs": 2,
+   "key": 2
+  },
+  "AnonymousPro": {
+   "docs": 1,
+   "key": 1
+  },
+  "AnonymousPro-Bold": {
+   "docs": 1,
+   "key": 1
+  },
+  "ChaparralPro-Bold": {
+   "docs": 1,
+   "key": 1
+  },
+  "STIXGeneral-Regular": {
+   "docs": 2,
+   "key": 2
+  },
+  "CMUTypewriter-Regular": {
+   "docs": 1,
+   "key": 1
+  },
+  "CMUTypewriter-Light": {
+   "docs": 1,
+   "key": 1
+  },
+  "Superclarendon-Bold": {
+   "docs": 3,
+   "pages": 3
+  },
+  "Superclarendon-Regular": {
+   "docs": 2,
+   "pages": 2
+  },
+  "thebrooklyn": {
+   "docs": 1,
+   "pages": 1
+  },
+  "KateCelebration": {
+   "docs": 1,
+   "pages": 1
+  },
+  "HandwritingMutlu": {
+   "docs": 1,
+   "pages": 1
+  },
+  "Cursivestandard": {
+   "docs": 1,
+   "pages": 1
+  },
+  "QuicksandBook-Regular": {
+   "docs": 2,
+   "pages": 2
+  },
+  "KGGeronimoBlocks": {
+   "docs": 1,
+   "pages": 1
+  },
+  "MindBoggleDEMO-Regular": {
+   "docs": 1,
+   "pages": 1
+  },
+  "LettersforLearners": {
+   "docs": 1,
+   "pages": 1
+  },
+  "ScriptEcole2": {
+   "docs": 1,
+   "pages": 1
+  },
+  "WatermelonFamily-Light": {
+   "docs": 1,
+   "pages": 1
+  },
+  "OpenSans-Regular": {
+   "docs": 1,
+   "key": 1
+  },
+  "SourceSansPro-Light": {
+   "docs": 1,
+   "key": 1
+  },
+  "FiraCode-Regular": {
+   "docs": 1,
+   "key": 1
+  },
+  "FiraCode-Bold": {
+   "docs": 1,
+   "key": 1
+  },
+  "SourceSansPro-Regular": {
+   "docs": 1,
+   "key": 1
+  },
+  "Quentin": {
+   "docs": 1,
+   "pages": 1
+  },
+  "YuMin-Demibold": {
+   "docs": 1,
+   "pages": 1
+  },
+  "YuGo-Medium": {
+   "docs": 3,
+   "pages": 1,
+   "numbers": 2
+  },
+  "IPAmjMincho": {
+   "docs": 1,
+   "pages": 1
+  },
+  "YuMin-Medium": {
+   "docs": 1,
+   "pages": 1
+  },
+  "IPAmjShiyouMincho": {
+   "docs": 1,
+   "pages": 1
+  },
+  "Tajawal-Bold": {
+   "docs": 1,
+   "pages": 1
+  },
+  "CopperplateGothic-Light": {
+   "docs": 1,
+   "key": 1
+  },
+  "Luminari-Regular": {
+   "docs": 2,
+   "key": 2
+  },
+  "RobotoMono-Regular": {
+   "docs": 3,
+   "key": 3
+  },
+  "CaveatRoman-Bold": {
+   "docs": 1,
+   "key": 1
+  },
+  "Inter-Italic_Medium-Italic": {
+   "docs": 1,
+   "key": 1
+  },
+  "Inter-Regular_Black": {
+   "docs": 3,
+   "key": 3
+  },
+  "RobotoMono-Medium": {
+   "docs": 3,
+   "key": 3
+  },
+  "Inter-Regular_Bold": {
+   "docs": 3,
+   "key": 3
+  },
+  "Caveat-Bold": {
+   "docs": 3,
+   "key": 3
+  },
+  "Inter-Regular": {
+   "docs": 3,
+   "key": 3
+  },
+  "RobotoMono-Thin": {
+   "docs": 1,
+   "key": 1
+  },
+  "RobotoMono-Bold": {
+   "docs": 3,
+   "key": 3
+  },
+  "Inter-Regular_Medium": {
+   "docs": 1,
+   "key": 1
+  },
+  "Inter-Italic_Bold-Italic": {
+   "docs": 2,
+   "key": 2
+  },
+  "Inter-Regular_ExtraBold": {
+   "docs": 2,
+   "key": 2
+  },
+  "Inter-Regular_SemiBold": {
+   "docs": 2,
+   "key": 2
+  },
+  "Copperplate-Bold": {
+   "docs": 1,
+   "pages": 1
+  },
+  "CMGSans-ExtraBold": {
+   "docs": 10,
+   "key": 10
+  },
+  "CMGSans-BoldCn": {
+   "docs": 10,
+   "key": 10
+  },
+  "TwCenMT-Regular": {
+   "docs": 2,
+   "key": 2
+  },
+  "BodoniSvtyTwoOSITCTT-Book": {
+   "docs": 1,
+   "pages": 1
+  },
+  "Avenir-Black": {
+   "docs": 1,
+   "key": 1
+  },
+  "BookAntiqua-Bold": {
+   "docs": 1,
+   "key": 1
+  },
+  "BookmanOldStyle-Italic": {
+   "docs": 1,
+   "key": 1
+  },
+  "BookmanOldStyle": {
+   "docs": 1,
+   "key": 1
+  },
+  "Cmmi10": {
+   "docs": 1,
+   "key": 1
+  },
+  "BiancoeneroBold": {
+   "docs": 1,
+   "pages": 1
+  },
+  "BiancoeneroRegular": {
+   "docs": 1,
+   "pages": 1
+  },
+  "Papyrus-Condensed": {
+   "docs": 1,
+   "key": 1
+  },
+  "Wingdings3": {
+   "docs": 1,
+   "key": 1
+  },
+  "SnellRoundhand-Bold": {
+   "docs": 1,
+   "pages": 1
+  },
+  "SavoyeLetPlain": {
+   "docs": 1,
+   "pages": 1
+  },
+  "Trattatello": {
+   "docs": 1,
+   "pages": 1
+  },
+  "SnellRoundhand": {
+   "docs": 1,
+   "pages": 1
+  },
+  "Eczar-Bold": {
+   "docs": 1,
+   "pages": 1
+  },
+  "GermaniaOne-Regular": {
+   "docs": 1,
+   "pages": 1
+  },
+  "Gudea": {
+   "docs": 1,
+   "pages": 1
+  },
+  "Gudea-Italic": {
+   "docs": 1,
+   "pages": 1
+  },
+  "Eczar-Regular": {
+   "docs": 1,
+   "pages": 1
+  },
+  "Gudea-Bold": {
+   "docs": 1,
+   "pages": 1
+  },
+  "ProximaNova-Semibold": {
+   "docs": 2,
+   "key": 2
+  },
+  "ProximaNova-Medium": {
+   "docs": 3,
+   "key": 3
+  },
+  "Druk-Medium": {
+   "docs": 2,
+   "key": 2
+  },
+  "HiraginoSans-W6": {
+   "docs": 2,
+   "key": 2
+  },
+  "ProximaNova-Extrabld": {
+   "docs": 2,
+   "key": 2
+  },
+  "AdobeArabic-Regular": {
+   "docs": 1,
+   "key": 1
+  },
+  "Wingdings2": {
+   "docs": 1,
+   "key": 1
+  },
+  "SymbolPi-Normal": {
+   "docs": 1,
+   "key": 1
+  },
+  "YuGo-Bold": {
+   "docs": 2,
+   "numbers": 2
+  },
+  "Poppins-BoldItalic": {
+   "docs": 1,
+   "pages": 1
+  },
+  "Poppins-Italic": {
+   "docs": 1,
+   "pages": 1
+  },
+  "APL385": {
+   "docs": 1,
+   "key": 1
+  },
+  "MuseoSans-300": {
+   "docs": 1,
+   "key": 1
+  },
+  "MuseoSans-500": {
+   "docs": 1,
+   "key": 1
+  },
+  "CanelaDeck-Bold": {
+   "docs": 1,
+   "key": 1
+  },
+  "MuseoSans-700": {
+   "docs": 1,
+   "key": 1
+  },
+  "EncodeSansCondensed-SemiBold": {
+   "docs": 1,
+   "key": 1
+  },
+  "Rubik-LightItalic_Medium-Italic": {
+   "docs": 1,
+   "key": 1
+  },
+  "Rubik-Light_Regular": {
+   "docs": 1,
+   "key": 1
+  },
+  "SegoeCondensed": {
+   "docs": 1,
+   "key": 1
+  },
+  "EncodeSansCondensed-Bold": {
+   "docs": 1,
+   "key": 1
+  },
+  "BarlowSemiCondensed-SemiBold": {
+   "docs": 1,
+   "key": 1
+  },
+  "EncodeSansSemiCondensed-Regular": {
+   "docs": 1,
+   "key": 1
+  },
+  "EncodeSansCondensed-Regular": {
+   "docs": 1,
+   "key": 1
+  },
+  "Rubik-Light": {
+   "docs": 1,
+   "key": 1
+  },
+  "LiGothicMed": {
+   "docs": 1,
+   "key": 1
+  },
+  "JCHEadA": {
+   "docs": 1,
+   "key": 1
+  },
+  "AvenirNextCondensed-Bold": {
+   "docs": 1,
+   "key": 1
+  },
+  "cmsy10": {
+   "docs": 1,
+   "key": 1
+  },
+  "Osaka": {
+   "docs": 1,
+   "key": 1
+  },
+  "STIXGeneral-BoldItalic": {
+   "docs": 1,
+   "key": 1
+  },
+  "Futura-CondensedMedium": {
+   "docs": 1,
+   "key": 1
+  },
+  "SantaFeLetPlain": {
+   "docs": 1,
+   "key": 1
+  },
+  "AllRoundGothic-Bold": {
+   "docs": 1,
+   "key": 1
+  },
+  "HoeflerText-Ornaments": {
+   "docs": 1,
+   "key": 1
+  },
+  "SimSun": {
+   "docs": 1,
+   "key": 1
+  },
+  "BlairMdITCTT-Medium": {
+   "docs": 1,
+   "key": 1
+  },
+  "STHeitiSC-Light": {
+   "docs": 1,
+   "key": 1
+  },
+  "SchoolHouseCursiveB": {
+   "docs": 1,
+   "key": 1
+  },
+  "Courier-Bold": {
+   "docs": 1,
+   "key": 1
+  },
+  "InconsolataForPowerline": {
+   "docs": 1,
+   "key": 1
+  },
+  "Keifont": {
+   "docs": 1,
+   "numbers": 1
+  },
+  "AppleSymbols": {
+   "docs": 1,
+   "pages": 1
+  },
+  "HiraKakuPro-W6": {
+   "docs": 1,
+   "key": 1
+  },
+  "CMUSerif-Italic": {
+   "docs": 1,
+   "key": 1
+  },
+  "CMUSerif-BoldItalic": {
+   "docs": 1,
+   "key": 1
+  },
+  "CMUSerif-Bold": {
+   "docs": 1,
+   "key": 1
+  },
+  "Marcellus-Regular": {
+   "docs": 1,
+   "key": 1
+  }
+ }
+}
