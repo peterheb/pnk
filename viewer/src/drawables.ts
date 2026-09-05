@@ -8,6 +8,7 @@
 // Shapes become inline SVG paths from the flattened curve data; images come
 // from ViewerCtx object URLs; tables/charts delegate to their renderers.
 
+import { isPdfBytes, pdfMediaEl } from "./pdfmedia";
 import type {
   ChartModel,
   ChartNumberFormat,
@@ -448,12 +449,13 @@ function shapeSvg(g: ShapeGeometry, w: number, h: number, style: DrawableCommon[
 // Content pieces
 // ---------------------------------------------------------------------------
 
-function imageEl(
+export function imageEl(
   dataId: string | undefined,
   fileName: string | undefined,
   ctx: ViewerCtx,
   alt?: string,
   thumbnail?: { dataId: string; fileName?: string; preferredFileName?: string },
+  cssSize?: { width: number; height: number },
 ): HTMLElement {
   const url = dataId ? ctx.url(dataId) : undefined;
   const vector = /\.(pdf|ai|eps)$/i.test(fileName ?? "");
@@ -482,14 +484,20 @@ function imageEl(
     return img;
   }
   if (vector && fileName) {
-    // Placed vector art with no raster twin: a neutral gray shape with a
-    // small filename caption — not an error card (the artwork exists, we
-    // just cannot rasterize PDF/AI/EPS in-browser).
-    const box = el("div", "media-vector");
-    const cap = el("span", "media-vector-caption");
-    cap.textContent = fileName.replace(/\.(pdf|ai|eps)$/i, "").replace(/-\d+$/, "");
-    box.appendChild(cap);
-    return box;
+    // Placed vector art with no raster twin: pdf.js draws PDFs (Keynote
+    // equations, pasted PDF art) into a canvas; anything it cannot open
+    // gets a neutral gray shape with a small filename caption — not an
+    // error card (the artwork exists, we just cannot show it).
+    const placeholder = () => {
+      const box = el("div", "media-vector");
+      const cap = el("span", "media-vector-caption");
+      cap.textContent = fileName.replace(/\.(pdf|ai|eps)$/i, "").replace(/-\d+$/, "");
+      box.appendChild(cap);
+      return box;
+    };
+    const bytes = dataId ? ctx.bytes(dataId) : undefined;
+    if (bytes && isPdfBytes(bytes)) return pdfMediaEl(bytes, cssSize?.width ?? 0, cssSize?.height ?? 0, placeholder);
+    return placeholder();
   }
   const miss = el("div", "media-missing");
   miss.textContent = fileName ? `${fileName} (media missing)` : "media missing";
@@ -1402,7 +1410,7 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
       div.appendChild(layer);
     }
   } else if (d.type === "image") {
-    const img = imageEl(d.image.dataId, d.image.preferredFileName ?? d.image.fileName, ctx, d.image.preferredFileName, d.thumbnail);
+    const img = imageEl(d.image.dataId, d.image.preferredFileName ?? d.image.fileName, ctx, d.image.preferredFileName, d.thumbnail, { width: w, height: h });
     const m = d.mask?.common;
     if (m?.position && m.size && m.size.width > 0 && m.size.height > 0) {
       // TSD.ImageArchive.mask: the mask frame is in the image drawable's own

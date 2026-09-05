@@ -255,6 +255,8 @@ const { chromium } = require(process.env.PW_MODULE);
   await page.waitForSelector("#pages-view, #numbers-view, #keynote-view", { timeout: 30000 });
   // tables/images settle after first paint
   await page.waitForTimeout(1500);
+  // pdf.js fills PDF media (equations) asynchronously; wait for the last one.
+  await page.waitForFunction(() => !document.querySelector(".media-pdf.pending"), null, { timeout: 30000 }).catch(() => {});
   // the sticky top bar would print over anything scrolled beneath it
   // (CSSOM, not a style tag: the viewer's CSP allows no inline styles)
   await page.evaluate(() => {
