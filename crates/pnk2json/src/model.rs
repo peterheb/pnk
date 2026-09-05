@@ -817,6 +817,20 @@ pub struct Flips {
     pub vertical: Option<bool>,
 }
 
+/// Membership of a text box in a chain of linked text boxes
+/// (`TSWP.FlowInfoArchive`: one `text_storage`, ordered `textboxes`). The
+/// text is emitted ONCE, on the box with `index` 0; boxes with a higher
+/// index carry an empty `text` and receive the overflow of the box before
+/// them when laid out. `id` is the flow's `user_interface_identifier` (the
+/// number Pages shows on the box's link handles), unique per document.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TextFlowLink {
+    pub id: u32,
+    pub index: u32,
+    pub count: u32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TextWrap {
@@ -911,6 +925,10 @@ pub enum Drawable {
         /// the box to its text; this is the size the box had when created.
         #[serde(skip_serializing_if = "Option::is_none")]
         natural_size: Option<Size>,
+        /// Linked text boxes (Pages): this box is one of several sharing a
+        /// storage (TSWP.FlowInfoArchive with 2+ textboxes). See TextFlowLink.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        flow: Option<TextFlowLink>,
     },
     Image {
         common: DrawableCommon,

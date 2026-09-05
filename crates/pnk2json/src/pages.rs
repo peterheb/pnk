@@ -598,6 +598,7 @@ fn tag_drawable(d: Drawable, tag: &str) -> Drawable {
             text_insets,
             text_fit,
             natural_size,
+            flow,
         } => {
             let mut common = common;
             common.placeholder = Some(PlaceholderInfo {
@@ -611,6 +612,7 @@ fn tag_drawable(d: Drawable, tag: &str) -> Drawable {
                 text_insets,
                 text_fit,
                 natural_size,
+                flow,
             }
         }
         other => other,

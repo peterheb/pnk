@@ -644,6 +644,51 @@ function splitOverflow(
   return row;
 }
 
+/**
+ * Linked text boxes (TextboxDrawable.flow): the chain's text is emitted on
+ * its first box; once the canvases are attached, the lines that do not fit
+ * a box move to the next box in the chain, which re-wraps them at its own
+ * width. Paragraphs break between lines (splitOverflow, one line minimum on
+ * each side: Pages applies no widow control inside a chain — 26a356dc's
+ * "Who Are We?" list breaks after its fourth line). Runs before the text-fit
+ * measurement pass so the last box, which may grow, sees its final content.
+ */
+function flowLinkedText(root: HTMLElement): void {
+  const chains = new Map<string, HTMLElement[]>();
+  for (const box of root.querySelectorAll<HTMLElement>("[data-flow-id]")) {
+    const key = box.dataset.flowId ?? "";
+    const list = chains.get(key) ?? [];
+    list.push(box);
+    chains.set(key, list);
+  }
+  for (const chain of chains.values()) {
+    chain.sort((a, b) => Number(a.dataset.flowIndex) - Number(b.dataset.flowIndex));
+    for (let i = 0; i + 1 < chain.length; i++) {
+      const layer = chain[i].querySelector<HTMLElement>(":scope > .drawable-text");
+      const src = layer?.querySelector<HTMLElement>(".styled-text");
+      const dst = chain[i + 1].querySelector<HTMLElement>(":scope > .drawable-text .styled-text");
+      if (!layer || !src || !dst) continue;
+      const frame = layer.getBoundingClientRect();
+      const limit = frame.height;
+      const blocks = Array.from(src.children) as HTMLElement[];
+      const moved: HTMLElement[] = [];
+      for (let k = 0; k < blocks.length; k++) {
+        const r = blocks[k].getBoundingClientRect();
+        if (r.bottom - frame.top <= limit + 0.5) continue;
+        // block k crosses the box bottom: keep the lines that fit, when any
+        const rest = r.top - frame.top < limit - 1 ? splitOverflow(blocks[k], layer, limit, 1) : null;
+        if (rest) moved.push(rest);
+        else moved.push(blocks[k]);
+        moved.push(...blocks.slice(k + 1));
+        break;
+      }
+      if (!moved.length) continue;
+      for (const m of moved) dst.appendChild(m);
+      (moved[0] as HTMLElement).style.marginTop = "0";
+    }
+  }
+}
+
 /** Printable-area geometry in points, from the document archive
  *  (TP.DocumentArchive page_width/height 30/31, margins 32-35 [proto]). */
 interface PageGeom {
@@ -1235,6 +1280,7 @@ export function renderPages(doc: PagesDocument, hdoc: HydratedDoc, ctx: ViewerCt
     paginatedBody(doc, hdoc, ctx, view);
     if (doc.footnotePlacement) appendFootnotes(doc, hdoc, ctx, view);
     mount.appendChild(view);
+    flowLinkedText(view);
     // page containers lay the floats out afresh: re-pin them once attached
     fixAnchorDrift(view);
     // Positioned tab stops outside the body flow — headers, footers, table
@@ -1268,6 +1314,7 @@ export function renderPages(doc: PagesDocument, hdoc: HydratedDoc, ctx: ViewerCt
     floatingSection(doc, hdoc, ctx, view, trailing, "Floating objects");
   }
   mount.appendChild(view);
+  flowLinkedText(view);
   // measurement pass (attached): bounded shrink absorbs font-metric drift
   layoutTabs(view);
   applyTextFit(view);

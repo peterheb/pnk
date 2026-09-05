@@ -353,6 +353,26 @@ export interface TextboxDrawable {
   naturalSize?: Size;
   /** See ShapeDrawable.textFit — absent = fixed box, viewer clips. */
   textFit?: "grow" | "shrink";
+  /**
+   * Linked text boxes (Pages "Thread" boxes): this box is one of `count`
+   * boxes sharing one storage [proto: TSWP.FlowInfoArchive { text_storage,
+   * textboxes }; `id` = user_interface_identifier, the number on the box's
+   * link handles]. `text` is emitted ONCE, on the box with `index` 0 (in
+   * paint order it may come after its continuations); every later box in
+   * the chain has an empty `text` and shows the overflow of the box before
+   * it: a renderer lays the index-0 text out at that box's frame and moves
+   * the lines that do not fit to index 1, and so on. Absent = an ordinary
+   * box. Corpus 2026-09-05: two documents, one chain of two boxes each
+   * (26a356dc "Who Are We?", 277d7233 "GREAT MEMORIALS…").
+   */
+  flow?: TextFlowLink;
+}
+
+/** See TextboxDrawable.flow. */
+export interface TextFlowLink {
+  id: number;
+  index: number;
+  count: number;
 }
 
 /**
