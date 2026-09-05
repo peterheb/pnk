@@ -713,9 +713,23 @@ pub fn convert_table(ctx: &mut Ctx, model_id: u64) -> TableModel {
     let mut buffer_ordinal = 0usize;
 
     if let Some(tiles) = store.as_ref().and_then(|s| s.msg(3)) {
-        // TST.TileStorage.Tile { tileid = 1, tile = 2 (TSP.Reference) }
-        for tw in tiles.msgs(1) {
-            let tileid = tw.varint(1).unwrap_or(0) as usize;
+        // TST.TileStorage.Tile { tileid = 1, tile = 2 (TSP.Reference) }.
+        // Storage-buffer ordinals count rowInfos in TILE ORDER, so the tiles
+        // must be walked by tileid: a pre-BNC budget sheet (e138671a, sheet
+        // "Tax Bills") lists its three tiles as 2, 1, 0 and list order put
+        // the title row 28 rows down. Modern files list tiles in id order
+        // already (numbers-parser walks the list as stored), so the sort is
+        // a no-op there. [inferred; the sheet's PDF export shows the order]
+        let mut tile_list: Vec<(usize, Msg)> = tiles
+            .msgs(1)
+            .into_iter()
+            .map(|tw| (tw.varint(1).unwrap_or(0) as usize, tw))
+            .collect();
+        if std::env::var("PNK_DEBUG_ROWS").is_ok() && !tile_list.is_sorted_by_key(|(id, _)| *id) {
+            eprintln!("tiles listed out of id order in table model {model_id}");
+        }
+        tile_list.sort_by_key(|(id, _)| *id);
+        for (tileid, tw) in tile_list {
             let Some(tref) = tw.reference(2) else {
                 continue;
             };
@@ -1251,6 +1265,13 @@ fn convert_tile(
                 (tileid * tile_size + tri) as u32
             }
         };
+        if std::env::var("PNK_DEBUG_ROWS").is_ok() {
+            eprintln!(
+                "rowinfo ord={ordinal} tri={:?} model_row={model_row} pre_bnc={is_pre_bnc} tile={tileid} maplen={}",
+                ri.varint(1),
+                ord_to_row.len()
+            );
+        }
 
         let offsets_raw = ri
             .bytes(7)
@@ -1956,6 +1977,7 @@ fn pick_format(
                 // show_thousands_separator (f5), raw presence: absent means
                 // the KIND's default (currency groups, number does not)
                 grouping: f.boolean(5),
+                accounting: f.boolean(6).filter(|b| *b),
                 format_string,
             }),
             false,
@@ -1970,6 +1992,7 @@ fn pick_format(
             decimals: None,
             currency_code: None,
             grouping: None,
+            accounting: None,
             // CustomFormatArchive: the pattern is default_format (f3)
             // .custom_format_string (f18) — f3 is a message, not a string
             format_string: cf.msg(3).and_then(|df| df.string(18)),
@@ -2148,6 +2171,7 @@ fn decode_cell_v3(
                 decimals: f.varint(2).filter(|v| *v <= 20).map(|v| v as u32),
                 currency_code: f.string(3),
                 grouping: f.boolean(5),
+                accounting: f.boolean(6).filter(|b| *b),
                 format_string: f
                     .string(18)
                     .or_else(|| f.string(14).filter(|s| !s.is_empty())),
@@ -2297,33 +2321,67 @@ fn decode_cell_v4(
             })
             .collect();
         eprintln!(
-            "v4fmt r{row}c{col} type={cell_type} flags2={flags2:#x} lead={fmt_lead:?}({:?}) trail={kinds:?} val={f64_value:?}",
+            "v4fmt r{row}c{col} type={cell_type} flags1={flags1:#x} flags2={flags2:#x} lead={fmt_lead:?}({:?}) leadcond={} trail={kinds:?} val={f64_value:?}",
             fmt_lead
                 .and_then(|k| format_table.entries.get(&k))
                 .and_then(|e| e.format.as_ref())
-                .and_then(|f| f.varint(1))
+                .and_then(|f| f.varint(1)),
+            fmt_lead.is_some_and(|k| cond_style_table.entries.contains_key(&k)),
         );
     }
-    // Which trailing key is the DISPLAY format: the LAST one (highest set
-    // bit). Bit 16 holds the cell's underlying number format and the higher
-    // bits the format actually shown, so a currency cell carries both.
-    // Fixture-verified against Numbers' PDF export of the cdrky budget:
-    // r1c1 of the FIRE ONLY table has one key (256/number) and prints
-    // "264"; "EMS Debt Service" carries [256, 257] and prints "$ 80,837.74";
-    // "Total FIRE/EMS Budget" the same and prints "$1,214,294.61"; the FIRE
-    // Budget cell carries [258 percent, 257 currency] and prints
-    // "$140,353.01". The LEADING bit-2 key is not the display format — it is
-    // currency (257) on the very cell Numbers prints as a bare 264 — so it
-    // is only a fallback for cells with no trailing keys at all. [inferred]
-    // ... and the leading key is a CONDITIONAL-style key (see below), so it
-    // only stands in as a format for records that name no conditional set.
-    let lead_is_cond = fmt_lead.is_some_and(|k| cond_style_table.entries.contains_key(&k));
-    let fmt_key = trailing_keys
-        .iter()
-        .rev()
-        .copied()
-        .find(|k| format_table.entries.contains_key(k))
-        .or_else(|| fmt_lead.filter(|k| !lead_is_cond && format_table.entries.contains_key(k)))
+    // Which key is the DISPLAY format [inferred; checked against Numbers'
+    // PDF export of the Williamstown budget e138671a, every numeric cell on
+    // its four pages]: the LEADING bit-2 key. The trailing keys are per-kind
+    // slots (bit 16 number/percent, bit 19 currency) the cell keeps for
+    // when its format is switched, so one cell carries both and only the
+    // leading key says which is live:
+    //   Unit Calculator r1c1: lead number,   trail [number, currency] -> "1,573"
+    //   Calculations r19c2:   lead percent,  trail [percent, currency] -> "95%"
+    //   Fund Balance r4c4:    lead currency, trail [number, currency] -> "$93,940.00"
+    // (The earlier "last trailing key" rule printed the first two as
+    // "$1,573.00" and "$0.95".) When flags1 bit 10 is set the leading key
+    // is a conditional-style key instead (FIRE ONLY r1c1: lead 4 is a cond
+    // set, trail [number], prints "264"), and the trailing keys decide:
+    // flags2 bit 11 marks a currency cell (EMS Debt Service: bit 11,
+    // [number, currency] -> "$ 80,837.74"; FIRE Budget: bit 11,
+    // [percent, currency] -> "$ 140,353.01"), otherwise the number-slot key.
+    // Key spaces overlap (a key can exist in both the format and the
+    // conditional lists), so membership alone cannot classify the lead.
+    let lead_is_cond = flags1 & (1 << 10) != 0
+        || fmt_lead.is_some_and(|k| {
+            !format_table.entries.contains_key(&k) && cond_style_table.entries.contains_key(&k)
+        });
+    let is_currency_key = |k: &i32| {
+        format_table
+            .entries
+            .get(k)
+            .and_then(|e| e.format.as_ref())
+            .and_then(|f| f.varint(1))
+            == Some(257)
+    };
+    let currency_cell = flags2 & 0x800 != 0;
+    let fmt_key = fmt_lead
+        .filter(|k| !lead_is_cond && format_table.entries.contains_key(k))
+        .or_else(|| {
+            let known: Vec<i32> = trailing_keys
+                .iter()
+                .copied()
+                .filter(|k| format_table.entries.contains_key(k))
+                .collect();
+            if currency_cell {
+                known
+                    .iter()
+                    .copied()
+                    .find(is_currency_key)
+                    .or_else(|| known.last().copied())
+            } else {
+                known
+                    .iter()
+                    .copied()
+                    .find(|k| !is_currency_key(k))
+                    .or_else(|| known.first().copied())
+            }
+        })
         .or_else(|| trailing_keys.last().copied())
         .or_else(|| fmt_lead.filter(|_| !lead_is_cond));
 
@@ -2499,8 +2557,8 @@ fn decode_cell_v4(
         return None;
     }
 
-    // Format id: first trailing key found in the FORMAT list, else the
-    // leading bit-2 field (equals the old slot-5 read on lafs).
+    // Format id: the display key resolved above (leading bit-2 field, else
+    // the trailing per-kind slots).
     let format = match cell_type {
         2 | 5 | 7 => fmt_key.and_then(|id| {
             format_table.entries.get(&id).and_then(|e| {
@@ -2518,6 +2576,7 @@ fn decode_cell_v4(
                     // show_thousands_separator (f5), raw presence: absent
                     // means the KIND's default (currency groups)
                     grouping: f.boolean(5),
+                    accounting: f.boolean(6).filter(|b| *b),
                     format_string: f
                         .string(18)
                         .or_else(|| f.string(14).filter(|s| !s.is_empty()))

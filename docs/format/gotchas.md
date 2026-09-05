@@ -134,11 +134,34 @@ The per-cell blocks differ:
   required, not optional: inline entries cover only part of the key space).
 - **Duration (type 7) / date (type 5) / number (type 2) cells:** the value
   is an f64 in the 8 bytes before the trailing slot (fixture cells show
-  seconds for durations; 51.5 / 970 / 2408 for a "Start time" column), with
-  the number-format id at slot 5 (resolvable in the FORMAT-type
-  `TableDataList`).
+  seconds for durations; 51.5 / 970 / 2408 for a "Start time" column).
+- **Format keys on numeric cells:** slot 1 is a presence bitfield for the
+  leading fields (bit 1 cell style, bit 7 text style, bit 2 format key,
+  bits 10/11 conditional-style ids, bit 3 formula key, bit 4 string key),
+  and slot 2 bits 16-23 count TRAILING u32 keys after the f64 (bit 16 the
+  number/percent slot, bit 18 duration, bit 19 currency). A cell keeps one
+  key per slot it has ever used, so a plain-number cell can carry both a
+  number and a currency key. The key the cell DISPLAYS is the leading
+  bit-2 key when slot-1 bit 10 is clear; when bit 10 is set the leading
+  key is a conditional-style id and the trailing keys decide, with slot-2
+  bit 11 marking a currency cell. [inferred; verified against Numbers'
+  PDF export of `e138671a9f2b…` (all numeric cells on 4 pages): a cell
+  with lead=number, trail=[number, currency] prints "1,573", lead=percent
+  prints "95%", lead=currency prints "$93,940.00"; a bit-10 cell with
+  trail=[number] prints "264" and a bit-11 cell with trail=[percent,
+  currency] prints "$ 140,353.01".] Format and conditional-style keys
+  share a key space, so list membership alone cannot tell them apart.
+  Before this rule the converter took the last trailing key and printed
+  those cells as "$1,573.00" and "$0.95".
 - **Empty stubs:** 12-byte v4 blocks with type 0 (genericCellType) and a
   zero payload — explicitly-stored empty cells; skip them.
+
+- **Tile order:** `TST.TileStorage.tiles` can list tiles out of `tileid`
+  order (five pre-BNC files in the corpus; `e138671a9f2b…` lists 2, 1, 0).
+  Storage-buffer ordinals count rowInfos in tileid order, so the walker
+  sorts tiles by id first; list order put that sheet's title row 28 rows
+  down. Modern files list tiles in id order, so nothing changes for them.
+  [inferred; verified against the sheet's PDF export]
 
 Blast radius across the corpus: 45 of 358 tables were fully empty under the
 v5-only walker; after v4 support, 11 remain — all genuinely blank

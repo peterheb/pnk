@@ -472,13 +472,15 @@ fn shape_info_drawable(
     // and leave the stored 0×0 alone; the viewer's zero-size path decides.
     // [inferred: verified against Numbers' export of 6914f46e51ab]
     if let Drawable::Textbox {
-        common, natural_size, ..
+        common,
+        natural_size,
+        ..
     } = &mut drawable
     {
         let zero = common
             .size
             .as_ref()
-            .map_or(true, |s| s.width == 0.0 && s.height == 0.0);
+            .is_none_or(|s| s.width == 0.0 && s.height == 0.0);
         if zero {
             if let Some(ns) = shape
                 .msg(3)

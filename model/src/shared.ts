@@ -613,6 +613,10 @@ export interface CellFormat {
   /** Thousands separators shown (locale-appropriate grouping). Absent = off.
    * [proto: TSK.FormatStructArchive.show_thousands_separator (field 5)] */
   grouping?: boolean;
+  /** Accounting style: currency symbol at the cell's left edge, amount at
+   * the right. Present only when true.
+   * [proto: TSK.FormatStructArchive.use_accounting_style (field 6)] */
+  accounting?: boolean;
   /** Raw custom format string when kind = "custom". */
   formatString?: string;
 }

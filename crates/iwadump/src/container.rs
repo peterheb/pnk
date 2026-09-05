@@ -138,6 +138,18 @@ fn ext_is_tef(ext: &str) -> bool {
     }
 }
 
+/// A member's name as the writer meant it. Numbers stores media names as
+/// UTF-8 without setting the zip UTF-8 flag (bit 11), and the zip crate then
+/// decodes them as cp437 — a Japanese screenshot name came back as mojibake
+/// and its image was reported missing while Numbers showed it. Valid UTF-8
+/// bytes win; anything else keeps the crate's decoding.
+fn member_name(f: &zip::read::ZipFile<'_>) -> String {
+    match std::str::from_utf8(f.name_raw()) {
+        Ok(s) => s.to_string(),
+        Err(_) => f.name().to_string(),
+    }
+}
+
 /// Per-member inflation ceiling. Real members top out in the hundreds of MB.
 const MAX_MEMBER_BYTES: u64 = 1024 * 1024 * 1024;
 
@@ -216,7 +228,7 @@ fn scan_zip_at_depth(bytes: Vec<u8>, label: &str, depth: u32) -> Result<ScanOutc
     let mut members: Vec<Member> = Vec::with_capacity(archive.len());
     for i in 0..archive.len() {
         let readable = archive.by_index_raw(i).ok().map(|f| Member {
-            name: f.name().to_string(),
+            name: member_name(&f),
             size: f.size(),
             compressed_size: f.compressed_size(),
         });
@@ -408,7 +420,7 @@ impl Container {
             .filter_map(|i| {
                 let f = archive.by_index_raw(i).ok()?;
                 Some(Member {
-                    name: f.name().to_string(),
+                    name: member_name(&f),
                     size: f.size(),
                     compressed_size: f.compressed_size(),
                 })
@@ -579,7 +591,7 @@ impl Container {
             let Ok(f) = archive.by_index_raw(i) else {
                 continue;
             };
-            let fname = f.name().to_string();
+            let fname = member_name(&f);
             if fname == name {
                 exact = Some(i);
                 break;

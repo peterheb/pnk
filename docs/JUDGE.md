@@ -265,8 +265,71 @@ number formats (integers shown as currency, a percentage as $0.95),
 category grouping rows, chart legends and axis titles, and cell border
 weight and alternating row shading.
 
+### Numbers, round 2 (2026-09-03, Qwen thinking off)
+
+Number formats first, because the judges named them most often. The
+worst case was a county budget workbook saved by an older Numbers
+(pre-BNC cell storage), where a plain-integer column printed as
+"$1,573.00" and a 95% cell as "$0.95". The cause was in the converter,
+not the viewer: an old-format cell keeps one format key per kind it has
+ever used (number, currency), and the converter took the last one. The
+document's own PDF export settled which key Numbers displays (the
+leading key; see docs/format/gotchas.md #13). Two more bugs surfaced in
+the same workbook once its pages were readable: tiles listed out of
+order put the title row of a 43-row table 28 rows down, and a stale
+3628pt table frame made the sheet screenshot five times taller than
+the table. Accounting-style currency ("$" at the left edge, amount at
+the right) is now carried in the model and rendered.
+
+Qwen's scores for that workbook's four pages, before and after:
+
+| page | before | after | what changed |
+| --- | --- | --- | --- |
+| 1 | 6 | 8 | accounting style and 4-decimal rates; the screenshot no longer clips the right edge |
+| 2 | 5 | 9 | integers, percent, and currency all match the export |
+| 3 | 1 | 9 | row order and canvas height |
+| 4 | 8 | 9 | canvas height (the judge had called the table "scaled down") |
+
+The clip was in the harness: the viewer's app column is 1160px wide and
+the sheet area scrolls inside it, so an element screenshot of a wider
+sheet stopped at the column's edge. visual_diff now lifts that limit and
+widens the browser viewport to the sheet for each shot.
+
+### Numbers corpus scoring (2026-09-03, Qwen thinking off, 2 pages per document)
+
+21 more Numbers documents, one per origin host, were exported from
+Numbers and scored alongside the 9 from round 1: 30 documents, 56 pages,
+mean 7.27. Score counts: 1 ×1, 2 ×1, 4 ×3, 5 ×1, 6 ×10, 7 ×7, 8 ×19,
+9 ×14. Two harness problems surfaced on the way and are fixed in the same
+branch: a document query that failed after Numbers had quit silently
+turned the whole run into QuickLook previews, and an element screenshot
+stopped at the viewer's 1160px column. One converter bug came out of the
+scores directly: a Japanese screenshot name stored without the zip UTF-8
+flag was decoded as cp437, so its image was reported missing (page
+score 1, now 8).
+
+What the judge names most often across the 56 pages, in order:
+
+1. Text clipped in cells where Numbers grows the row to fit wrapped text
+   (eight documents; the most common complaint by far). The viewer keeps
+   the stored row height.
+2. "formula error" shown where the export prints a value (three
+   documents): cells whose cached result is absent.
+3. Charts: legend missing, series colors swapped, gridlines, axis range
+   (two documents with charts).
+4. Category grouping rows and their totals missing (one document).
+5. Sheet gridlines drawn behind tables (three documents; the export does
+   not print them). Prompt v2 tells the judge to ignore them, but they
+   still appear in the issue lists.
+
+Two documents cannot be scored fairly by page: a 1,380-row sheet that the
+export scales onto one page, and a 1,129 × 192 table (217,000 cells)
+that the viewer takes too long to lay out; the second is a performance
+item, not a fidelity one.
+
 ### Next
 
-Score more of the corpus, one or two pages per document, with Qwen; use
+Row height from wrapped text is the next fidelity item. Then the cached
+formula results. Score more of the corpus, one or two pages per document, with Qwen; use
 the ranked list to choose fidelity work; add a reference re-run with
 Claude when the prompt changes again.
