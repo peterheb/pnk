@@ -931,6 +931,11 @@ pub enum Drawable {
         /// PDF of `equation.source`. [proto: TSWP.EquationInfoArchive]
         #[serde(skip_serializing_if = "Option::is_none")]
         equation: Option<EquationInfo>,
+        /// Instant Alpha: the region of the image that stays visible, as a
+        /// closed path in `natural_size` space; everything outside it is
+        /// transparent. [proto: TSD.ImageArchive.instantAlphaPath = 10]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        instant_alpha_path: Option<CurvePath>,
     },
     Movie {
         common: DrawableCommon,
@@ -1023,6 +1028,12 @@ pub struct EquationInfo {
     pub font_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<HexColor>,
+    /// Factor Keynote applies to an INLINE equation at display time over
+    /// the stored PDF geometry: x-height of the run font over STIX Italic's
+    /// (0.428 em). `common.size` and `depth_pt` are already multiplied by it;
+    /// absent when 1 (canvas equations, unknown fonts).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_scale: Option<f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1877,6 +1888,10 @@ pub struct TransitionSpec {
 pub struct Slide {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// Plain text of the title placeholder, derived at emission (paragraphs
+    /// joined by "\n"); absent when the slide has no title text.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skipped: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]

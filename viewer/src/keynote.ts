@@ -325,7 +325,10 @@ function fillStage(
 
   const caption = document.createElement("div");
   caption.className = "slide-caption muted";
-  const bits = [`Slide ${index + 1}${slide.name ? ` — ${slide.name}` : ""}`];
+  // Caption label: the stored slide name, else the converter-derived
+  // `slide.title` (first line, shortened) so the strip reads like an outline.
+  const label = slide.name ?? slide.title?.split("\n")[0].slice(0, 80);
+  const bits = [`Slide ${index + 1}${label ? ` — ${label}` : ""}`];
   if (slide.masterName) bits.push(`master: ${slide.masterName}`);
   if (slide.transition?.effect) bits.push(`transition: ${slide.transition.effect}`);
   if (slide.skipped) bits.push("skipped");

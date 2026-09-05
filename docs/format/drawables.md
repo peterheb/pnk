@@ -160,7 +160,14 @@ legacy files use `TSP.Reference` into the object graph:
   displayed natural size [inferred: naming convention]. [proto]
 - `mask = 5` — `TSP.Reference` to a `TSD.MaskArchive` (drawable with a
   `pathsource`), cropping the image to a path. [proto]
-- `instantAlphaPath = 10`, `traced_path = 19` (`TSP.Path`), `flags = 7`,
+- `instantAlphaPath = 10` (`TSP.Path`): the region that stays visible after
+  Instant Alpha, a closed path (several subpaths for islands) in
+  `naturalSize` pixel space — icecube c3582f31 stores 1 move, 18 lines and
+  313 cubics spanning 37-766 x 0-1285 on a 768x1284 image, and Keynote's
+  export draws only the inside. pnk2json emits it as
+  `ImageDrawable.instantAlphaPath`. [proto for the field; inferred for the
+  space and the keep-inside semantics, one deck, 2026-09-05]
+- `traced_path = 19` (`TSP.Path`), `flags = 7`,
   `imageAdjustments = 14` (`TSD.ImageAdjustmentsArchive`, lines 252-267:
   exposure/saturation/contrast/... gamma), `attribution = 20`,
   `background_removed = 22`, `should_trace_pdf_content = 21`,
@@ -180,6 +187,21 @@ corpus deck sampled (52 of 484 Keynote decks carry equation members; e.g.
 100. `equation_depth` is the baseline depth in points for inline placement
 (the image's bottom edge sits that far below the text baseline).
 [fixture-verified: atnf 0ddd627b, kcsrk-adjacent decks in the survey]
+
+Inline equation display size. The stored PDF is set in STIXGeneral at
+`font_size` (e.g. 45pt glyphs on a 203x40pt page), and the ImageArchive
+geometry equals that page. Keynote does not draw an inline equation at
+that size: its PDF export re-sets the same expression at
+`font_size * xheight(font_name) / xheight(STIXGeneral-Italic)`, i.e. so the
+math's x-height matches the run font's. Measured: HelveticaNeue 45 -> 54.36pt
+(x-height 0.517 / 0.428 = 1.208), HelveticaNeue-Light 40 -> 48.88 (0.523,
+1.222), AvenirNext-Regular 50 -> 54.67 (0.468, 1.093), TimesNewRomanPS-
+ItalicMT 30 -> 30.15 (0.4302, 1.005); each matches the CoreText x-height
+ratio to four digits. Canvas-level equations (not inside a text storage)
+are drawn 1:1 at their geometry. pnk2json applies the factor to inline
+equations from a table of x-heights (drawables.rs `FONT_X_HEIGHT`) and
+records it in `equation.displayScale`. [inferred: exports of 0ddd627b and
+3775cc34, 2026-09-05]
 
 Per-data metadata rides on the data object itself:
 `TSD.ImageDataAttributes` (lines 414-425) extends `TSP.DataAttributes` via
