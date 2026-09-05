@@ -922,10 +922,169 @@ Mean over the 16 pages 7.63; 8.13 without the strip page.
    out); check whether the 100×25 table with seven user-hidden rows hangs
    the layout pass.
 
+### Keynote, round 3 (2026-09-05, Qwen thinking off, four slides per deck)
+
+Schema and converter work first, per the round's brief, then a corpus
+scoring pass: 17 more Keynote decks from 17 origin hosts that no earlier
+run had judged, chosen from a feature survey of one deck per host (charts,
+tables, image fills, master image backgrounds, groups, movies, builds,
+hand-drawn strokes, CJK text, 4:3 and 16:9 sizes, saves from Keynote 6
+through 14). All 17 were exported from Keynote once; the same exports are
+on both sides of every score. The judge scored the first four slides of
+each deck (68 pairs; the first two alone give the same mean to within 0.05,
+so the two-slide figure the Numbers corpus section uses is comparable).
+The two round-2 decks were re-rendered against their round-2 exports to
+confirm the connection-line and equation fixes by eye.
+
+| defect | decks | cause | fix |
+| --- | --- | --- | --- |
+| no structured slide title; every consumer walked drawables for the title placeholder | all | not modelled | converter derives `Slide.title` at emission; the dumpers read it |
+| every slide emitted an empty presenter-notes `StyledText` | all | the storage every slide carries was emitted regardless of content | notes omitted when blank; 2,219 of 12,925 corpus slides keep theirs |
+| inline equations up to 22% smaller than Keynote draws them | atnf, ustc | Keynote re-sets an inline equation so the math's x-height matches the run font's: scale = x-height(font) / x-height(STIXGeneral-Italic, 0.428 em) | converter multiplies the inline image's size and baseline depth by the factor from a table of x-heights and records it in `equation.displayScale` |
+| connection lines into content-sized (0x0) label boxes ran into the word | kcsrk slides 6, 14, 17, 32 | a 0x0 frame has no laid-out box, so the stored endpoint (the text's centre anchor) was kept | the anchor walk builds the laid-out box (path natural size hung from the anchor by the text's alignment); the line ends at its edge |
+| the outline polygon for connection anchors was never built | kcsrk | the anchor walk read `msg(3)` on the DrawableArchive level (text wrap), not the ShapeArchive's path source | reads the level above |
+| slide-number fields drawn as "‹page number›" | icecube slide 2, s.u-d-l, ecanja | page-number/page-count fields carry no value in the archive | converter fills the value with the slide's position and the show's slide count |
+| slide numbers at the browser default size and colour | ripe82, LIGO | a field item took the attachment's empty style, not the run's resolved style | field items take the run's style unless the attachment carries one (text.rs, shared) |
+| background-removed images drawn with their original rectangle; a crop window showed a legend Keynote leaves blank | icecube slide 1 | `TSD.ImageArchive.instantAlphaPath` (field 10) was dropped; 1,276 images in 54 corpus decks carry one | additive `ImageDrawable.instantAlphaPath`; the viewer clips the image to it |
+| 0x0 shapes with text painted nothing | deeplearningbook footer, handtracker affiliation marks | the 0-height-shape rule adopted the path height and left a 0-wide box | a 0x0 shape takes the content-sized text path with its path natural size |
+| superscripts at full size | handtracker cover | CSS `vertical-align: super` keeps the size | 2/3 size, raised to the cap height (text.ts, shared; measured 50px against 77px caps at 150dpi) |
+| thin shapes (rules, footer bars) drawn a few points low; ecanja's 6pt footer bars fell off the slide | ecanja, and every deck with divider lines | an inline `<svg>` rests on its line box's baseline, so a shape shorter than the strut's ascent was pushed down by the gap | `.canvas-drawable > svg { display: block }` (styles.css); measured in the DOM: the bars' top moved from 521px to 509.6px against the frame, where the stored geometry puts them |
+| a bottom-aligned 0-height slide-number box hung its number below the slide edge | icecube slide 1 | the vertical anchor shift is a fraction of the box's own height, and a 0-height box with an absolutely placed text layer stayed 0 tall | the box takes its content's height before the shift (not scored: landed after the judge run) |
+| hand-drawn strokes drawn plain | ripe76, greenberg, ripe85 | the preset name was in the model, the viewer ignored it | displacement + grain filter for Chalk/Crayon/Pencil/Dry Brush; Pen and Feathered Brush stay plain (Keynote's export of them differs from a plain stroke only by a taper) |
+
+Qwen's mean over the 68 pages, before and after, same exports. The corpus
+ranking (per deck, first four slides, before the fixes) doubles as the
+list of where to look next.
+
+| doc | host | features | pages | before | after |
+| --- | --- | --- | ---: | ---: | ---: |
+| c3582f317d54 | events.icecube.wisc.edu | 17-fonts,groups,dynamicwave,reflection | 4 | 7.00 | 8.25 |
+| 2bb490dc3bad | www.deeplearningbook.org | 1024x768,image-fills,M6.6 | 4 | 7.25 | 7.75 |
+| c0f7137c5111 | indico.psi.ch | connection-lines,builds | 4 | 8.50 | 8.50 |
+| 2bf304c480eb | ecanja.eu | 720x405,tables,groups,many-media | 4 | 8.50 | 8.50 |
+| 5e6cf24f0405 | ripe82.ripe.net | charts,table,gradient-theme | 4 | 8.75 | 8.75 |
+| 3775cc34726f | indico.pnp.ustc.edu.cn | cjk,equations,movies,table | 4 | 8.75 | 8.75 |
+| b6b440463fe4 | handtracker.mpi-inf.mpg.de | M6.6,movies,groups,builds | 4 | 8.75 | 9.25 |
+| c184e5a76807 | ipbriopreto.org.br | image-bg-every-slide,image-fills,notes | 4 | 8.75 | 8.75 |
+| a72a174eabc2 | www.kab-bayern.de | 720x405,custom-theme,image-bg,notes,M7 | 4 | 8.75 | 8.75 |
+| 1e4ab104ce4a | dcc-llo.ligo.org | 720x540,custom-theme,M7 | 4 | 8.75 | 8.75 |
+| 40c5f2efeb36 | greenberg.science | tables,builds,smartStroke,notes,M9 | 4 | 9.00 | 9.00 |
+| 79259c0f302c | assets.science.nasa.gov | 960x540,master-bg,movies,reflection,notes | 4 | 9.00 | 9.00 |
+| 7e31810eb36b | s.u-d-l.com | cjk-heavy,no-media,black-theme | 4 | 9.00 | 9.00 |
+| 5c82aee24d64 | matthew.brecknell.net | groups-129,basicblack | 4 | 9.00 | 9.00 |
+| 9d5dcf6003a5 | ripe76.ripe.net | charts,4:3,smartStroke,M8 | 4 | 9.25 | 9.25 |
+| 70699bd2790f | makeabilitylab.cs.washington.edu | movies,notes,16-fonts | 4 | 9.25 | 9.00 |
+| a8c00fb99049 | kuwapyon.net | T2.2.1-save,cjk,movie,720x540 | 4 | 10.00 | 10.00 |
+| all | | | 68 | 8.72 | 8.84 |
+
+Pages that moved: up — deeplearningbook 2 (7 → 8), deeplearningbook 3 (7 → 8), ustc 1 (9 → 10), handtracker 1 (9 → 10), handtracker 3 (8 → 9), icecube 1 (6 → 7), icecube 2 (7 → 8), icecube 3 (7 → 9), icecube 4 (8 → 9); down — ustc 2 (10 → 9), makeabilitylab 4 (10 → 9). Slides scored 9 or more went from 49 to 52 of 68; the first two slides alone give 8.74 → 8.85. The pages that dropped a point are hinting and "slightly lower" verdicts on renders whose only change is the thin-shape and superscript rules; icecube 1 (6 → 7) is the Instant Alpha fix, icecube 2 (7 → 8) the slide number, icecube 3 (7 → 9) the thin-shape rule.
+
+Confirmed against the export by measurement, not by eye: the inline
+`y = mx + b` on atnf slide 10 (245.4pt wide in the export's text spans,
+245.7pt in ours after the fix, 203.4pt before); the export's STIX sizes
+54.36 / 48.88 / 54.67 / 30.15pt against the stored 45 / 40 / 50 / 30pt for
+HelveticaNeue / HelveticaNeue-Light / AvenirNext-Regular / Times Italic,
+each equal to the CoreText x-height ratio to four digits; the arrow into
+"computation" on kcsrk slide 6 ending at x=203.1 (the label's left edge)
+instead of 269.4 (its centre); the superscript "1" on handtracker's cover
+50px tall against 77px caps with its bottom 26px above the baseline.
+
+What the judge names most often across the 68 pages, in order:
+
+1. Font substitution (25 complaints, 14 decks). Faces this Mac does not
+   have (CMU Serif, Produkt, Graphik, Poppins), where Keynote and the
+   browser pick different fallbacks; the judge also reads a bold fallback
+   as a substitution (icecube's `Produkt-Light` run with `bold: true`).
+   Nothing to extract; not addressed.
+2. Missing elements (24, 10 decks): footer citations, slide numbers,
+   affiliation marks above logos, footer bars, a crop window Keynote
+   leaves blank. All fixed this round (0x0 shapes, field values, thin
+   shapes, Instant Alpha) except one chart legend (below).
+3. Position drift of a few points, "slightly lower" (19, 12 decks). The
+   thin-shape baseline shift accounts for the divider lines; the text
+   cases are not explained yet.
+4. Colour and background (17, 9 decks): slide-number colour (fixed),
+   background tone "slightly warmer" on image-backed slides (colour
+   management of the export raster versus the browser; not addressed).
+5. Slide numbers (16, 6 decks): placeholder text, size, colour. Fixed.
+6. Line breaks from font metrics (16, 7 decks): one word moving between
+   lines; the fallback-face problem from rounds 1 and 2.
+7. Images (8, 6 decks): background-removed images drawn with their
+   rectangle (fixed), logos a few points off.
+8. Charts (3, 2 decks): line-chart markers Keynote hides, a legend the
+   export omits (proposals below).
+
+#### Schema and converter findings
+
+- **Slide titles and empty notes** (proposed in round 2, implemented):
+  `Slide.title` is the plain text of the first title placeholder with
+  text. 5,879 of 12,925 corpus slides get one. A deck whose author typed
+  titles into free text boxes and left the placeholder empty (RIPE 77,
+  bc5a842a) gets none; the field means "title placeholder text", and a
+  largest-text heuristic was not added. `Slide.notes` is now present only
+  when the storage has visible text.
+- **Inline equation display scale** (round 2's open item): found. Keynote
+  sets an inline equation so that STIX's x-height matches the run font's
+  x-height; the stored PDF is at the nominal size and the export re-sets
+  it. `EquationInfo.displayScale` (additive) records the factor; the
+  converter applies it to the image's size and depth. The x-height table
+  covers the fonts that set inline equations in the corpus (588 of 1,776
+  inline equations are HelveticaNeue); fonts not in the table keep the
+  stored geometry.
+- **Instant Alpha paths were dropped.** `ImageDrawable.instantAlphaPath`
+  (additive) carries the kept region in naturalSize pixel space. The
+  keep-inside reading rests on one deck's export; docs/format/drawables.md
+  marks it inferred.
+- **Slide-number fields had no value and no style.** Both fixed at
+  emission (value: converter; style: text.rs field items now take the
+  run's resolved style).
+- **Connection anchors** for 0x0 text boxes: the laid-out box is derived
+  at emission from the path natural size and the text's alignment, the
+  same rule the viewer uses to place such boxes. Not a model change: the
+  line's path already carries the result.
+- **Chalk stroke colour.** ripe76 stores the circles' fill colour as the
+  Chalk2 stroke colour; Keynote draws a pale speckled ring. The model has
+  the name and colour as stored; the lightening is a viewer rule marked
+  inferred. The brush parameters (`TSD.SmartStrokeArchive` field 5, a
+  reference dictionary) stay dropped.
+- **Charts on slides** (Numbers-owned files, not changed; proposals):
+  ripe82 slide 4's line chart draws data-point markers that Keynote's
+  export does not (no per-series symbol flag in `ChartModel`); ripe76
+  slide 10's column chart shows a legend square that the export omits
+  (`legendVisible` absent, `legendFrame` at (-397, -277), outside the
+  chart: an off-chart frame should read as hidden); the same chart's
+  reference lines ("RIPE NCC pool", "/8") are not modelled.
+- **Fonts.** 14 of 17 decks drew a font-substitution complaint. Most are
+  faces this Mac lacks (CMU Serif, Produkt, Graphik), where Keynote and
+  the browser fall back differently; nothing to extract. One is a data
+  shape: icecube's footer run is `Produkt-Light` with `bold: true`, which
+  the browser synthesises as bold on the fallback face and Keynote draws
+  regular. Left as is; a rule that a weight-named face overrides the bold
+  flag would need a fixture with the font installed.
+- **Locale.** ripe82's table prints "3,91%" in ours and "3.91%" in the
+  export: the document locale is de and Keynote formats with the machine's
+  locale. Not a defect in the model.
+- **Checked and present:** builds, transitions, hyperlinks, skipped
+  flags, movies (poster + bytes), groups, masks, master backgrounds and
+  image fills on all 17 decks.
+
+What remains, in the order the judge names it:
+
+1. Wrap differences from fallback faces: one word per slide moving
+   between lines, on ten of 17 decks. The natural-size widths in the
+   archive bound this for content-sized boxes; fixed boxes have no stored
+   layout to lean on.
+2. Charts on slides: markers, hidden legends, reference lines (above).
+3. Text position drift of a few points ("slightly lower"), named on 12
+   decks without a common cause found; RIPE 82's footer and greenberg's
+   title are the cases to measure first.
+4. Hand-drawn strokes: the filter approximates the look; the brush
+   parameters are still not read.
+
 ### Next
 
 Numbers: grouped shapes placed beside the wrong table (181f2b199bd3), zero-height line shapes, chart legend markers; then the locale question for number formatting.
-Keynote: inline equation scale, lines ending at content-sized text boxes.
+Keynote: text position drift of a few points (measure RIPE 82's footer and greenberg's title first), chart markers and hidden legends on slides (Numbers-owned), then wrap differences from fallback faces.
 Pages: linked text boxes, then table row heights and cell wrapping. Score more of the corpus, one or two pages per document, with Qwen; use
 the ranked list to choose fidelity work; add a reference re-run with
 Claude when the prompt changes again.
