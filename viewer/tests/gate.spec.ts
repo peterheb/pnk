@@ -125,7 +125,9 @@ test("pages fixture renders paginated pages with paragraphs and headings", async
   // word-processing docs paginate into page frames; the printable area is
   // .pages-print inside each frame (docs without page geometry fall back to
   // one .pages-flow)
-  const area = page.locator(".pages-wp-page .pages-print, .pages-flow").first();
+  // the first page may be a cover the floating image fills (this fixture's
+  // is), so look for the first printable area that holds a paragraph
+  const area = page.locator(".pages-wp-page .pages-print, .pages-flow").filter({ has: page.locator("p") }).first();
   await expect(area).toBeVisible();
   await expect(area.locator("p").first()).toBeVisible();
   // this fixture has 200+ styled headings in the body

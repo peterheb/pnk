@@ -197,7 +197,8 @@
             "text": "One",
             "cStyle": 1
           }
-        ]
+        ],
+        "listNumber": 1
       },
       {
         "pStyle": 2,
@@ -206,7 +207,8 @@
             "text": "Two",
             "cStyle": 1
           }
-        ]
+        ],
+        "listNumber": 2
       },
       {
         "pStyle": 2,
@@ -215,7 +217,8 @@
             "text": "Three",
             "cStyle": 1
           }
-        ]
+        ],
+        "listNumber": 3
       },
       {
         "pStyle": 3,

@@ -59,7 +59,26 @@ Table message shapes (`[proto]` same file):
 - `TSWP.ObjectAttributeTable.ObjectAttribute { character_index = 1, object = 2 (TSP.Reference) }`
   — the workhorse: style refs, attachments, smart fields.
 - `TSWP.StringAttributeTable.StringAttribute { character_index = 1, object = 2 (string) }`
-  — used for `table_language` / `table_dictation` (e.g. language code `"en"`).
+  — used for `table_language` / `table_dictation` (e.g. language code `"en"`). An entry
+  without field 2 ends the span; Pages also stores the marker `"__multilingual"` for mixed
+  runs, which is not a language tag `[inferred: fixtures eb2a7cde, 77890685]`.
+- Annotation tables share the ObjectAttribute shape and span semantics (an entry opens a
+  range, the next entry closes it): `table_bookmark` (15) → `BookmarkFieldArchive`
+  (`super.text_attribute_uuid_string` is the UUID that in-document hyperlinks carry as
+  `#<uuid>`, `name = 2`); `table_insertion` (21) / `table_deletion` (22) →
+  `ChangeArchive { kind = 1 (1 insertion, 2 deletion), session = 2, date = 3 }` with the
+  deleted text still in the buffer; `table_highlight` (23) → `HighlightArchive
+  { commentStorage = 1 }` → `TSD.CommentStorageArchive { text = 1, creation_date = 2,
+  author = 3 → TSK.AnnotationAuthorArchive.name, replies = 4 }`
+  `[proto + inferred: fixtures 55d37c2b, 381bbbac, eb2a7cde; 2026-09-05]`.
+- `TSWP.ListStyleArchive.tiered_numbers = 25` (`repeated bool`, one per level) marks levels
+  whose numbers print as a path ("1.1") `[proto; fixture 48f5f124 renders 1.1 … 4.4]`.
+- `TSWP.TOCAttachmentArchive` (type 2241) wraps a `DrawableAttachmentArchive` whose drawable
+  is a `TSWP.TOCInfoArchive` (2240, a ShapeInfo holding the laid-out TOC storage);
+  `toc_entry_data` (3) → `TOCEntryInstanceArchive { paragraph_index = 1, page_number = 2,
+  heading = 4, indexed_paragraph_level = 8 }`, and the storage's page numbers are
+  `TSWPTOCPageNumberAttachmentArchive { page_number = 2 (string), bookmark_name = 3 }`
+  `[proto + fixture eb2a7cde]`.
 - `TSWP.ParaDataAttributeTable.ParaDataAttribute { character_index = 1, first = 2, second = 3 }`
   — used for `table_para_data`, `table_para_starts`, `table_para_bidi`.
 - `TSWP.OverlappingFieldAttributeTable.OverlappingFieldAttribute { range = 1 (TSP.Range), field = 2 }`
