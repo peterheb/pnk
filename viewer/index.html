@@ -5,8 +5,13 @@
   <!-- Defense in depth for untrusted documents: same-origin only, plus
        blob: for locally-generated media/JSON, wasm-unsafe-eval for the
        pnk2json wasm module, and blob: workers for the bundled pdf.js
-       worker. No remote loads of any kind. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' blob:; connect-src 'self' blob:; worker-src blob:; base-uri 'none'; form-action 'none'">
+       worker. The document itself still cannot leave the page: there is no
+       connect-src, img-src or form-action that could carry it anywhere.
+       The two Google Fonts origins are the ONE remote allowance — the
+       stylesheet for the substitute faces (webfonts.ts) and the woff2 files
+       it names. They carry font family names and nothing else, and the
+       "substitute fonts" setting turns the request off entirely. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' blob:; connect-src 'self' blob:; worker-src blob:; base-uri 'none'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>pnk.vu — iWork, locally</title>
   <link rel="stylesheet" href="styles.css">
@@ -19,6 +24,20 @@
     <span id="doc-meta" class="muted hidden"></span>
     <span class="spacer"></span>
     <a id="gh-link" href="https://github.com/peterheb/pnk" target="_blank" rel="noopener" title="Source on GitHub" aria-label="Source on GitHub"><svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg></a>
+    <details id="settings-dd">
+      <summary title="Viewer settings">settings</summary>
+      <div id="settings-panel">
+        <label class="setting-row">
+          <input type="checkbox" id="gfonts-toggle">
+          <span>Load substitute fonts from Google Fonts</span>
+        </label>
+        <p class="muted">Documents name fonts your device may not have. With this on,
+        the viewer asks fonts.googleapis.com for a close substitute, so the page looks
+        closer to the original: Google sees your IP address and the font family names,
+        never the document. With it off nothing leaves your browser, and missing fonts
+        fall back to whatever your browser picks.</p>
+      </div>
+    </details>
     <details id="warnings-dd" class="hidden">
       <summary title="Decode warnings"><span class="warn-mark">▲</span> <span id="warnings-count">0</span></summary>
       <div id="warnings-list"></div>
@@ -63,7 +82,9 @@
         <summary>privacy &amp; terms</summary>
         <p>pnk.vu runs entirely in your browser: documents you open are parsed locally and never uploaded.
         We collect no personal data. Our host, Cloudflare, keeps standard server-side logs and anonymous
-        analytics. Provided as-is, without warranty of any kind.
+        analytics. When a document names a font you do not have, the viewer asks Google Fonts for a close
+        substitute, so Google sees your IP address and the font names — never the document; the
+        <em>settings</em> menu turns that off. Provided as-is, without warranty of any kind.
         Source is MIT / Apache-2.0 licensed on <a href="https://github.com/peterheb/pnk" target="_blank" rel="noopener">GitHub</a>.</p>
       </details>
     </footer>

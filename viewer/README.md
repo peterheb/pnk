@@ -2,8 +2,9 @@
 
 Zero-backend viewer for iWork documents (`.pages` / `.numbers` / `.key`).
 Drop a file on the page; it is parsed **in your browser** by `pnk2json.wasm`
-and rendered — no accounts, no upload, no backend, no runtime network calls
-after the static assets load.
+and rendered — no accounts, no upload, no backend. The only request the
+viewer can make after its static assets load is the substitute-font
+stylesheet described below, and it is a setting.
 
 ## The 3 commands
 
@@ -18,6 +19,28 @@ npm run build          # runs ../scripts/build_viewer.sh
 npm run serve
 ```
 
+## Substitute fonts
+
+Documents name fonts the reader often does not have (Calibri, Gill Sans, DIN
+Condensed…). `src/fontmap.ts` maps every family in the corpus to a Google
+Fonts substitute — a metric-compatible clone where one exists, otherwise a
+face of the same class, otherwise nothing — and `src/webfonts.ts` requests
+exactly the families, weights and slopes the open document uses. The stack in
+the rendered CSS is: the document's own face, then its family, then the
+substitute, then the browser generic, so a reader who has the real font never
+sees the substitute. `docs/fonts.md` has the mapping and the reasoning.
+
+The nav's **settings** menu carries one checkbox, "Load substitute fonts from
+Google Fonts", stored in `localStorage` under `pnk.googleFonts`, **on by
+default**. Turning it off removes the stylesheet, drops the substitutes from
+every font stack, re-renders the open document, and leaves the viewer making
+no network request at all.
+
+Privacy: with the setting on, `fonts.googleapis.com` and `fonts.gstatic.com`
+see the reader's IP address and the font family names requested. They do not
+see the document — it is parsed in-page, and the CSP in `index.html` allows
+no remote `connect-src`, `img-src` or `form-action` by which it could leave.
+
 ## Gate (Playwright)
 
 With the built bundle in `viewer/dist/`:
@@ -28,6 +51,9 @@ npm run build && npm test     # or: npx playwright test
 
 Renders one real fixture per app (Keynote / Numbers / Pages) plus the
 encrypted + legacy error paths, with screenshots under `/tmp/pnk-gate/`.
+Those tests run with the substitute-font setting OFF and assert zero runtime
+network requests; one further test turns it on and asserts that the only
+external requests go to `fonts.googleapis.com` / `fonts.gstatic.com`.
 Fixtures live in `fixtures/crawl/` (gitignored) and are referenced by SHA-256
 in `tests/gate.spec.ts`.
 

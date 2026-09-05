@@ -1,6 +1,8 @@
 // pnk viewer entry point: init the wasm converter, wire the drop zone /
-// file picker, and dispatch to the per-app renderers. No network calls after
-// the static assets load — the file is parsed in-process and never uploaded.
+// file picker, and dispatch to the per-app renderers. The document is parsed
+// in-process and never uploaded. The one outbound request the viewer can
+// make is the substitute-font stylesheet (webfonts.ts), which carries font
+// family names and nothing from the document.
 
 import init, { convert, dump_markdown, dump_text, media_bytes } from "./wasm/pnk2json_wasm.js";
 import { ViewerCtx } from "./ctx";
@@ -11,10 +13,14 @@ import { renderNumbers } from "./numbers";
 import { setTableLocale } from "./tables";
 import { renderPages } from "./pages";
 import { renderWarnings } from "./warnings";
+import { googleFontsEnabled, loadSubstituteFonts, setGoogleFontsEnabled } from "./webfonts";
 import type { PnkDocument } from "../../model/src/shared";
 
 let ctx: ViewerCtx | null = null;
 let lastJson: { text: string; filename: string } | null = null;
+// The showing document, kept so that flipping the substitute-font setting
+// can re-render it with the new font stacks.
+let lastDoc: { doc: PnkDocument; filename: string } | null = null;
 
 // Source views over the converted document: the JSON model, and the two
 // dumps the CLI offers as --text / --markdown, produced by the wasm module
@@ -38,6 +44,7 @@ function closeSourceView(): void {
 function showLanding(): void {
   ctx?.dispose();
   ctx = null;
+  lastDoc = null;
   closeSourceView();
   // the landing card's own CTA is the only "open" on the landing screen
   for (const id of ["doc-filename", "app-badge", "doc-meta", "warnings-dd", ...SOURCE_BTN_IDS, "reset-btn"]) {
@@ -170,6 +177,10 @@ function renderDocument(doc: PnkDocument, filename: string): void {
   renderHeader(doc, filename);
   setTableLocale(doc.meta.locale);
   renderWarnings(doc.warnings);
+  // Ask for the substitute faces BEFORE the render, so they are in flight
+  // while the DOM is built; `display=swap` restyles when they land.
+  lastDoc = { doc, filename };
+  loadSubstituteFonts(doc.fonts);
 
   const view = $("view");
   view.replaceChildren();
@@ -258,6 +269,17 @@ function wireDragAndDrop(): void {
   });
 }
 
+/** The "load substitute fonts" checkbox: persist it, then re-render the
+ *  showing document so its font stacks pick up (or drop) the substitutes. */
+function wireSettings(): void {
+  const box = $("gfonts-toggle") as HTMLInputElement;
+  box.checked = googleFontsEnabled();
+  box.addEventListener("change", () => {
+    setGoogleFontsEnabled(box.checked);
+    if (lastDoc) renderDocument(lastDoc.doc, lastDoc.filename);
+  });
+}
+
 function wireEvents(): void {
   const input = $("file-input") as HTMLInputElement;
 
@@ -293,6 +315,7 @@ function wireEvents(): void {
     if (input.files?.[0]) handleFile(input.files[0]);
   });
   wireDragAndDrop();
+  wireSettings();
 }
 
 async function boot(): Promise<void> {

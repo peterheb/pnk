@@ -555,3 +555,21 @@ table.sheet-table .cell-fit { white-space: pre; display: inline-block; }
    ecanja 2bf304c4's 6pt footer bars landed 9pt below their box, outside the
    slide, and every divider line drew a few points low. */
 .canvas-drawable > svg { display: block; }
+
+/* === fonts agent (2026-09-05): the substitute-fonts setting in the nav === */
+#settings-dd { position: relative; }
+#settings-dd summary {
+  list-style: none; cursor: pointer; user-select: none;
+  color: var(--muted); font-size: 12px; padding: 2px 8px; border-radius: 6px;
+}
+#settings-dd summary::-webkit-details-marker { display: none; }
+#settings-dd summary:hover, #settings-dd[open] summary { background: rgba(0, 0, 0, .06); }
+#settings-panel {
+  position: absolute; right: 0; top: calc(100% + 10px); z-index: 20;
+  width: min(380px, 86vw);
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0,0,0,.14);
+  padding: 12px 16px 14px; font-size: 12.5px;
+}
+#settings-panel .setting-row { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; }
+#settings-panel p { margin: 8px 0 0; line-height: 1.45; }

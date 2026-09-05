@@ -26,6 +26,7 @@ import type { ViewerCtx } from "./ctx";
 import { renderTable } from "./tables";
 import { layoutTabs, naturalLineHeight, renderStyledText } from "./text";
 import { charStyleOf, paraStyleOf, type HydratedDoc } from "./hydrate";
+import { substituteFamily } from "./webfonts";
 
 function el(tag: string, className?: string): HTMLElement {
   const e = document.createElement(tag);
@@ -876,7 +877,8 @@ function chartSvg(chart: ChartModel, w: number, h: number, numbersAxis = false):
   // paragraph styles name outright (32pt axes, 38pt legend, 50pt ring labels).
   const ts = chart.textSizes;
   const face = ts?.fontName ? `"${ts.fontName.replace(/MT$|-.*$/, "")}", ` : "";
-  const family = `${face}"Helvetica Neue", Helvetica, Arial, sans-serif`;
+  const sub = ts?.fontName ? substituteFamily(ts.fontName) : null;
+  const family = `${face}${sub ? `"${sub}", ` : ""}"Helvetica Neue", Helvetica, Arial, sans-serif`;
   svg.setAttribute("font-family", family);
   const colors = chart.seriesColors ?? ["#4a90d9", "#e0762e", "#7bb662", "#b0578d", "#5b6abf"];
   // Furniture scales with the chart (Keynote's 1920-wide slides set 24pt

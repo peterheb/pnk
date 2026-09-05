@@ -15,6 +15,7 @@ import type {
 import type { ViewerCtx } from "./ctx";
 import { renderFlowDrawable } from "./drawables";
 import { charStyleOf, paraStyleOf, type HydratedDoc } from "./hydrate";
+import { substituteFamily } from "./webfonts";
 
 // Unit convention: canvases (slides, sheets, pages) size their inner frame at
 // 1 CSS px per document POINT, so all point-valued style properties emit `px`
@@ -81,7 +82,13 @@ export function applyCharStyle(el: HTMLElement, cs: CharStyle | undefined): void
   const s = el.style;
   if (cs.fontName) {
     const flat = cs.fontName.replace(/[\s-]+/g, "");
-    const fb = FONT_FALLBACKS.find(([re]) => re.test(flat))?.[1] ?? "sans-serif";
+    const local = FONT_FALLBACKS.find(([re]) => re.test(flat))?.[1] ?? "sans-serif";
+    // The Google Fonts substitute (fontmap.ts) sits ahead of those local
+    // guesses and behind the document's own face, so a reader who has the
+    // real font never sees it. Null when the setting is off or the family
+    // has no substitute worth loading.
+    const sub = substituteFamily(cs.fontName);
+    const fb = sub ? `"${sub}", ${local}` : local;
     const family = familyOf(cs.fontName);
     const w = NAME_WEIGHTS.find(([re]) => re.test(cs.fontName!))?.[1];
     // An EXPLICIT `bold: false` over a bold-named face is Apple's way of

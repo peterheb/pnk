@@ -43,6 +43,14 @@ test.beforeEach(() => {
   networkRequests.length = 0;
 });
 
+// Substitute fonts (webfonts.ts) default ON, and the stylesheet they need is
+// the only thing this viewer ever fetches. Every test that asserts the
+// zero-network guarantee therefore runs with the setting OFF; the last test
+// turns it on and checks WHERE the requests go.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => window.localStorage.setItem("pnk.googleFonts", "0"));
+});
+
 function trackRequests(page: Page): void {
   page.on("request", (req) => {
     const url = req.url();
@@ -144,6 +152,46 @@ test("legacy fixture gets the legacy explanation", async ({ page }) => {
   await expect(card.locator(".error-title")).toContainText(/legacy/i);
   await shot(page, "error-legacy.png");
   assertNoRuntimeNetwork(page);
+});
+
+test("substitute fonts are requested from Google Fonts and nowhere else", async ({ page }) => {
+  // wins over the beforeEach hook's "0": init scripts run in the order added
+  await page.addInitScript(() => window.localStorage.setItem("pnk.googleFonts", "1"));
+  await page.goto("/");
+  trackRequests(page);
+  // this fixture's font list is Calibri / Arial / Verdana / Helvetica Neue —
+  // four families, none of them on a stock Linux or Windows machine
+  await page.setInputFiles("#file-input", path.join(CRAWL, FIXTURES.numbers));
+  await expect(page.locator("table.sheet-table").first()).toBeVisible();
+
+  const href = await page.locator("link#pnk-webfonts").getAttribute("href");
+  expect(href).toContain("family=Carlito:"); // metric clone of Calibri
+  expect(href).toContain("family=Arimo:"); // metric clone of Arial
+  expect(href).toContain("family=Open+Sans:"); // stand-in for Verdana
+  expect(href).toContain("family=Inter:"); // stand-in for Helvetica Neue
+
+  // The faces really arrive. document.fonts.check() is no use here — it
+  // answers true for a family nobody has, since the system font satisfies
+  // it — so look for the FontFace the stylesheet added and its load state.
+  await page.waitForFunction(
+    () => [...document.fonts].some((f) => f.family === "Carlito" && f.status === "loaded"),
+    null,
+    { timeout: 20_000 },
+  );
+
+  const external = networkRequests.filter((u) => !u.startsWith("http://127.0.0.1:8123/"));
+  expect(external.some((u) => u.startsWith("https://fonts.gstatic.com/"))).toBe(true);
+  for (const url of external) {
+    expect(url).toMatch(/^https:\/\/fonts\.(googleapis|gstatic)\.com\//);
+  }
+
+  // and the nav setting turns it off: the stylesheet goes away with the
+  // re-render, and the document is still on screen
+  await page.locator("#settings-dd summary").click();
+  await page.locator("#gfonts-toggle").uncheck();
+  await expect(page.locator("link#pnk-webfonts")).toHaveCount(0);
+  await expect(page.locator("table.sheet-table").first()).toBeVisible();
+  expect(await page.evaluate(() => window.localStorage.getItem("pnk.googleFonts"))).toBe("0");
 });
 
 test("encrypted fixture gets the password-protected explanation", async ({ page }) => {
