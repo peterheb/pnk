@@ -360,9 +360,9 @@ impl Ctx {
 
     fn load_metadata_plists(&mut self) {
         if let Some(bytes) = self.members.get("Metadata/Properties.plist") {
-            match plist::Value::from_reader(std::io::Cursor::new(bytes)) {
+            match crate::plist_lite::parse(&bytes) {
                 Ok(v) => {
-                    let dict = v.as_dictionary();
+                    let dict = v.as_dict();
                     self.meta.application = dict
                         .and_then(|d| d.get("Application"))
                         .and_then(|p| p.as_string())
@@ -378,14 +378,14 @@ impl Ctx {
             }
         }
         if let Some(bytes) = self.members.get("Metadata/BuildVersionHistory.plist") {
-            match plist::Value::from_reader(std::io::Cursor::new(bytes)) {
+            match crate::plist_lite::parse(&bytes) {
                 Ok(v) => {
                     // Array of strings, or array of dicts with Version/Build
                     // (docs/format/container.md).
                     if let Some(arr) = v.as_array() {
                         let entries: Vec<String> = arr
                             .iter()
-                            .filter_map(|item| match item.as_dictionary() {
+                            .filter_map(|item| match item.as_dict() {
                                 Some(d) => {
                                     let ver = d.get("Version").and_then(|p| p.as_string());
                                     let build = d.get("Build").and_then(|p| p.as_string());
@@ -547,15 +547,16 @@ impl Ctx {
     }
 }
 
-fn plist_value_as_string(v: &plist::Value) -> Option<String> {
+fn plist_value_as_string(v: &crate::plist_lite::Value) -> Option<String> {
+    use crate::plist_lite::Value;
     match v {
-        plist::Value::String(s) => Some(s.clone()),
-        plist::Value::Array(a) => a
+        Value::String(s) => Some(s.clone()),
+        Value::Array(a) => a
             .iter()
             .filter_map(|i| i.as_string())
             .next()
             .map(str::to_string),
-        plist::Value::Integer(i) => Some(i.as_signed().unwrap_or(0).to_string()),
+        Value::Integer(i) => Some(i.to_string()),
         _ => None,
     }
 }

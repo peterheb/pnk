@@ -22,6 +22,7 @@ pub mod model;
 pub mod numbers;
 pub mod pages;
 pub mod pb;
+pub mod plist_lite;
 pub mod styles;
 pub mod tables;
 pub mod text;
