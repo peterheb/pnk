@@ -26,7 +26,10 @@ fi
 
 echo "==> cargo build -p pnk2json-wasm (wasm32-unknown-unknown, profile wasm)"
 # [profile.wasm] in Cargo.toml: size-tuned (opt-level s, fat LTO, abort, strip)
-cargo build -p pnk2json-wasm --target wasm32-unknown-unknown --profile wasm
+# Panic locations embed source paths; remap them so the module carries no
+# home directory or cargo registry path (and about 25 KB less text).
+CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS="--remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}/registry/src=/registry --remap-path-prefix=$ROOT=/pnk" \
+  cargo build -p pnk2json-wasm --target wasm32-unknown-unknown --profile wasm
 
 echo "==> wasm-bindgen --target web -> viewer/dist/wasm/"
 mkdir -p viewer/dist/wasm viewer/src/wasm
