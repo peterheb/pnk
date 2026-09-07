@@ -787,16 +787,19 @@ export function applyTextFit(root: HTMLElement): void {
     // it (7b8e38edb184's 66pt title box: two lines and five empty 24pt
     // paragraphs; Pages prints the two lines at full size), so for the
     // tolerance mode the content ends at the last block that has ink.
-    // Layout heights, unscaled: the transform does not change offsets.
-    // [Pages A, 2026-09-06]
+    // Client rects carry every transform (the fit scale here, the page's
+    // fit-to-viewport scale above); the inner's own rect against its layout
+    // height gives the factor, whatever it is. [Pages A, 2026-09-06]
     const inkHeight = (): number => {
       if (box.dataset.textFit !== "tolerance") return inner.offsetHeight;
       const kids = Array.from(inner.children) as HTMLElement[];
-      const top = inner.getBoundingClientRect().top;
+      const base = inner.getBoundingClientRect();
+      if (!(base.height > 0)) return inner.offsetHeight;
+      const perPx = inner.offsetHeight / base.height;
       for (let k = kids.length - 1; k >= 0; k--) {
         const c = kids[k];
         if (c.textContent?.trim() || c.querySelector("img, svg, canvas, table")) {
-          return (c.getBoundingClientRect().bottom - top) / s;
+          return (c.getBoundingClientRect().bottom - base.top) * perPx;
         }
       }
       return inner.offsetHeight;
@@ -819,7 +822,6 @@ export function applyTextFit(root: HTMLElement): void {
       let hi = Math.min(1, sW);
       for (let i = 0; i < 6 && hi - lo > 0.01; i++) {
         const mid = (lo + hi) / 2;
-        s = mid;
         layoutAt(mid);
         if (fits(mid)) lo = mid; else hi = mid;
       }
