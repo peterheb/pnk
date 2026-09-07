@@ -46,11 +46,12 @@ function templateCandidates(
   return i === 0 ? [first, ...parity] : parity;
 }
 
-/** `i` = 0-based page index WITHIN the section. A section whose masters
- *  carry no header/footer text and that asks to inherit the previous
- *  section's (TP.SectionArchive.inherit_previous_header_footer) takes that
- *  section's parity template: 48f5f124's second section repeats the first
- *  section's "n von N" footer on every page. */
+/** `i` = 0-based page index WITHIN the section. A section that inherits the
+ *  previous section's headers/footers (TP.SectionArchive
+ *  .inherit_previous_header_footer, Pages' "Match previous section") has
+ *  them copied into its own masters by the converter, so no section chain
+ *  is walked here (48f5f124's "n von N" footer, 26a356dc's newsletter
+ *  header). */
 function hfTemplateFor(
   doc: PagesDocument,
   secIndex: number | undefined,
@@ -60,11 +61,6 @@ function hfTemplateFor(
   const candidates = templateCandidates(doc, sec, i);
   if (i === 0 && candidates[0]?.hideHeadersFooters) return undefined;
   for (const c of candidates) if (templateHasHf(c)) return c;
-  for (let s = (secIndex ?? 0) - 1; s >= 0 && doc.sections[s + 1]?.inheritPreviousHeaderFooter; s--) {
-    // a later page of the earlier section: parity template, never its first-page one
-    const inherited = templateCandidates(doc, doc.sections[s], i === 0 ? 2 : i);
-    for (const c of inherited) if (templateHasHf(c)) return c;
-  }
   return undefined;
 }
 
