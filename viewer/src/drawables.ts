@@ -792,17 +792,16 @@ export function applyTextFit(root: HTMLElement): void {
     // height gives the factor, whatever it is. [Pages A, 2026-09-06]
     const inkHeight = (): number => {
       if (box.dataset.textFit !== "tolerance") return inner.offsetHeight;
-      const kids = Array.from(inner.children) as HTMLElement[];
       const base = inner.getBoundingClientRect();
       if (!(base.height > 0)) return inner.offsetHeight;
       const perPx = inner.offsetHeight / base.height;
-      for (let k = kids.length - 1; k >= 0; k--) {
-        const c = kids[k];
-        if (c.textContent?.trim() || c.querySelector("img, svg, canvas, table")) {
-          return (c.getBoundingClientRect().bottom - base.top) * perPx;
-        }
+      let bottom = -Infinity;
+      for (const c of inner.querySelectorAll<HTMLElement>("p, h1, h2, h3, h4, h5, h6, table, img, svg, canvas")) {
+        if (c.tagName.length <= 2 && !c.textContent?.trim() && !c.querySelector("img, svg, canvas")) continue;
+        bottom = Math.max(bottom, c.getBoundingClientRect().bottom);
       }
-      return inner.offsetHeight;
+      if (bottom === -Infinity) return inner.offsetHeight;
+      return (bottom - base.top) * perPx;
     };
     const fits = (scale: number) => inkHeight() * scale <= boxH + 0.5 && scale <= sW + 1e-6;
     for (let i = 0; i < 3; i++) {
