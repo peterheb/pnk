@@ -230,8 +230,7 @@
               }
             ]
           },
-          "verticalAlignment": "top",
-          "textFit": "grow"
+          "verticalAlignment": "top"
         },
         {
           "type": "shape",
@@ -1167,8 +1166,7 @@
               }
             ]
           },
-          "verticalAlignment": "top",
-          "textFit": "grow"
+          "verticalAlignment": "top"
         },
         {
           "type": "image",
@@ -1428,8 +1426,7 @@
               }
             ]
           },
-          "verticalAlignment": "middle",
-          "textFit": "grow"
+          "verticalAlignment": "middle"
         },
         {
           "type": "textbox",
@@ -1464,8 +1461,7 @@
               }
             ]
           },
-          "verticalAlignment": "top",
-          "textFit": "grow"
+          "verticalAlignment": "top"
         }
       ]
     }
