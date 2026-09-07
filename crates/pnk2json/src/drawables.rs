@@ -548,19 +548,34 @@ fn shape_info_drawable(
         };
         if let Some((common, p_style, vertical_alignment)) = anchored {
             if common.angle_deg.unwrap_or(0.0) == 0.0 {
+                // The alignment anchor is a property of laid-out text; a
+                // shape without text (michaelbrooks e525ca91's timeline
+                // rules, flags 1, middle-aligned by default) keeps its
+                // stored corner, and a text-less flags-0 shape keeps the
+                // round-1 centre reading.
+                let has_text = p_style.is_some();
                 let h_align = p_style
                     .and_then(|i| ctx.para_pool.items.get(i as usize))
                     .and_then(|ps| ps.horizontal_alignment.clone());
-                let fx = match h_align {
-                    Some(HorizontalAlignment::Center) => 0.5,
-                    Some(HorizontalAlignment::Right) => 1.0,
-                    _ => 0.0,
+                let fx = if !has_text {
+                    0.5
+                } else {
+                    match h_align {
+                        Some(HorizontalAlignment::Center) => 0.5,
+                        Some(HorizontalAlignment::Right) => 1.0,
+                        _ => 0.0,
+                    }
                 };
-                let fy = match vertical_alignment {
-                    Some(VerticalAlignment::Middle) => 0.5,
-                    Some(VerticalAlignment::Bottom) => 1.0,
-                    _ => 0.0,
+                let fy = if !has_text {
+                    0.5
+                } else {
+                    match vertical_alignment {
+                        Some(VerticalAlignment::Middle) => 0.5,
+                        Some(VerticalAlignment::Bottom) => 1.0,
+                        _ => 0.0,
+                    }
                 };
+                let flags = if !has_text && flags != 0 { 3 } else { flags };
                 if let (Some(p), Some(s)) = (common.position.as_mut(), common.size.as_ref()) {
                     if flags & 1 == 0 {
                         p.x -= s.width * fx;

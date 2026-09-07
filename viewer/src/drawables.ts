@@ -798,9 +798,10 @@ function applyKeynoteLineMetrics(inner: HTMLElement, text: StyledText | undefine
         ? ((lm.baseline - a + d - lm.descent) * size) / 2
         : lm.baseline * size - (pitch + (a - d) * size) / 2;
     para.style.lineHeight = `${(minSize < size ? pitchFor(minFont, minSize) : pitch).toFixed(3)}px`;
+    // the face only: a weight or style on the block would be inherited by
+    // runs that carry none (neas 251aeddf: an italic first run made the
+    // whole paragraph italic)
     para.style.fontFamily = family;
-    para.style.fontWeight = weight;
-    para.style.fontStyle = style;
     if (block !== para) block.style.lineHeight = para.style.lineHeight;
     block.style.position = "relative";
     block.style.top = `${shift.toFixed(2)}px`;
