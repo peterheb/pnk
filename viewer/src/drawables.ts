@@ -848,6 +848,13 @@ function applyTextFitMode(
     layer.style.position = "relative";
     layer.style.overflow = "visible";
     layer.style.height = "auto";
+    // Keynote sized the box to its own layout and lets a line run a hair
+    // past the right indent rather than wrap it: ijclab bd1b298e's author
+    // box is 255.4pt for a 243.2pt name that has 241.0pt after insets and
+    // indents, drawn on one line in the export and wrapped here. The same
+    // 3% slack the zero-size boxes get.
+    const inner = layer.querySelector<HTMLElement>(":scope > .drawable-text-inner");
+    if (inner) inner.style.marginRight = "-3%";
   } else if (fit === "shrink") {
     div.dataset.textFit = "shrink";
   } else {
