@@ -862,6 +862,12 @@ function paginatedBody(
   const listState = newListNumberingState();
   const els: HTMLElement[] = [];
   const forceBreak: boolean[] = [];
+  // TSWP paragraph properties keep_with_next (10) and keep_lines_together
+  // (9) [proto], resolved on the pooled style: a heading follows its
+  // paragraph onto the next page; a paragraph that must stay whole moves
+  // instead of breaking (cf4b76a33f5a's numbered headings carry both).
+  const keepNext: boolean[] = [];
+  const keepWhole: boolean[] = [];
   const fullBleed: (Drawable[] | null)[] = [];
   // "Move with Text" objects leave the line and become a float that
   // precedes their anchor paragraph wherever it lands (see anchorFloat)
@@ -883,12 +889,15 @@ function paginatedBody(
     if (fb) {
       els.push(document.createElement("div")); // zero-height stand-in
       forceBreak.push(true);
+      keepNext[i] = false;
+      keepWhole[i] = false;
       return;
     }
     els.push(renderParagraph(p, hdoc, ctx, listState));
-    forceBreak.push(
-      !!p.pageBreakBefore || !!paraStyleOf(hdoc, p.pStyle)?.pageBreakBefore || !!fullBleed[i - 1],
-    );
+    const ps = paraStyleOf(hdoc, p.pStyle);
+    forceBreak.push(!!p.pageBreakBefore || !!ps?.pageBreakBefore || !!fullBleed[i - 1]);
+    keepNext[i] = !!ps?.keepWithNext;
+    keepWhole[i] = !!ps?.keepLinesTogether;
   });
   /**
    * A paragraph into a container, its anchor float after it — a CSS float
@@ -1167,7 +1176,7 @@ function paginatedBody(
             record(b, piece); // an empty trailing paragraph stays where it is
             break;
           }
-          const rest: HTMLElement | null = fl
+          const rest: HTMLElement | null = fl || (keepWhole[k] && pageHasContent())
             ? null
             : splitOverflow(piece, b.container!, g.contentH);
           if (rest) {
@@ -1184,8 +1193,25 @@ function paginatedBody(
           }
           piece.remove();
           if (first) fl?.remove();
+          // keep-with-next: the paragraphs that end this page and are
+          // marked to stay with what follows leave with it (at most three,
+          // and never the page's only content)
+          const pulled: { el: HTMLElement; para: number }[] = [];
+          while (b.els.length > 1 && pulled.length < 3 && keepNext[b.paras[b.paras.length - 1]]) {
+            const el = b.els.pop()!;
+            const para = b.paras.pop()!;
+            anchorEls.get(para)?.remove();
+            el.remove();
+            pulled.unshift({ el, para });
+          }
           newPage();
           blk = startBlock();
+          for (const { el: pel, para } of pulled) {
+            place(blk.container!, para, pel);
+            blk.els.push(pel);
+            blk.paras.push(para);
+            pageOfPara[para] = pages.length - 1;
+          }
           tryPlace(blk, piece, first);
           record(blk, piece);
           break;

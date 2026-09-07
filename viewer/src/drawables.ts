@@ -985,9 +985,29 @@ export function applyTextFit(root: HTMLElement): void {
       inner.style.transform = `scale(${scale.toFixed(4)})`;
       inner.style.transformOrigin = origin;
     };
-    const fits = (scale: number) => inner.offsetHeight * scale <= boxH + 0.5 && scale <= sW + 1e-6;
+    // A fixed frame clips trailing EMPTY paragraphs without anyone seeing
+    // it (7b8e38edb184's 66pt title box: two lines and five empty 24pt
+    // paragraphs; Pages prints the two lines at full size), so for the
+    // tolerance mode the content ends at the last block that has ink.
+    // Client rects carry every transform (the fit scale here, the page's
+    // fit-to-viewport scale above); the inner's own rect against its layout
+    // height gives the factor, whatever it is. [Pages A, 2026-09-06]
+    const inkHeight = (): number => {
+      if (box.dataset.textFit !== "tolerance") return inner.offsetHeight;
+      const base = inner.getBoundingClientRect();
+      if (!(base.height > 0)) return inner.offsetHeight;
+      const perPx = inner.offsetHeight / base.height;
+      let bottom = -Infinity;
+      for (const c of inner.querySelectorAll<HTMLElement>("p, h1, h2, h3, h4, h5, h6, table, img, svg, canvas")) {
+        if (c.tagName.length <= 2 && !c.textContent?.trim() && !c.querySelector("img, svg, canvas")) continue;
+        bottom = Math.max(bottom, c.getBoundingClientRect().bottom);
+      }
+      if (bottom === -Infinity) return inner.offsetHeight;
+      return (bottom - base.top) * perPx;
+    };
+    const fits = (scale: number) => inkHeight() * scale <= boxH + 0.5 && scale <= sW + 1e-6;
     for (let i = 0; i < 3; i++) {
-      const contentH = inner.offsetHeight;
+      const contentH = inkHeight();
       if (fits(s)) break;
       const need = Math.min(s, boxH / contentH, sW);
       s = Math.max(need, minScale);

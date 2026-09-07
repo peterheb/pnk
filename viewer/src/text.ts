@@ -77,6 +77,24 @@ function familyOf(name: string): string {
   return base && base !== name ? base : "";
 }
 
+/**
+ * The font-family stack a run in `fontName` gets: the PostScript name, its
+ * family, the Google Fonts substitute, then a local guess and the generic.
+ * A paragraph BLOCK takes the same stack as its dominant run so the line
+ * strut and the run share ascent/descent proportions; with the chrome's
+ * system face as the strut, an 11pt Carlito line whose line-height is
+ * 13.87px laid out 18px tall (cf4b76a page 2, measured 14.9pt pitch
+ * against Pages' 13.9).
+ */
+export function fontStack(fontName: string): string {
+  const flat = fontName.replace(/[\s-]+/g, "");
+  const local = FONT_FALLBACKS.find(([re]) => re.test(flat))?.[1] ?? "sans-serif";
+  const sub = substituteFamily(fontName);
+  const fb = sub ? `"${sub}", ${local}` : local;
+  const family = familyOf(fontName);
+  return family ? `"${fontName}", "${family}", ${fb}` : `"${fontName}", ${fb}`;
+}
+
 export function applyCharStyle(el: HTMLElement, cs: CharStyle | undefined): void {
   if (!cs) return;
   const s = el.style;
@@ -140,71 +158,106 @@ export function applyCharStyle(el: HTMLElement, cs: CharStyle | undefined): void
 }
 
 /**
- * Natural (single-spaced) line height per em for common faces: ascent +
- * descent + line gap from the font's hhea table. Apple's line-spacing
- * MULTIPLE scales THIS, not the font size — 16b4195d's Arial 12pt body at
- * 1.2× measures a 16.7pt pitch in Pages' export (1.2 × 1.15 × 12), where a
- * unitless CSS line-height of 1.2 gave 14.4pt and packed 8 pages into 6.
- * Keyed by despaced lowercase prefix; unknown faces use 1.2, the browser's
- * usual `normal`. [inferred: metrics from the fonts' hhea tables]
+ * Face metrics per em — ascent, descent, line gap — from CoreText on macOS
+ * 26.6 (CTFontGetAscent/Descent/Leading ÷ size). Pages does not size a
+ * line at (ascent + descent + gap) × size: it ROUNDS the ascent and the
+ * descent to whole points first, scales that by the paragraph's spacing
+ * multiple, and adds the rounded gap — measured on 24 Pages exports
+ * (docs/JUDGE.md, Pages round 3a): Arial 11pt lays out at 12pt (10 + 2),
+ * not 12.65; Verdana 16pt at 1.2× at exactly 22.8 = (16 + 3) × 1.2;
+ * Calibri 11pt at 1.079× at 13.84 = (8 + 3) × 1.079 + 2; Times New Roman
+ * 10pt at 1.15× at 12.59 = (9 + 2) × 1.15. 43 of the 87 measured
+ * paragraphs land within 0.15pt under this rule and 3 under the old sum
+ * (the rest carry an exact spacing or a heading style not in the sample).
+ * Faces whose CoreText sum is exactly 1.0 (Helvetica, Times, Courier,
+ * Hoefler Text — the Type 1-era Apple faces with no line gap) are laid out
+ * at round(1.2 × size) instead: Helvetica measured 13/14/17/20pt at
+ * 11/12/14/17pt in three documents. [inferred from those exports]
+ * Keyed by despaced lowercase prefix; an unknown face keeps the browser's
+ * `normal` line height and a plain 1.2 under a multiple.
  */
-const FONT_LINE_HEIGHTS: [RegExp, number][] = [
-  // measured with CoreText on macOS 26.6:
-  //   (CTFontGetAscent + CTFontGetDescent + CTFontGetLeading) / size
-  // Several of the old guesses were a face's number applied to a different
-  // face — Helvetica carried Arial's 1.15 where its real leading is 1.00
-  // (zero line gap), Palatino 1.35 against a real 1.10, Hoefler Text 1.37
-  // against 1.00 — and Menlo (1.164) and Monaco (1.334) shared one entry.
-  [/^helveticaneue/, 1.193],
-  [/^helvetica/, 1.0],
-  [/^arialnarrow/, 1.1475],
-  [/^arialblack/, 1.41],
-  [/^arial/, 1.1499],
-  [/^timesnewroman/, 1.1499],
-  [/^times/, 1.0],
-  [/^georgia/, 1.1362],
-  [/^verdana/, 1.2153],
-  [/^tahoma/, 1.207],
-  [/^trebuchet/, 1.1611],
-  // Calibri / Cambria / Garamond are not installed on macOS: these are the
-  // substitutes FONT_FALLBACKS names, so the multiple scales what is drawn.
-  [/^calibri|^candara|^corbel|^segoeui/, 1.193],
-  [/^cambria|^constantia/, 1.1362],
-  [/^garamond/, 1.144],
-  [/^avenir/, 1.366],
-  [/^sfpro|^sf-|^\.sf|^sfns/, 1.193],
-  [/^palatino/, 1.10],
-  [/^baskerville/, 1.144],
-  [/^gillsans/, 1.1484],
-  [/^futura/, 1.328],
-  [/^charter/, 1.2202],
-  [/^couriernew|^courier/, 1.0],
-  [/^menlo/, 1.164],
-  [/^monaco/, 1.334],
-  [/^lucida/, 1.178],
-  [/^impact/, 1.2197],
-  [/^rockwell/, 1.2002],
-  [/^americantypewriter/, 1.154],
-  [/^copperplate/, 1.03],
-  [/^chalkboard/, 1.276],
-  [/^markerfelt/, 1.086],
-  [/^bradleyhand/, 1.249],
-  [/^snellroundhand/, 1.261],
-  [/^zapfino/, 3.378],
-  [/^noteworthy/, 1.615],
-  [/^optima/, 1.212],
-  [/^hoefler/, 1.0],
-  [/^didot/, 1.264],
-  [/^seravek/, 1.227],
-  [/^wingdings|^webdings/, 1.11],
-  [/^symbol/, 1.0],
-  [/^hirakaku|^hiragino|^hiramin|^yugothic|^osaka/, 1.5],
+interface FaceMetrics {
+  a: number;
+  d: number;
+  g: number;
+  /** Pages sizes the line at round(1.2 × size): see above. */
+  sum?: boolean;
+}
+const FONT_METRICS: [RegExp, FaceMetrics][] = [
+  [/^helveticaneue/, { a: 0.952, d: 0.213, g: 0.028 }],
+  [/^helvetica/, { a: 0.96, d: 0.24, g: 0, sum: true }],
+  [/^arialnarrow/, { a: 0.9355, d: 0.2119, g: 0 }],
+  [/^arialblack/, { a: 1.1006, d: 0.3096, g: 0 }],
+  [/^arial/, { a: 0.9053, d: 0.2119, g: 0.0327 }],
+  [/^timesnewroman/, { a: 0.8911, d: 0.2163, g: 0.0425 }],
+  [/^times/, { a: 0.96, d: 0.24, g: 0, sum: true }],
+  [/^georgia/, { a: 0.917, d: 0.2192, g: 0 }],
+  [/^verdana/, { a: 1.0054, d: 0.21, g: 0 }],
+  [/^tahoma/, { a: 1.0005, d: 0.2065, g: 0 }],
+  [/^trebuchet/, { a: 0.939, d: 0.2222, g: 0 }],
+  // Calibri / Cambria / Garamond are not installed on macOS: the metrics
+  // are those of the substitutes FONT_FALLBACKS names (Carlito shares
+  // Calibri's: the export PDF embeds Calibri with 0.75 / 0.25).
+  [/^calibri|^candara|^corbel|^segoeui/, { a: 0.75, d: 0.25, g: 0.2207 }],
+  [/^cambria|^constantia/, { a: 0.917, d: 0.2192, g: 0 }],
+  [/^garamond/, { a: 0.8979, d: 0.2461, g: 0 }],
+  [/^avenir/, { a: 1.0, d: 0.366, g: 0 }],
+  [/^sfpro|^sf-|^\.sf|^sfns/, { a: 0.952, d: 0.213, g: 0.028 }],
+  [/^palatino/, { a: 0.8228, d: 0.2773, g: 0 }],
+  [/^baskerville/, { a: 0.8979, d: 0.2461, g: 0 }],
+  [/^gillsans/, { a: 0.918, d: 0.2305, g: 0 }],
+  [/^futura/, { a: 1.0386, d: 0.2598, g: 0.0298 }],
+  [/^charter/, { a: 0.98, d: 0.2402, g: 0 }],
+  [/^couriernew/, { a: 0.8325, d: 0.3003, g: 0 }],
+  [/^courier/, { a: 0.96, d: 0.24, g: 0, sum: true }],
+  [/^menlo/, { a: 0.9282, d: 0.2358, g: 0 }],
+  [/^monaco/, { a: 1.0, d: 0.25, g: 0.0835 }],
+  [/^lucida/, { a: 0.9668, d: 0.2109, g: 0 }],
+  [/^impact/, { a: 1.0088, d: 0.2109, g: 0 }],
+  [/^rockwell/, { a: 0.6792, d: 0.3208, g: 0.2002 }],
+  [/^americantypewriter/, { a: 0.904, d: 0.25, g: 0 }],
+  [/^copperplate/, { a: 0.763, d: 0.248, g: 0.019 }],
+  [/^chalkboard/, { a: 1.1315, d: 0.2829, g: 0.0133 }],
+  [/^markerfelt/, { a: 0.868, d: 0.218, g: 0 }],
+  [/^bradleyhand/, { a: 0.85, d: 0.399, g: 0 }],
+  [/^snellroundhand/, { a: 0.937, d: 0.324, g: 0 }],
+  [/^zapfino/, { a: 1.875, d: 1.5025, g: 0 }],
+  [/^noteworthy/, { a: 1.28, d: 0.32, g: 0.015 }],
+  [/^optima/, { a: 0.919, d: 0.268, g: 0.025 }],
+  [/^hoefler/, { a: 0.96, d: 0.24, g: 0, sum: true }],
+  [/^didot/, { a: 0.941, d: 0.299, g: 0.024 }],
+  [/^seravek/, { a: 0.925, d: 0.302, g: 0 }],
+  [/^wingdings|^webdings/, { a: 0.9, d: 0.21, g: 0 }],
+  [/^symbol/, { a: 0.96, d: 0.24, g: 0, sum: true }],
+  [/^hirakaku|^hiragino|^hiramin|^yugothic|^osaka/, { a: 0.88, d: 0.12, g: 0.5 }],
 ];
 
-export function naturalLineHeight(fontName: string | undefined): number {
-  if (!fontName) return 1.2;
+function faceMetrics(fontName: string | undefined): FaceMetrics | undefined {
+  if (!fontName) return undefined;
   const flat = fontName.replace(/[\s-]+/g, "").toLowerCase();
-  return FONT_LINE_HEIGHTS.find(([re]) => re.test(flat))?.[1] ?? 1.2;
+  return FONT_METRICS.find(([re]) => re.test(flat))?.[1];
+}
+
+/** Natural (single-spaced) line height per em, unrounded: ascent + descent
+ *  + gap (1.2 for the `sum` faces and for unknown ones). */
+export function naturalLineHeight(fontName: string | undefined): number {
+  const m = faceMetrics(fontName);
+  if (!m) return 1.2;
+  return m.sum ? 1.2 : m.a + m.d + m.g;
+}
+
+/**
+ * The line height Pages gives a paragraph set in `fontName` at `sizePx`
+ * with a spacing `multiple` (1 = single): rounded ascent + rounded descent,
+ * times the multiple, plus the rounded line gap (see FONT_METRICS). An
+ * unknown face gets 1.2 × size × multiple.
+ */
+export function lineHeightPx(fontName: string | undefined, sizePx: number, multiple = 1): number {
+  const m = faceMetrics(fontName);
+  if (!m) return 1.2 * sizePx * multiple;
+  const gap = Math.round(m.g * sizePx);
+  const body = m.sum ? Math.round(1.2 * sizePx) : Math.round(m.a * sizePx) + Math.round(m.d * sizePx);
+  return body * multiple + gap;
 }
 
 export function applyParaStyle(el: HTMLElement, ps: ParaStyle, fontName?: string, fontSizePx?: number): void {
@@ -223,9 +276,14 @@ export function applyParaStyle(el: HTMLElement, ps: ParaStyle, fontName?: string
   if (firstIndent - leftIndent) s.textIndent = `${firstIndent - leftIndent}px`;
   if (ps.spaceBeforePt) s.marginTop = `${ps.spaceBeforePt}px`;
   if (ps.spaceAfterPt) s.marginBottom = `${ps.spaceAfterPt}px`;
-  // multiple × the face's natural line height (see FONT_LINE_HEIGHTS)
-  if (ps.lineSpacingMultiple) s.lineHeight = (ps.lineSpacingMultiple * naturalLineHeight(fontName)).toFixed(3);
-  else if (ps.lineSpacingExactPt) {
+  // Pages' rounded line height (FONT_METRICS), emitted UNITLESS so a run
+  // of another size inside the paragraph scales its own line box.
+  const known = !!faceMetrics(fontName) && !!fontSizePx;
+  if (ps.lineSpacingMultiple) {
+    s.lineHeight = known
+      ? (lineHeightPx(fontName, fontSizePx!, ps.lineSpacingMultiple) / fontSizePx!).toFixed(4)
+      : (ps.lineSpacingMultiple * naturalLineHeight(fontName)).toFixed(3);
+  } else if (ps.lineSpacingExactPt) {
     // "min"/"max" bound the NATURAL line height rather than replace it
     // (TSWP.LineSpacingArchive mode 1/3): kcsrk's Menlo 24pt code blocks
     // store "at least 20pt" and Keynote lays them out at Menlo's natural
@@ -233,7 +291,7 @@ export function applyParaStyle(el: HTMLElement, ps: ParaStyle, fontName?: string
     // (mode 4) adds the amount to the natural height. Without a known
     // paragraph size the bound falls back to exact. [inferred from the
     // export; mode semantics per the proto's enum names]
-    const natural = fontSizePx ? naturalLineHeight(fontName) * fontSizePx : undefined;
+    const natural = fontSizePx ? lineHeightPx(fontName, fontSizePx) : undefined;
     const mode = ps.lineSpacingMode;
     let lh = ps.lineSpacingExactPt;
     if (natural !== undefined) {
@@ -242,6 +300,10 @@ export function applyParaStyle(el: HTMLElement, ps: ParaStyle, fontName?: string
       else if (mode === "space-between") lh = natural + lh;
     }
     s.lineHeight = `${lh.toFixed(2)}px`;
+  } else if (known) {
+    // single spacing is the rounded natural height too (Arial 11pt: 12pt,
+    // where the browser's `normal` gives 12.65)
+    s.lineHeight = (lineHeightPx(fontName, fontSizePx!) / fontSizePx!).toFixed(4);
   }
   if (ps.backgroundColor) s.backgroundColor = ps.backgroundColor;
   if (ps.border) {
@@ -443,6 +505,8 @@ export function renderParagraph(
     .find((n): n is string => !!n);
 
   const paraSizePx = runSizes.length ? Math.max(...runSizes) : undefined;
+  // the block's face sets the line strut (see fontStack)
+  if (paraFont) el.style.fontFamily = fontStack(paraFont);
   if (!hasMarker) {
     listState.lastKey = null;
     if (style) applyParaStyle(el, style, paraFont, paraSizePx);

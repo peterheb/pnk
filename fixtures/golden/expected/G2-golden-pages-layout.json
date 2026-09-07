@@ -236,8 +236,7 @@
             "left": 4.0,
             "bottom": 4.0,
             "right": 4.0
-          },
-          "textFit": "grow"
+          }
         },
         {
           "type": "shape",
@@ -1233,8 +1232,7 @@
             "left": 4.0,
             "bottom": 4.0,
             "right": 4.0
-          },
-          "textFit": "grow"
+          }
         },
         {
           "type": "image",
@@ -1512,8 +1510,7 @@
             "left": 4.0,
             "bottom": 4.0,
             "right": 4.0
-          },
-          "textFit": "grow"
+          }
         },
         {
           "type": "textbox",
@@ -1554,8 +1551,7 @@
             "left": 4.0,
             "bottom": 4.0,
             "right": 4.0
-          },
-          "textFit": "grow"
+          }
         }
       ]
     }
