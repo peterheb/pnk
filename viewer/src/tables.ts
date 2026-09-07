@@ -147,6 +147,24 @@ const CURRENCY_SYMBOL: Record<string, string> = {
   ZAR: "R", CHF: "CHF ",
 };
 
+/** The symbol Numbers prints for a currency code in the formatting
+ * locale: Intl's "symbol" form ("CA$" for CAD in en-US, "$" in en-CA,
+ * "$US" for USD in fr-FR), which is what NSNumberFormatter prints
+ * (4b5a7b9d32af's export on an en_US Mac: "CA$2.00 ea."). The hand table
+ * stays as the fallback for codes Intl rejects; no code means "$". */
+function currencySymbol(code: string): string {
+  if (!code) return "$";
+  try {
+    const part = new Intl.NumberFormat(docLocale, { style: "currency", currency: code })
+      .formatToParts(1)
+      .find((p) => p.type === "currency");
+    if (part) return part.value;
+  } catch {
+    /* unknown code */
+  }
+  return CURRENCY_SYMBOL[code] ?? code + " ";
+}
+
 /**
  * Apple duration rendering, following numbers-parser's decode of
  * TSK.FormatStructArchive (cell.py _duration_format/_auto_units):
@@ -413,11 +431,18 @@ function valueToText(cell: TableCell, format: CellFormat | undefined): string {
       // unless the format says otherwise; unknown codes keep "CODE " prefix
       const n = typeof v === "number" ? v : Number(v);
       const code = cell.cur ?? format?.currencyCode ?? "";
+      // A custom currency pattern ("¤#,##0.00' ea.'"): ¤ is the symbol
+      // and the rest is the number pattern (4b5a7b9d32af: Numbers prints
+      // "CA$2.00 ea." for CAD).
+      if (format?.kind === "custom" && format.formatString?.includes("¤")) {
+        const custom = formatCustomNumber(n, format.formatString.replace(/¤/g, currencySymbol(code)));
+        if (custom !== undefined) return custom;
+      }
       const decimals = format?.decimals ?? 2;
       // currency groups by default (Apple: $1,234.56); an explicit
       // grouping:false in the stored format turns it off
       const body = formatNumber(Math.abs(n), decimals, true, format?.grouping ?? true);
-      const sym = CURRENCY_SYMBOL[code] ?? (code ? code + " " : "$");
+      const sym = currencySymbol(code);
       if (format?.accounting) {
         // accounting style: symbol at the cell's left edge, amount at the
         // right, negatives in parentheses; the tab marks the split for the

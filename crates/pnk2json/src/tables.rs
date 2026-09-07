@@ -2173,6 +2173,36 @@ fn custom_name(ctx: &Ctx, f: &Msg) -> Option<String> {
     None
 }
 
+/// The currency of a custom CURRENCY format (default_format type 274):
+/// `TSK.CustomFormatArchive.default_format (3).currency_code (3)`, inline
+/// (f42) or through the document custom-format list by uuid (f41), the
+/// way `custom_name` finds the name. 4b5a7b9d32af's "Custom Format 3"
+/// ("¤#,##0.00' ea.'") is CAD and Numbers prints "CA$2.00 ea.".
+fn custom_currency(ctx: &Ctx, f: &Msg) -> Option<String> {
+    let code_of = |cf: &Msg| cf.msg(3).and_then(|df| df.string(3)).filter(|c| !c.is_empty());
+    if let Some(c) = f.msg(42).and_then(|cf| code_of(&cf)) {
+        return Some(c);
+    }
+    let uid = f.msg(41)?;
+    let key = (uid.varint(1)?, uid.varint(2)?);
+    for rec in ctx.loaded.records.values() {
+        if rec.type_id != 222 {
+            continue;
+        }
+        let Some(list) = rec.msg.as_ref() else {
+            continue;
+        };
+        let uuids = list.msgs(1);
+        let formats = list.msgs(2);
+        for (i, u) in uuids.iter().enumerate() {
+            if (u.varint(1), u.varint(2)) == (Some(key.0), Some(key.1)) {
+                return formats.get(i).and_then(code_of);
+            }
+        }
+    }
+    None
+}
+
 fn custom_pattern(ctx: &Ctx, f: &Msg, value: Option<f64>) -> Option<String> {
     if let Some(cf) = f.msg(42) {
         if let Some(p) = custom_branch(&cf, value) {
@@ -2341,7 +2371,10 @@ fn pick_format(
             Some(CellFormat {
                 kind,
                 decimals,
-                currency_code: f.string(3),
+                currency_code: f.string(3).or_else(|| match ft {
+                    Some(270..=274) => custom_currency(ctx, &f),
+                    _ => None,
+                }),
                 // show_thousands_separator (f5), raw presence: absent means
                 // the KIND's default (currency groups, number does not)
                 grouping: f.boolean(5),
@@ -2362,7 +2395,12 @@ fn pick_format(
         .map(|cf| CellFormat {
             kind: CellFormatKind::Custom,
             decimals: None,
-            currency_code: None,
+            // A custom CURRENCY format (default_format type 274) names its
+            // currency in the struct's currency_code (f3): 4b5a7b9d32af's
+            // "Custom Format 3" is "¤#,##0.00' ea.'" over CAD and Numbers'
+            // export prints "CA$2.00 ea."; the code was dropped and the
+            // viewer fell back to "$2.00".
+            currency_code: cf.msg(3).and_then(|df| df.string(3)),
             grouping: None,
             accounting: None,
             // CustomFormatArchive: the pattern is default_format (f3)
