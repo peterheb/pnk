@@ -1811,7 +1811,7 @@ What remains, in the order the judge names it:
 
 Numbers: two-axis charts (type 11, 666 in 0ab5dd52841e); auto-fit row leading per face (17891b89da2f 14 vs 16pt rows); the a720beed1ab2 header row the export prints blank; pie labels inside the slices (6914f46e51ab).
 Keynote: faces the Mac lacks (Keynote draws Helvetica, the viewer a substitute; a policy question, docs/fonts.md), 1-3pt drift on substituted faces, weight-named cuts with `bold: false`, empty paragraphs without a size (proposal), hand-drawn brush parameters; then 20 more decks from unjudged hosts.
-Pages: line pitch on 11pt text (5c07d836 cover, 20.6pt in Pages against 32pt here) and the page cascade it causes; rotated wrapping objects (10a06959, 25 documents); shape image fills in the JSON that the viewer does not paint (4659b5b6); the paragraph painting over an inline table (cf4b76a); then the unexamined verdicts in round 3b's list.
+Pages: Arabic documents in a face Pages substitutes per script (ae1cc13b, 77890685; the archive does not store the fallback face); the residual pagination drift on long documents (eb2a7cde 63 pages against 61, cf4b76a half a page behind by page 20); rotated wrapping objects (10a06959, 25 documents); b31db822's cover shape lines cut at the left (drawables.ts); `h_offset_type`/`v_offset_type` and `widow_control` unmodelled (proposals in round 3a); reconciling Numbers' row-leading measurements with the round-3a line rule; 4047e81b page 4; then the unexamined verdicts in round 3b's list.
 Score more of the corpus, one or two pages per document, with Qwen; use
 the ranked list to choose fidelity work; add a reference re-run with
 Claude when the prompt changes again.
