@@ -6,7 +6,7 @@ import type { TableModel } from "../../model/src/shared";
 import type { ViewerCtx } from "./ctx";
 import { applyTextFit, renderCanvasDrawable } from "./drawables";
 import type { HydratedDoc } from "./hydrate";
-import { spillUnwrappedCells, tableDrawnHeight, tableDrawnWidth } from "./tables";
+import { fitCappedCells, spillUnwrappedCells, tableDrawnHeight, tableDrawnWidth } from "./tables";
 
 function drawableExtent(
   d: { type: string; table?: TableModel; chart?: { legendFrame?: { x: number; y: number; width: number; height: number } }; common?: { position?: { x: number; y: number }; size?: { width: number; height: number } }; children?: unknown[] },
@@ -99,6 +99,7 @@ export function renderNumbers(doc: NumbersDocument, hdoc: HydratedDoc, ctx: View
     // proteger-les-donnees red banner cut its own caption).
     applyTextFit(areaSlot);
     spillUnwrappedCells(areaSlot);
+    fitCappedCells(areaSlot);
     fitCanvasToContent(areaSlot);
     for (const tab of tabs.children) {
       tab.classList.toggle("active", (tab as HTMLElement).dataset.sheetIndex === String(index));

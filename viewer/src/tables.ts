@@ -591,6 +591,31 @@ function boxCell(td: HTMLTableCellElement, rowPx: number): void {
 }
 
 /**
+ * A capped cell whose content overshoots the row by a little is a metric
+ * difference, not a clip Numbers makes: eb299192a219's "Total Charge
+ * (minimum charge is 4kg)" stores a 43.95pt row for a 26pt and a 12pt
+ * Calibri line, which Carlito's 1.193 leading lays out at 45.3px, and the
+ * export shows both lines whole. Up to a 20% overshoot the leading is
+ * tightened to fit (the box's unitless line-height is inherited by every
+ * run); past that the clip stands. Needs layout: call after the table is
+ * in the document.
+ */
+export function fitCappedCells(root: HTMLElement): void {
+  for (const box of Array.from(root.querySelectorAll<HTMLElement>("table.sheet-table .cell-clip"))) {
+    if (!box.style.maxHeight) continue;
+    const need = box.scrollHeight;
+    const have = box.clientHeight;
+    if (need <= have || have <= 0) continue;
+    const ratio = have / need;
+    if (ratio < 0.8) continue;
+    const lh = parseFloat(getComputedStyle(box).lineHeight);
+    const fs = parseFloat(getComputedStyle(box).fontSize);
+    if (!(lh > 0) || !(fs > 0)) continue;
+    box.style.lineHeight = ((lh / fs) * ratio).toFixed(3);
+  }
+}
+
+/**
  * Let unwrapped cell text spill across empty neighbor cells, as Numbers
  * draws it: an unwrapped cell wider than its column extends over the cells
  * to its right while they are empty, and is clipped at the first cell with
@@ -986,7 +1011,22 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedD
           // Rich-text cells keep their runs: the cell style's text look is
           // only the base (0839b6d2, a docx import, stores a 1pt cell font
           // under 11pt runs — flattened, "Nome:" vanished into a 1px line).
-          td.replaceChildren(renderStyledText(rich, hdoc, ctx));
+          const el = renderStyledText(rich, hdoc, ctx);
+          // Numbers sizes each line by its own runs; a CSS block's strut
+          // makes every line at least the paragraph's size (eb299192a219's
+          // "Total Charge (minimum charge is 4kg)": a 26px strut under the
+          // 12px continuation line, 62px in a 48px row, and the line was
+          // clipped). The unitless leading moves onto the runs and the
+          // strut collapses; an exact (px) paragraph spacing is kept.
+          for (const para of Array.from(el.querySelectorAll<HTMLElement>("p"))) {
+            const mult = para.style.lineHeight || td.style.lineHeight;
+            if (!mult || /[a-z%]/i.test(mult)) continue;
+            for (const run of Array.from(para.querySelectorAll<HTMLElement>("span"))) {
+              if (!run.style.lineHeight) run.style.lineHeight = mult;
+            }
+            para.style.lineHeight = "0";
+          }
+          td.replaceChildren(el);
         } else if (format?.accounting && text.includes("\t")) {
           // accounting-style currency: symbol and amount pushed to
           // opposite edges of the cell
