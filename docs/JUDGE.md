@@ -1659,10 +1659,158 @@ Proposals not implemented:
   once a fixture shows what 1 and 2 mean (cf4b76a's docx-imported
   objects store 2 where Word positioned them relative to the page).
 
+### Keynote, round 4 (2026-09-06/07, Qwen thinking off, four slides per deck)
+
+Schema and converter work first, per the round's brief, starting from
+round 3's open item (text a few points off, "slightly lower" on 12 decks):
+RIPE 82's footer and greenberg's title were measured against the exports'
+PDF text spans, and the cause turned out to be two converter gaps and one
+wrong table in the viewer. Then 20 more decks from 20 origin hosts no
+earlier run had judged, chosen to cover faces the metrics table had not
+seen (Times New Roman, Georgia, Gill Sans, Avenir, Menlo, Baskerville,
+Palatino, DIN, Canela, Chalkboard, Trebuchet) and features (tables,
+charts, groups, connection lines, equations, movies, image fills, 4:3 and
+16:9). All 20 were exported from Keynote once; the same exports are on
+both sides of every score; the judge scored the first four slides of each
+(80 pairs).
+
+| defect | decks | cause | fix |
+| --- | --- | --- | --- |
+| text 5-9pt above its place in the export (RIPE 82 title, subtitle, footer) | every deck | `textInsets` was never filled: TSWP.ShapeStylePropertiesArchive.padding (field 6, null flag 5; ColumnStyle 11/10) sits on the theme's shape styles and reaches the drawable through the TSS parent chain; RIPE 82's boxes carry 5.625pt on every side, the export's spans start exactly there | converter resolves the padding through the chain like the vertical alignment; the viewer applies it as padding on the text layer (G2 re-synced: fifteen 4pt insets, confirmed against Pages' export) |
+| first baseline and line pitch off by up to 0.2 em (Helvetica, Times, Courier, Palatino, Hoefler) | every deck with those faces | the viewer's line-height table held CoreText's ascent+descent+leading (Helvetica 1.0); Keynote lays out with AppKit's NSLayoutManager default line height (1.2) and baseline offset (0.97), and puts the extra above the baseline; measured on 37 exports; a face the Mac lacks gets Helvetica's numbers because Keynote substitutes Helvetica | `viewer/src/fontmetrics.ts`: AppKit's height, baseline offset and descent for the 184 corpus faces this Mac has; per paragraph the viewer sets the pitch, gives the block the run's face (the strut was the page's system font), and shifts the block by the alignment-dependent difference (first baseline for top, last descent for bottom, none for middle) |
+| a 34pt heading with a forced break and a 20pt line under it pitched the small line at 40.8pt; the middle-aligned block grew 23% and ran into the title (enog slide 4) | enog | one pitch per paragraph | each run carries its own pitch; the paragraph's strut is the smallest run's |
+| footer text below the slide edge on all 20 slides (ippp); a right-aligned URL box cut off at the edge (enog); an author box shifted left (ijclab) | ippp, enog, ijclab, ripe76, c184 | `TSD.GeometryArchive.flags` bits 1 and 2 say which point `position` names: with bit 1 clear x is the paragraph-alignment anchor (left, centre or right edge), with bit 2 clear y is the vertical-alignment anchor (top, centre or bottom edge). Round 1 read flags 0 as the centre on both axes, which is the middle+centred case; flags 1 (1,012 text shapes in 37 decks) kept its stored y | converter re-anchors to top-left per the text's alignment; text-less shapes keep their stored corner; checked on every flagged text box in 37 exports |
+| block arrows drawn with a full-height shaft (perimeter slides 2, 4) | perimeter, and every horizontal block arrow since round 1 | `preset.endsWith("right")` is false for "right-arrow", so the shaft fraction applied to the width | `startsWith` |
+| equations as white boxes on a dark slide (perimeter) | perimeter | pdf.js paints a white page ground | transparent ground; pdf.js 6 opens an alpha-less context when handed a bare canvas, so the context is opened with alpha (the interim judge caught the black bars this produced first) |
+| a rotated photo panel drawn axis-aligned (lofar slide 4) | lofar | the mask carries the angle (335.6); the model had it, the viewer ignored it | the window and its image rotate about the window's centre |
+| the theme's stock photo behind a slide's own picture (ulmen slide 3, greenberg slide 3) | ulmen, greenberg, c184, ripe76, enog, casaelite | a master's media placeholder has no KN.PlaceholderArchive, so it carried no role and stayed in `masterDrawables` whenever the slide's copy had moved; `TSD.ImageArchive.flags` bit 1 marks it (115 master images at 1, 50 at 3 in 37 decks; plain pictures are 0) | role `"media"` (converter + model doc); the master's copy leaves the underlay, the slide's copy paints whatever `objectPlaceholderVisibility` says (ulmen stores false and Keynote draws the photo) |
+| a 90-degree timeline rule 19pt left of its circle (michaelbrooks slides 3, 4) | michaelbrooks | the rule carries a storage with one empty run, so the zero-height TEXT anchoring shifted it | anchoring needs visible text |
+| an author's name wrapped to two lines (ijclab slide 1) | ijclab | Keynote's auto-height box is 255.4pt for a 243.2pt name that has 241.0pt after insets and both indents; Keynote lets the line run past the right indent | 3% wrap slack on auto-height boxes, as the zero-size boxes already had |
+| shape image fills painted as their tint or a grey (Pages B's proposal, 4659b5b6a8db; deeplearningbook slide 8) | deeplearningbook and 16 more hosts | the model carried the fill; the viewer had no pattern path | SVG pattern (tile at pixel size, scale techniques as the slide background); an absent tinted tile composes the tint over the tone its name carries: (47,125,173) in the export, (128,206,254) over white before, within a few units now |
+
+Qwen's mean over the 80 pages, before and after, same exports. The corpus
+ranking (per deck, first four slides, before the fixes) doubles as the
+list of where to look next.
+
+| doc | host | pages | before | after |
+| --- | --- | ---: | ---: | ---: |
+| 0e4ad34c2823 | events.perimeterinstitute.ca | 4 | 6.00 | 9.00 |
+| 9ad6cfab0ac1 | conference.ippp.dur.ac.uk | 4 | 6.75 | 8.75 |
+| 85c3a6f17ca8 | www.enog.org | 4 | 7.25 | 9.00 |
+| c35bd31d6622 | talks.cpsievert.me | 4 | 7.50 | 7.75 |
+| c7429dce86a7 | indico.lofar.eu | 4 | 7.50 | 8.50 |
+| d345acfcf1b4 | www.iangoodfellow.com | 4 | 7.50 | 7.25 |
+| b12878635228 | ulmen-grundschule.de | 4 | 8.00 | 9.00 |
+| bd1b298e8f6e | indico.ijclab.in2p3.fr | 4 | 8.00 | 8.25 |
+| 122a2376a130 | indico.cfnssbu.physics.sunysb.edu | 4 | 8.25 | 8.75 |
+| 251aeddf1bf3 | neas.dev | 4 | 8.25 | 8.25 |
+| 7666b78dc0c3 | ripe72.ripe.net | 4 | 8.25 | 8.25 |
+| 3b2f7e554743 | www.esup-portail.org | 4 | 8.75 | 8.75 |
+| 75e6174464ca | indico.flatironinstitute.org | 4 | 8.75 | 8.75 |
+| 8dfc1557a3cf | domimplantformation.fr | 4 | 8.75 | 9.50 |
+| e525ca919ab7 | michaelbrooks.ca | 4 | 8.75 | 9.00 |
+| f2eff6b857c2 | www.mathed.page | 4 | 8.75 | 8.75 |
+| fedc639ba4a3 | uni.heiko-etzold.de | 4 | 8.75 | 8.50 |
+| d7177cefaf6b | www.hamradioworks.org | 4 | 9.00 | 9.00 |
+| e0ab4fc82ca4 | www.casaelitegroup.com | 4 | 9.25 | 9.50 |
+| 33e6c1222216 | homepages.inf.ed.ac.uk | 4 | 9.75 | 9.75 |
+| all | | 80 | 8.19 | 8.71 |
+
+Pages that moved by two points or more, all up: perimeter 2 (4 -> 9) and
+4 (2 -> 9, equations and arrows), sunysb 4 (7 -> 9, equations), enog 2
+(7 -> 9) and 4 (5 -> 9, the anchor and the mixed-size pitch), domimplant
+1 (8 -> 10), ippp 3 (6 -> 9) and 4 (5 -> 9, the footer), ulmen 3 (5 -> 9,
+the stock photo), lofar 4 (6 -> 9, the rotated mask). Pages at 9 or more
+went from 44 to 60 of 80. Three pages dropped one point: ulmen 1 and
+goodfellow 1 are hinting and substitution verdicts on renders whose
+change is the line metrics; heiko-etzold 4 names blurred text in diagram
+boxes that a scaled group draws small in both runs.
+
+An interim judge run, before the last fixes, caught three regressions
+that are fixed in the same branch and counted in the after column:
+equations drawn as black bars (pdf.js 6 opens an alpha-less context when
+handed a canvas), an italic first run making its whole paragraph italic
+(the block took the run's weight and style), and timeline rules moved by
+the text-anchor rule (text-less shapes).
+
+Confirmed against the exports by measurement, not by eye: RIPE 82 slide
+1's four text blocks within 1.6pt of the export's ink rows (5 to 9pt high
+before); greenberg's bottom-aligned title within 1.3pt (2.5pt low before,
+4pt high with a top-only rule); enog slide 4's twelve lines within 2pt;
+ippp's footer at 1032pt against 1031; michaelbrooks' rule at x=513.1
+against 512; the block arrow's 32pt shaft on a 100pt box from the stored
+0.34; the survey behind fontmetrics.ts (baselines.py, bottoms.py in the
+round's scratch directory): 37 decks, first baseline/em per face equal to
+NSLayoutManager's baseline offset to two or three digits (Helvetica 0.970,
+Arial 0.901-0.905, AvenirNext 0.994-1.004, TimesNewRomanPSMT 0.891,
+Canela 1.202), the last baseline of a bottom-aligned block one descent
+above the text area, the line-spacing multiple leaving the first baseline
+where it is.
+
+#### Schema and converter findings
+
+- **Text insets were dropped.** `textInsets` existed in the model since
+  the hackathon and every emitter wrote `None`. The padding is on the
+  theme's shape styles (TSWP.ShapeStylePropertiesArchive.padding, field
+  6 with null flag 5; the older ColumnStyle at 11/10) and resolves through
+  the TSS parent chain. Values in the corpus: 4pt (Keynote's default),
+  5.625 (a 1920x1080 scale of 4), 3.6, 7.2, 1.0, 3.0. Pages documents
+  carry 4 and 8 on their shapes; the viewer applies them there too, and
+  G2's export confirms the offsets (text at x=79.98 for a box at 76).
+- **Geometry flags name the anchor.** `TSD.GeometryArchive.flags` bits 1
+  and 2 (documented in docs/format/drawables.md, inferred, with the
+  census). The converter re-anchors, so the model's top-left contract
+  holds and no consumer sees the flag. Round 1's centre rule was the
+  middle+centred special case.
+- **Media placeholders had no identity.** They are plain
+  TSD.ImageArchive/MovieArchive, not KN.PlaceholderArchive;
+  `TSD.ImageArchive.flags` bit 1 marks them (inferred from the census and
+  two exports; bit 2 appears with it on placeholders that hold a picture).
+  `KN.SlideArchive.objectPlaceholder` (field 30) would name them too but no
+  deck in the 37 writes it. New role value `"media"` on
+  `placeholder.role` (model/src/keynote.ts, docs/model-design.md §3.2).
+- **Line metrics are AppKit's, not CoreText's.** Not a schema matter (the
+  archive stores no metrics) but a converter-adjacent fact every renderer
+  needs: Keynote's pitch is NSLayoutManager.defaultLineHeightForFont, the
+  first baseline its defaultBaselineOffsetForFont, the extra above the
+  baseline; for Helvetica, Times, Courier, Hoefler and Palatino AppKit
+  inflates ascent+descent by 1.2. Faces the Mac lacks are laid out with
+  Helvetica's numbers (the export's spans of OpenSans, Rubik, ScalaSansPro
+  and AdobeClean decks are all drawn in Helvetica at 0.970 / 1.2).
+- **Mask rotation was in the model and unused.** `mask.common.angleDeg`;
+  viewer only.
+- **Empty paragraphs carry no size.** A blank paragraph has no run, so a
+  consumer cannot know its line height (Keynote uses the paragraph style's
+  font). Proposal, not implemented: an empty run with the resolved
+  character style, or a `size` on `Paragraph`. Blank spacer paragraphs are
+  common in decks; the viewer currently gives them the inherited size.
+- **Keynote overruns the right indent.** ijclab's auto-height box is 1pt
+  wider than text + insets + left indent and 5.4pt narrower than that plus
+  the right indent, and the export draws one line. Either the right indent
+  does not bound an auto-sized box or the stored width omits it; left as a
+  viewer slack, noted for a fixture with the font installed.
+- **Checked and present:** image fills (technique, tint, data reference),
+  mask geometry with angle, chart series symbols (Numbers' round 5 field;
+  RIPE 82 slide 4's line-chart markers now follow it), builds, transitions,
+  notes, hyperlinks, instant-alpha paths on the 20 new decks.
+
+What remains, in the order the judge names it:
+
+1. Faces this Mac lacks (CMU Serif, Fira Code, Open Sans, Scala Sans,
+   Produkt): Keynote draws Helvetica, the viewer a class substitute or
+   the Google face; the judge reads every one as a substitution. Policy,
+   not a defect (docs/fonts.md).
+2. Text position drift of 1-3pt on the decks whose faces the export
+   substitutes, where the browser's substitute has a different ascent from
+   Helvetica's and the paragraph shift is computed from the substitute.
+3. Title weight: a "Bold" cut named on a run with `bold: false` (ippp,
+   domimplant) draws regular in Keynote and bold here (round 3's note).
+4. Hand-drawn strokes (brush parameters), unchanged.
+
 ### Next
 
 Numbers: two-axis charts (type 11, 666 in 0ab5dd52841e); auto-fit row leading per face (17891b89da2f 14 vs 16pt rows); the a720beed1ab2 header row the export prints blank; pie labels inside the slices (6914f46e51ab).
-Keynote: text position drift of a few points (measure RIPE 82's footer and greenberg's title first), chart markers and hidden legends on slides (Numbers-owned), then wrap differences from fallback faces.
+Keynote: faces the Mac lacks (Keynote draws Helvetica, the viewer a substitute; a policy question, docs/fonts.md), 1-3pt drift on substituted faces, weight-named cuts with `bold: false`, empty paragraphs without a size (proposal), hand-drawn brush parameters; then 20 more decks from unjudged hosts.
 Pages: line pitch on 11pt text (5c07d836 cover, 20.6pt in Pages against 32pt here) and the page cascade it causes; rotated wrapping objects (10a06959, 25 documents); shape image fills in the JSON that the viewer does not paint (4659b5b6); the paragraph painting over an inline table (cf4b76a); then the unexamined verdicts in round 3b's list.
 Score more of the corpus, one or two pages per document, with Qwen; use
 the ranked list to choose fidelity work; add a reference re-run with
