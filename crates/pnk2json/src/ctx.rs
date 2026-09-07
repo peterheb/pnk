@@ -525,6 +525,16 @@ impl Ctx {
                     self.warn_detail(WarningCode::MediaMissing, message, name.clone());
                 }
             }
+            // ISO BMFF brands browsers cannot decode: iOS stores HEIC under a
+            // .jpg name (bd5599's FullSizeRender-N.jpg are `ftypheic`), and
+            // a consumer trusting the extension gets a broken image.
+            let format = match (kind, file_name.as_deref()) {
+                (MediaKind::Image, Some(name)) => self
+                    .members
+                    .data_file(name)
+                    .and_then(|b| sniff_media_format(&b)),
+                _ => None,
+            };
             assets.push(MediaAsset {
                 data_id: id.to_string(),
                 file_name,
@@ -532,6 +542,7 @@ impl Ctx {
                 kind,
                 byte_length,
                 pixel_size: entry.pixel_size,
+                format,
             });
         }
         assets.sort_by(|a, b| a.data_id.cmp(&b.data_id));
@@ -707,4 +718,19 @@ fn is_locale_token(s: &str) -> bool {
     s.len() <= 8
         && s.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
         && !s.chars().any(char::is_whitespace)
+}
+
+/// Container format of an image asset when it is one browsers do not
+/// decode: the ISO BMFF `ftyp` brand at byte 8 names HEIF/HEIC (`heic`,
+/// `heix`, `hevc`, `hevx`, `mif1`, `msf1`, `heif`) or AVIF (`avif`,
+/// `avis`). Anything else (JPEG, PNG, GIF, TIFF, ...) returns None.
+pub fn sniff_media_format(bytes: &[u8]) -> Option<String> {
+    if bytes.len() < 12 || &bytes[4..8] != b"ftyp" {
+        return None;
+    }
+    match &bytes[8..12] {
+        b"heic" | b"heix" | b"hevc" | b"hevx" | b"mif1" | b"msf1" | b"heif" => Some("heic".into()),
+        b"avif" | b"avis" => Some("avif".into()),
+        _ => None,
+    }
 }

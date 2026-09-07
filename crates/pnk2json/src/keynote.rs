@@ -281,6 +281,7 @@ fn media_asset_from_ref(ctx: &Ctx, r: &MediaRef) -> MediaAsset {
             .unwrap_or(MediaKind::Audio),
         byte_length: entry.and_then(|e| e.materialized_length),
         pixel_size: r.pixel_size,
+        format: None,
     }
 }
 
