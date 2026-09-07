@@ -385,6 +385,15 @@ export interface ParaStyle {
   backgroundColor?: HexColor;
   /** Paragraph border drawn around the paragraph block. [proto: stroke] */
   border?: Stroke;
+  /**
+   * Which sides `border` is drawn on; absent = all four. Pages' "Borders &
+   * Rules" stores the position in `border_positions` (45), else the older
+   * `deprecated_borders` (15): bit 1 top, bit 2 bottom, 4 = all four sides,
+   * bits 8/16 = left/right [inferred: e2e0bff3 and 0c563c6d store 2 and
+   * Pages draws a rule under the paragraph only; the enum lists 0-4,
+   * 8-11, 16-19, 24].
+   */
+  borderSides?: ("top" | "bottom" | "left" | "right")[];
   /** Writing direction override. [proto: writing_direction] */
   writingDirection?: "left-to-right" | "right-to-left";
   /**

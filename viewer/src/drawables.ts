@@ -579,6 +579,12 @@ export function imageEl(
 ): HTMLElement {
   const url = dataId ? ctx.url(dataId) : undefined;
   const vector = /\.(pdf|ai|eps)$/i.test(fileName ?? "");
+  // <img> cannot rasterize vector art (PDF/AI/EPS) — fall back to the
+  // converter-emitted raster thumbnail (Keynote stores one alongside vector
+  // media, e.g. -small-*.png twins) before degrading to a labeled placeholder.
+  const thumbUrl = thumbnail?.dataId ? ctx.url(thumbnail.dataId) : undefined;
+  const thumbName = thumbnail ? thumbnail.fileName ?? thumbnail.preferredFileName : undefined;
+  const thumbRaster = thumbUrl && !/\.(pdf|ai|eps)$/i.test(thumbName ?? "");
   if (url && !vector) {
     const img = document.createElement("img");
     img.src = url;
@@ -586,14 +592,15 @@ export function imageEl(
     img.style.width = "100%";
     img.style.height = "100%";
     img.style.objectFit = "fill";
+    // A file the browser cannot decode — iOS stores HEIC under a .jpg name
+    // (bd5599: six FullSizeRender-N.jpg, `MediaAsset.format: "heic"`) —
+    // shows as a broken image; Apple keeps a small JPEG thumbnail beside
+    // every photo, so show that instead.
+    if (thumbRaster && thumbUrl !== url) {
+      img.addEventListener("error", () => { img.src = thumbUrl; }, { once: true });
+    }
     return img;
   }
-  // <img> cannot rasterize vector art (PDF/AI/EPS) — fall back to the
-  // converter-emitted raster thumbnail (Keynote stores one alongside vector
-  // media, e.g. -small-*.png twins) before degrading to a labeled placeholder.
-  const thumbUrl = thumbnail?.dataId ? ctx.url(thumbnail.dataId) : undefined;
-  const thumbName = thumbnail ? thumbnail.fileName ?? thumbnail.preferredFileName : undefined;
-  const thumbRaster = thumbUrl && !/\.(pdf|ai|eps)$/i.test(thumbName ?? "");
   if (thumbRaster) {
     const img = document.createElement("img");
     img.src = thumbUrl;
