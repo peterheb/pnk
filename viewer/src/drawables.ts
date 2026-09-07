@@ -983,12 +983,28 @@ function chartSvg(chart: ChartModel, w: number, h: number, numbersAxis = false):
       // chart's with a filled square (dns-oarc's cache-hit charts, RIPE 85's
       // waiting list).
       const dash = chart.type === "line" || chart.type === "scatter";
-      const sw = document.createElementNS(NS, "rect");
-      sw.setAttribute("x", (x + 2).toFixed(1));
-      sw.setAttribute("y", (y - (dash ? legendSize * 0.45 : legendSize * 0.8)).toFixed(1));
-      sw.setAttribute("width", (legendSize * (dash ? 1.1 : 0.9)).toFixed(1));
-      sw.setAttribute("height", (legendSize * (dash ? 0.18 : 0.9)).toFixed(1)); sw.setAttribute("rx", "1.5");
-      sw.setAttribute("fill", colors[i % colors.length]);
+      // Numbers keys a line series that shows data symbols with the symbol
+      // itself: a hollow circle in baabe23e067f's export, at every point
+      // and in the legend (ChartSeries.symbol, kind 1). (Numbers agent,
+      // 2026-09-06)
+      const sym = !pieLike ? chart.series[i]?.symbol : undefined;
+      let sw: SVGElement;
+      if (dash && sym && sym.kind !== 0) {
+        sw = document.createElementNS(NS, "circle");
+        sw.setAttribute("cx", (x + 2 + legendSize * 0.55).toFixed(1));
+        sw.setAttribute("cy", (y - legendSize * 0.35).toFixed(1));
+        sw.setAttribute("r", (legendSize * 0.3).toFixed(1));
+        sw.setAttribute("fill", "#fff");
+        sw.setAttribute("stroke", colors[i % colors.length]);
+        sw.setAttribute("stroke-width", (legendSize * 0.18).toFixed(1));
+      } else {
+        sw = document.createElementNS(NS, "rect");
+        sw.setAttribute("x", (x + 2).toFixed(1));
+        sw.setAttribute("y", (y - (dash ? legendSize * 0.45 : legendSize * 0.8)).toFixed(1));
+        sw.setAttribute("width", (legendSize * (dash ? 1.1 : 0.9)).toFixed(1));
+        sw.setAttribute("height", (legendSize * (dash ? 0.18 : 0.9)).toFixed(1)); sw.setAttribute("rx", "1.5");
+        sw.setAttribute("fill", colors[i % colors.length]);
+      }
       svg.appendChild(sw);
       const label = text(x + legendSize * 1.4, y, name, { anchor: "start", size: legendSize });
       const room = itemW - legendSize * 1.6;
@@ -1265,7 +1281,11 @@ function chartSvg(chart: ChartModel, w: number, h: number, numbersAxis = false):
         pl.setAttribute("stroke-linejoin", "round");
         svg.appendChild(pl);
       }
-      if (markers) for (const [x, y] of pts) {
+      // The series' own symbol decides when the model carries one
+      // (Numbers: ChartSeries.symbol, kind 0 = hidden); the density
+      // heuristic stays for decks that store none. (Numbers agent, 2026-09-06)
+      const showDots = s.symbol ? s.symbol.kind !== 0 : markers;
+      if (showDots) for (const [x, y] of pts) {
         const dot = document.createElementNS(NS, "circle");
         dot.setAttribute("cx", x.toFixed(1)); dot.setAttribute("cy", y.toFixed(1)); dot.setAttribute("r", (base * 0.28).toFixed(1));
         dot.setAttribute("fill", "#fff"); dot.setAttribute("stroke", color); dot.setAttribute("stroke-width", (base * 0.17).toFixed(1));

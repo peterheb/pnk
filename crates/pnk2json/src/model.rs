@@ -1689,6 +1689,24 @@ pub struct ChartSeries {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     pub values: Vec<Option<ChartValue>>,
+    /// Data-point symbol (line/area/scatter/radar series), when the series
+    /// shows one. [proto: TSCH.Generated.ChartSeriesNonStyleArchive
+    /// showsymbol / symboltype; ChartSeriesStyleArchive symbolsize]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub symbol: Option<ChartSymbol>,
+}
+
+/// A series' data-point symbol as Numbers draws it on the plot and as the
+/// legend key. `kind` is the raw TSCH symbol type: 0 = none (the series
+/// hides its symbols), 1 = circle (baabe23e067f's export: a hollow circle
+/// at every point and in the legend); other values are unnamed until an
+/// export shows them.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ChartSymbol {
+    pub kind: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size_pt: Option<f64>,
 }
 
 /// Grid values: numbers, dates (ISO), or a hole.
