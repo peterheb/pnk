@@ -573,6 +573,14 @@ table.sheet-table .cell-fit { white-space: pre; display: inline-block; }
 }
 #settings-panel .setting-row { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; }
 #settings-panel p { margin: 8px 0 0; line-height: 1.45; }
+/* === numbers/tables (agent N, 2026-09-06) === */
+/* A cell boxed at its row's stored height: the box clips vertically only
+   (overflow-x stays visible so unwrapped text can spill across empty
+   neighbours); box-sizing keeps the moved bottom padding inside the cap. */
+table.sheet-table .cell-clip { overflow-x: visible; overflow-y: clip; box-sizing: border-box; }
+/* The sheet's drawables live in an origin box shifted by the negative
+   extent of the stored positions (numbers.ts originShift). */
+.sheet-canvas .sheet-origin { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: visible; }
 
 /* ---- Keynote agent, 2026-09-06: text insets are padding on the text layer ---- */
 .canvas-drawable > .drawable-text { box-sizing: border-box; }
