@@ -783,9 +783,27 @@ export function applyTextFit(root: HTMLElement): void {
       inner.style.transform = `scale(${scale.toFixed(4)})`;
       inner.style.transformOrigin = origin;
     };
-    const fits = (scale: number) => inner.offsetHeight * scale <= boxH + 0.5 && scale <= sW + 1e-6;
+    // A fixed frame clips trailing EMPTY paragraphs without anyone seeing
+    // it (7b8e38edb184's 66pt title box: two lines and five empty 24pt
+    // paragraphs; Pages prints the two lines at full size), so for the
+    // tolerance mode the content ends at the last block that has ink.
+    // Layout heights, unscaled: the transform does not change offsets.
+    // [Pages A, 2026-09-06]
+    const inkHeight = (): number => {
+      if (box.dataset.textFit !== "tolerance") return inner.offsetHeight;
+      const kids = Array.from(inner.children) as HTMLElement[];
+      const top = inner.getBoundingClientRect().top;
+      for (let k = kids.length - 1; k >= 0; k--) {
+        const c = kids[k];
+        if (c.textContent?.trim() || c.querySelector("img, svg, canvas, table")) {
+          return (c.getBoundingClientRect().bottom - top) / s;
+        }
+      }
+      return inner.offsetHeight;
+    };
+    const fits = (scale: number) => inkHeight() * scale <= boxH + 0.5 && scale <= sW + 1e-6;
     for (let i = 0; i < 3; i++) {
-      const contentH = inner.offsetHeight;
+      const contentH = inkHeight();
       if (fits(s)) break;
       const need = Math.min(s, boxH / contentH, sW);
       s = Math.max(need, minScale);
@@ -801,6 +819,7 @@ export function applyTextFit(root: HTMLElement): void {
       let hi = Math.min(1, sW);
       for (let i = 0; i < 6 && hi - lo > 0.01; i++) {
         const mid = (lo + hi) / 2;
+        s = mid;
         layoutAt(mid);
         if (fits(mid)) lo = mid; else hi = mid;
       }
