@@ -27,6 +27,7 @@ import { renderTable } from "./tables";
 import { layoutTabs, naturalLineHeight, renderStyledText } from "./text";
 import { charStyleOf, paraStyleOf, type HydratedDoc } from "./hydrate";
 import { substituteFamily } from "./webfonts";
+import { lineMetrics } from "./fontmetrics";
 
 function el(tag: string, className?: string): HTMLElement {
   const e = document.createElement(tag);
@@ -256,7 +257,10 @@ function presetPathD(preset: string, g: ShapeGeometry, w: number, h: number): st
       // export of a default 174×100 arrow (atnf.csiro.au Bayesian deck)
       // measures a 63pt head and a 31pt shaft, from a stored 64 × 0.34;
       // the old 0.35/0.45 guesses drew a chevron with a fat shaft.
-      const horizontal = preset.endsWith("left") || preset.endsWith("right");
+      // "right-arrow" ends in "arrow": endsWith("right") was false for every
+      // horizontal arrow, so the shaft fraction applied to the WIDTH
+      // (perimeterinstitute 0e4ad34c: a 311x100 arrow drew a 99pt shaft).
+      const horizontal = preset.startsWith("left") || preset.startsWith("right");
       const along = horizontal ? w : h;
       const across = horizontal ? h : w;
       const nAlong = horizontal ? g.naturalSize?.width : g.naturalSize?.height;
@@ -656,8 +660,118 @@ function textLayer(d: Drawable & { text?: unknown; common?: DrawableCommon }, do
     (paras[0] as HTMLElement).style.marginTop = "0";
     (paras[paras.length - 1] as HTMLElement).style.marginBottom = "0";
   }
+  // Text insets (TSWP.ShapeStylePropertiesArchive.padding, resolved by the
+  // converter): the text area is the frame minus these. RIPE 82's Helvetica
+  // title starts 5.625pt inside its frame in the export, where the converter
+  // used to emit no insets and the text sat on the frame edge.
+  const ins = (d as { textInsets?: { top?: number; left?: number; bottom?: number; right?: number } }).textInsets;
+  if (ins) {
+    layer.style.padding = `${ins.top ?? 0}px ${ins.right ?? 0}px ${ins.bottom ?? 0}px ${ins.left ?? 0}px`;
+  }
+  if ((doc as { kind?: string }).kind === "keynote") applyKeynoteLineMetrics(inner, d.text as StyledText, doc, (d as { verticalAlignment?: string }).verticalAlignment);
   layer.appendChild(inner);
   return layer;
+}
+
+let measureCanvas: HTMLCanvasElement | undefined;
+const browserMetricsCache = new Map<string, [number, number] | null>();
+
+/**
+ * Ascent and descent (per em) of the face the browser will actually draw
+ * for a CSS font shorthand, from canvas text metrics. That is the content
+ * area of the run's inline box, which is where CSS puts the baseline
+ * inside a line box; it is the substitute's numbers when the document's
+ * face is missing.
+ */
+function browserAscentDescent(fontCss: string): [number, number] | null {
+  const hit = browserMetricsCache.get(fontCss);
+  if (hit !== undefined) return hit;
+  measureCanvas ??= document.createElement("canvas");
+  const g = measureCanvas.getContext("2d");
+  let out: [number, number] | null = null;
+  if (g) {
+    g.font = fontCss;
+    const tm = g.measureText("Hg");
+    if (tm.fontBoundingBoxAscent > 0) out = [tm.fontBoundingBoxAscent / 100, tm.fontBoundingBoxDescent / 100];
+  }
+  browserMetricsCache.set(fontCss, out);
+  return out;
+}
+
+/**
+ * Lay each paragraph's lines out where Keynote puts them. Keynote's line
+ * pitch is the paragraph's multiple times AppKit's default line height for
+ * the face, and its first baseline sits at AppKit's baseline offset below
+ * the top of the text area whatever the multiple (fontmetrics.ts; measured
+ * on 37 exported decks). CSS centres a run's content area in its line box,
+ * so with the pitch as the line height the baseline lands at
+ * (pitch + ascent - descent) / 2; the block is shifted by the difference.
+ * Helvetica is the large case: AppKit gives it 1.2 em lines with the
+ * baseline at 0.97 em, CSS 0.87 em, so a 95pt title drew 9.5pt high.
+ * The paragraph element takes the run's face so the strut (which was the
+ * page's system font) no longer widens the line box.
+ */
+function applyKeynoteLineMetrics(inner: HTMLElement, text: StyledText | undefined, doc: HydratedDoc, align: string | undefined): void {
+  const st = inner.querySelector<HTMLElement>(":scope > .styled-text");
+  if (!st || !text) return;
+  const blocks = Array.from(st.children) as HTMLElement[];
+  text.paragraphs.forEach((p, i) => {
+    const block = blocks[i];
+    if (!block) return;
+    const para = block.classList.contains("list-item")
+      ? block.querySelector<HTMLElement>(":scope > p, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5")
+      : block;
+    if (!para) return;
+    // the largest run sets the line, as in renderParagraph's strut size
+    let size = 0;
+    let font: string | undefined;
+    for (const it of p.items) {
+      if (typeof it === "string" || "type" in it) continue;
+      const cs = charStyleOf(doc, (it as { cStyle?: number }).cStyle);
+      if (cs?.fontSizePt && cs.fontSizePt > size) {
+        size = cs.fontSizePt;
+        font = cs.fontName;
+      }
+    }
+    if (!size) return;
+    const ps = paraStyleOf(doc, p.pStyle);
+    const lm = lineMetrics(font);
+    const natural = lm.height * size;
+    let pitch = natural;
+    if (ps?.lineSpacingMultiple) pitch = ps.lineSpacingMultiple * natural;
+    else if (ps?.lineSpacingExactPt) {
+      const v = ps.lineSpacingExactPt;
+      const mode = ps.lineSpacingMode;
+      pitch = mode === "min" ? Math.max(v, natural) : mode === "max" ? Math.min(v, natural) : mode === "space-between" ? natural + v : v;
+    }
+    // the face the browser draws that run with (inline style from applyCharStyle)
+    const span = Array.from(para.querySelectorAll<HTMLElement>("span")).find((s) => s.style.fontFamily) ?? null;
+    const family = span?.style.fontFamily || para.style.fontFamily || "sans-serif";
+    const weight = span?.style.fontWeight || "400";
+    const style = span?.style.fontStyle || "normal";
+    const ad = browserAscentDescent(`${style} ${weight} 100px ${family}`);
+    if (!ad) return;
+    // Keynote's block is B + (n-1)*pitch + d tall: the first baseline B
+    // below the area top, the last one d above its bottom, the line gap
+    // between lines only (greenberg's bottom-aligned HelveticaNeue-Bold
+    // title ends 0.220 em under its last baseline, the descent, not the
+    // 0.246 em of pitch - B). CSS centres each content area in its pitch,
+    // so the correction depends on which edge the block hangs from; a
+    // middle-aligned block needs none of the pitch term at all.
+    const [a, d] = ad;
+    const shift = align === "bottom"
+      ? ((pitch - (a - d) * size) / 2 - lm.descent * size)
+      : align === "middle"
+        ? ((lm.baseline - a + d - lm.descent) * size) / 2
+        : lm.baseline * size - (pitch + (a - d) * size) / 2;
+    para.style.lineHeight = `${pitch.toFixed(3)}px`;
+    para.style.fontFamily = family;
+    para.style.fontWeight = weight;
+    para.style.fontStyle = style;
+    if (block !== para) block.style.lineHeight = para.style.lineHeight;
+    block.style.position = "relative";
+    block.style.top = `${shift.toFixed(2)}px`;
+  });
 }
 
 // ---------------------------------------------------------------------------
