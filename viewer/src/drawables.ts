@@ -729,35 +729,61 @@ function applyKeynoteLineMetrics(inner: HTMLElement, text: StyledText | undefine
       ? block.querySelector<HTMLElement>(":scope > p, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5")
       : block;
     if (!para) return;
-    // the largest run sets the line, as in renderParagraph's strut size
+    // the largest run sets the first line (renderParagraph's strut size);
+    // the smallest sets the strut here, so a line of small runs after a
+    // forced break is pitched for its own size
     let size = 0;
     let font: string | undefined;
+    let minSize = Infinity;
+    let minFont: string | undefined;
     for (const it of p.items) {
       if (typeof it === "string" || "type" in it) continue;
       const cs = charStyleOf(doc, (it as { cStyle?: number }).cStyle);
-      if (cs?.fontSizePt && cs.fontSizePt > size) {
+      if (!cs?.fontSizePt) continue;
+      if (cs.fontSizePt > size) {
         size = cs.fontSizePt;
         font = cs.fontName;
+      }
+      if (cs.fontSizePt < minSize) {
+        minSize = cs.fontSizePt;
+        minFont = cs.fontName;
       }
     }
     if (!size) return;
     const ps = paraStyleOf(doc, p.pStyle);
+    const pitchFor = (fontName: string | undefined, sizePt: number): number => {
+      const natural = lineMetrics(fontName).height * sizePt;
+      if (ps?.lineSpacingMultiple) return ps.lineSpacingMultiple * natural;
+      if (ps?.lineSpacingExactPt) {
+        const v = ps.lineSpacingExactPt;
+        const mode = ps.lineSpacingMode;
+        return mode === "min" ? Math.max(v, natural) : mode === "max" ? Math.min(v, natural) : mode === "space-between" ? natural + v : v;
+      }
+      return natural;
+    };
     const lm = lineMetrics(font);
-    const natural = lm.height * size;
-    let pitch = natural;
-    if (ps?.lineSpacingMultiple) pitch = ps.lineSpacingMultiple * natural;
-    else if (ps?.lineSpacingExactPt) {
-      const v = ps.lineSpacingExactPt;
-      const mode = ps.lineSpacingMode;
-      pitch = mode === "min" ? Math.max(v, natural) : mode === "max" ? Math.min(v, natural) : mode === "space-between" ? natural + v : v;
-    }
+    const pitch = pitchFor(font, size);
     // the face the browser draws that run with (inline style from applyCharStyle)
-    const span = Array.from(para.querySelectorAll<HTMLElement>("span")).find((s) => s.style.fontFamily) ?? null;
+    const spans = Array.from(para.querySelectorAll<HTMLElement>("span"));
+    const span = spans.find((s) => s.style.fontFamily) ?? null;
     const family = span?.style.fontFamily || para.style.fontFamily || "sans-serif";
     const weight = span?.style.fontWeight || "400";
     const style = span?.style.fontStyle || "normal";
     const ad = browserAscentDescent(`${style} ${weight} 100px ${family}`);
     if (!ad) return;
+    // Mixed sizes in one paragraph (enog 85c3a6f1: 34pt headings with a
+    // forced break and a 20pt line under each): Keynote pitches each line
+    // for the runs on it, so every run carries its own pitch and the
+    // paragraph's strut is the smallest run's.
+    if (minSize < size) {
+      for (const sp of spans) {
+        if (!sp.style.fontSize || !sp.style.fontSize.endsWith("px") || sp.style.lineHeight === "0") continue;
+        const spSize = parseFloat(sp.style.fontSize);
+        const spFont = /^"([^"]+)"/.exec(sp.style.fontFamily)?.[1];
+        sp.style.lineHeight = `${pitchFor(spFont, spSize).toFixed(3)}px`;
+      }
+      para.style.fontSize = `${minSize}px`;
+    }
     // Keynote's block is B + (n-1)*pitch + d tall: the first baseline B
     // below the area top, the last one d above its bottom, the line gap
     // between lines only (greenberg's bottom-aligned HelveticaNeue-Bold
@@ -771,7 +797,7 @@ function applyKeynoteLineMetrics(inner: HTMLElement, text: StyledText | undefine
       : align === "middle"
         ? ((lm.baseline - a + d - lm.descent) * size) / 2
         : lm.baseline * size - (pitch + (a - d) * size) / 2;
-    para.style.lineHeight = `${pitch.toFixed(3)}px`;
+    para.style.lineHeight = `${(minSize < size ? pitchFor(minFont, minSize) : pitch).toFixed(3)}px`;
     para.style.fontFamily = family;
     para.style.fontWeight = weight;
     para.style.fontStyle = style;
