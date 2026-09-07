@@ -74,7 +74,7 @@ pub fn convert_chart(ctx: &mut Ctx, ca: &Msg) -> ChartModel {
     let grid = ca.msg(7);
     let series_direction = ca.varint(5).unwrap_or(0); // by_row = 1, by_column = 2
 
-    let (categories, series) = match &grid {
+    let (categories, mut series) = match &grid {
         Some(g) => extract_grid(g, series_direction),
         None => (Vec::new(), Vec::new()),
     };
@@ -106,6 +106,9 @@ pub fn convert_chart(ctx: &mut Ctx, ca: &Msg) -> ChartModel {
     };
 
     let series_colors = series_colors(ctx, ca, ctype, series.len());
+    for (i, s) in series.iter_mut().enumerate() {
+        s.symbol = series_symbol(ctx, ca, ctype, i as u64);
+    }
 
     // Titles/axes live on the NON-style archives, in the Generated
     // extension at field 10000 (TSCHArchives.GEN.proto): chart_non_style
@@ -424,6 +427,79 @@ fn number_format(f: &Msg) -> ChartNumberFormat {
     }
 }
 
+/// The data-point symbol of series `i`: shown/type from the series'
+/// NON-style (`ChartArchive.series_non_styles = 19`, a sparse array keyed
+/// by series index; Generated extension 10000 of
+/// `TSCH.ChartSeriesNonStyleArchive`), size from the series STYLE chain
+/// (private 18, else theme 17 cycled, then TSS parents). The slots are per
+/// chart type: line showsymbol 33 / symboltype 48 / symbolsize 71, area
+/// 32 / 47 / 70, scatter 36 / 51 / 74, radar 160 / 163 / 181. A series
+/// whose non-style does not show a symbol, or has no non-style, has none.
+/// Numbers' export of baabe23e067f draws the legend key of a line series
+/// as the same hollow circle it draws at every point. [proto + inferred]
+fn series_symbol(ctx: &Ctx, ca: &Msg, ctype: ChartType, i: u64) -> Option<ChartSymbol> {
+    let (show, kind, size): (u32, u32, u32) = match ctype {
+        ChartType::Line => (33, 48, 71),
+        ChartType::Area | ChartType::StackedArea => (32, 47, 70),
+        ChartType::Scatter => (36, 51, 74),
+        ChartType::Radar => (160, 163, 181),
+        _ => return None,
+    };
+    let non_style = ca.msg(19).and_then(|sp| {
+        sp.msgs(2)
+            .into_iter()
+            .find(|e| e.varint(1) == Some(i))
+            .and_then(|e| e.reference(2))
+    });
+    let ext = non_style.and_then(|id| ctx.loaded.msg(id)?.msg(10000));
+    let kind = match &ext {
+        // A non-style that hides the symbol is carried as kind 0 (none),
+        // so a viewer can tell "no marker" from the default.
+        Some(ext) if !ext.boolean(show).unwrap_or(false) => {
+            return Some(ChartSymbol {
+                kind: 0,
+                size_pt: None,
+            });
+        }
+        Some(ext) => ext.varint(kind).unwrap_or(0) as u32,
+        // No non-style at all: the proto default for showsymbol is false,
+        // and Numbers agrees for a line series (baabe23e067f's "Story
+        // points (adjusted)" chart stores an empty series_non_styles and
+        // its export draws the line without markers, keyed by a line).
+        // Other families stay unknown. [proto default + one export]
+        None if matches!(ctype, ChartType::Line) => 0,
+        None => return None,
+    };
+    // size: the series style chain, private before theme
+    let theme: Vec<u64> = ca.references(17);
+    let mut start = ca.msg(18).and_then(|sp| {
+        sp.msgs(2)
+            .into_iter()
+            .find(|e| e.varint(1) == Some(i))
+            .and_then(|e| e.reference(2))
+    });
+    if start.is_none() && !theme.is_empty() {
+        start = Some(theme[i as usize % theme.len()]);
+    }
+    let mut size_pt = None;
+    let mut seen = std::collections::HashSet::new();
+    let mut cur = start;
+    while let Some(sid) = cur {
+        if !seen.insert(sid) {
+            break;
+        }
+        let Some(m) = ctx.loaded.msg(sid) else { break };
+        // f32::MAX is Numbers' "automatic" sentinel (baabe23e067f's
+        // sprint charts store 3.4e38 on the theme style).
+        if let Some(v) = m.msg(10000).and_then(|e| e.f32v(size)) {
+            size_pt = (v < 1e30).then_some(v as f64);
+            break;
+        }
+        cur = m.msg(1).and_then(|sup| sup.reference(3));
+    }
+    Some(ChartSymbol { kind, size_pt })
+}
+
 /// Per-series display colors from the TSCH series style archives.
 ///
 /// `ChartArchive.series_private_styles = 18` (TSP.SparseReferenceArray keyed
@@ -582,6 +658,7 @@ fn extract_grid(g: &Msg, series_direction: u64) -> (Vec<String>, Vec<ChartSeries
                 .map(|(i, vals)| ChartSeries {
                     name: row_names.get(i).cloned(),
                     values: to_series(vals.clone()),
+                    symbol: None,
                 })
                 .collect();
             (categories, series)
@@ -600,6 +677,7 @@ fn extract_grid(g: &Msg, series_direction: u64) -> (Vec<String>, Vec<ChartSeries
                 series.push(ChartSeries {
                     name: col_names.get(c).cloned(),
                     values: to_series(values),
+                    symbol: None,
                 });
             }
             (categories, series)

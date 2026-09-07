@@ -310,6 +310,7 @@ formula becomes `cell.formula: TsceFormulaRef` (opaque).
 | Keynote charts (private grid) | `dataStatus: "inline"` |
 | Numbers mediator (`TN.ChartMediatorArchive` formulas) | `dataStatus: "table-bound"` + `dataBinding: TsceFormulaRef` — decoded since round 4 (2026-09-05): `sourceText` is the union of the series ranges; `bindings { series[], rowLabels[], columnLabels[] }` carries each role's formula text (docs/format/calcengine.md §Chart bindings) |
 | `legend_frame`, fill sets, axis/series generic property maps | `legendFrame`, `seriesColors` (best effort); everything else is **rendering** → deferred to the viewer, not modeled |
+| `ChartArchive.series_non_styles` (19, sparse by series index) → `TSCH.Generated.ChartSeriesNonStyleArchive` `showsymbol` / `symboltype` (line 33/48, area 32/47, scatter 36/51, radar 160/163); series style chain `symbolsize` (line 71, area 70, scatter 74, radar 181) | `series[].symbol { kind, sizePt? }` (round 5, 2026-09-06): present when the family has symbols; `kind` 0 = hidden, 1 = circle (hollow in Numbers' export, at every point and as the legend key; baabe23e067f); other values unnamed until an export shows them. A line series with no non-style is kind 0 (the proto default for showsymbol is false; baabe's "Story points (adjusted)" chart). `sizePt` absent = automatic (f32::MAX in the archive) |
 
 ### 2.8 Calc engine (TSCE) — docs/format/calcengine.md
 

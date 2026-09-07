@@ -958,6 +958,19 @@ export interface ChartSeries {
   name?: string;
   /** Values aligned with ChartModel.categories; holes are `null`. */
   values: (number | IsoDateString | null)[];
+  /** Data-point symbol (line/area/scatter/radar), present only when the
+   * series shows one; Numbers also uses it as the legend key.
+   * [proto: TSCH.Generated.ChartSeriesNonStyleArchive showsymbol/symboltype] */
+  symbol?: ChartSymbol;
+}
+
+/** A series' data-point symbol. `kind` is the raw TSCH symbol type:
+ * 0 = none (the series hides its symbols), 1 = circle (hollow, as Numbers
+ * draws it at every point and in the legend); other values are unnamed
+ * until an export shows them. `sizePt` absent = automatic. */
+export interface ChartSymbol {
+  kind: number;
+  sizePt?: number;
 }
 
 /** Normalized chart types (from TSCH.ChartType, 2D and 3D variants collapsed). */
