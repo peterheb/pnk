@@ -37,7 +37,35 @@ const COMMA_DECIMAL_REGION = /^(ee|de|fr|it|es|pt|nl|dk|fi|no|gr|pl|ru|tr|br)$/i
 let decimalComma = false;
 let docLocale = "en";
 
-export function setTableLocale(locale: string | undefined): void {
+// Round 5 (2026-09-06): the divergence is now a setting. Numbers formats
+// in the MACHINE locale (verified again: eb299192a219 stores en_EE, a
+// comma-decimal region, and the en_US export prints "523.4"; 181f2b199bd3
+// stores ja_JP and the export prints "1/11(Sun)" for the document's
+// "1/11(日)"). The browser's locale is the viewer's machine locale, so
+// "browser" reproduces what Numbers would print on the reader's Mac and
+// "document" (the default, Peter's ruling above) keeps one rendering for
+// every reader. Stored under localStorage "pnk.numberLocale".
+const LOCALE_SETTING_KEY = "pnk.numberLocale";
+export type NumberLocaleMode = "document" | "browser";
+
+export function numberLocaleMode(): NumberLocaleMode {
+  try {
+    return localStorage.getItem(LOCALE_SETTING_KEY) === "browser" ? "browser" : "document";
+  } catch {
+    return "document";
+  }
+}
+
+export function setNumberLocaleMode(mode: NumberLocaleMode): void {
+  try {
+    localStorage.setItem(LOCALE_SETTING_KEY, mode);
+  } catch {
+    /* private mode: the choice lasts for the page */
+  }
+}
+
+export function setTableLocale(docLocaleId: string | undefined): void {
+  const locale = numberLocaleMode() === "browser" ? navigator.language : docLocaleId;
   const [lang, region] = (locale ?? "").split(/[-_]/);
   decimalComma = COMMA_DECIMAL_LANG.test(lang) || COMMA_DECIMAL_REGION.test(region);
   docLocale = locale ? locale.replace(/_/g, "-") : "en";

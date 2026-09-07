@@ -10,7 +10,7 @@ import { hydrate } from "./hydrate";
 import { mapError, renderErrorCard } from "./errors";
 import { renderKeynote } from "./keynote";
 import { renderNumbers } from "./numbers";
-import { setTableLocale } from "./tables";
+import { numberLocaleMode, setNumberLocaleMode, setTableLocale } from "./tables";
 import { renderPages } from "./pages";
 import { renderWarnings } from "./warnings";
 import { googleFontsEnabled, loadSubstituteFonts, setGoogleFontsEnabled } from "./webfonts";
@@ -276,6 +276,13 @@ function wireSettings(): void {
   box.checked = googleFontsEnabled();
   box.addEventListener("change", () => {
     setGoogleFontsEnabled(box.checked);
+    if (lastDoc) renderDocument(lastDoc.doc, lastDoc.filename);
+  });
+  // Numbers agent, 2026-09-06: number/date locale (tables.ts owns the rule)
+  const loc = $("locale-toggle") as HTMLInputElement;
+  loc.checked = numberLocaleMode() === "browser";
+  loc.addEventListener("change", () => {
+    setNumberLocaleMode(loc.checked ? "browser" : "document");
     if (lastDoc) renderDocument(lastDoc.doc, lastDoc.filename);
   });
 }
