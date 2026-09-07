@@ -447,14 +447,22 @@ fn shape_info_drawable(
     let is_text_box = info.boolean(6).unwrap_or(false);
     let frame = shape_text_frame_props(ctx, &shape);
     // Text-fit semantics: "shrink text on overflow" (resolved flag) scales
-    // text down to the stored box; a plain text box (is_text_box, not a
-    // placeholder) auto-grows its height as content wraps — Keynote stores
-    // the height laid out with Apple's font metrics, so renderers with
-    // different metrics must treat it as a minimum, not a clip [inferred:
-    // Keynote app behavior; placeholders keep layout-fixed frames].
+    // text down to the stored box; a plain KEYNOTE text box (is_text_box,
+    // not a placeholder) auto-grows its height as content wraps — Keynote
+    // stores the height laid out with Apple's font metrics, so renderers
+    // with different metrics must treat it as a minimum, not a clip
+    // [inferred: Keynote app behavior; placeholders keep layout-fixed
+    // frames]. Pages and Numbers boxes keep their stored frame and clip:
+    // 7b8e38edb184's 66pt title box ends in five empty 24pt paragraphs
+    // Pages does not show, and b31db822's cover shape holds a fifth
+    // paragraph ("V13 27 November 2014") Pages' export cuts off. Absent =
+    // fixed box. [inferred from those exports, 2026-09-06; Pages A]
     let text_fit = if frame.shrink_to_fit == Some(true) {
         Some(TextFit::Shrink)
-    } else if is_text_box && placeholder_role.is_none() {
+    } else if is_text_box
+        && placeholder_role.is_none()
+        && ctx.app_kind == crate::model::AppKind::Keynote
+    {
         Some(TextFit::Grow)
     } else {
         None
