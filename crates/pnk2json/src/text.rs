@@ -620,25 +620,30 @@ fn extract_from_msg_inner(ctx: &mut Ctx, storage: &Msg) -> Option<ExtractedText>
                             None
                         };
                         // Inline vs "Move with Text": both arrive as a
-                        // DrawableAttachmentArchive at a U+FFFC. Corpus
-                        // survey (323 Pages docs, 2026-09-01): every
-                        // inline-with-text object stores h/v_offset 0,0 and
-                        // exterior wrap kind none (370/374); anchored ones
-                        // carry a non-zero offset from their anchor
-                        // paragraph and a wrap kind (732/734). Fixtures
-                        // 10a06959 (cover title boxes) and b31db822 (cover
-                        // image + shape) render at anchor + offset in
-                        // Apple's export. [inferred]
-                        // Sub-4pt offsets with no wrap are docx-import
-                        // residue on inline tables (0839b6d2: -3.5/-1.9 —
-                        // Apple stacks the table in the flow), not placement.
-                        let moved = |v: Option<f64>| v.map(|x| x.abs() >= 4.0).unwrap_or(false);
+                        // DrawableAttachmentArchive at a U+FFFC. The wrap
+                        // kind decides: exterior wrap type 0 is Pages' "Inline
+                        // with Text" (a Text Wrap menu entry, stored on the
+                        // drawable); every other kind floats at anchor +
+                        // offset (fixtures 10a06959 cover title boxes,
+                        // b31db822 cover image + shape: Apple's export draws
+                        // them there). The offsets on an inline object are
+                        // its cached laid-out position, not a placement: G5's
+                        // hand-built inline image (checklist item 24, "Here is
+                        // a small inline image [img] next to text") stores
+                        // h 125.0 / v 21.7, and cf4b76a's docx-imported table
+                        // stores h 72.25 (the left margin) / v 15.6 while
+                        // Pages flows it inline and splits it across the page
+                        // break. Until 2026-09-06 a non-zero offset alone made
+                        // an object anchored (14 corpus objects, 12 of them
+                        // tables, plus G5's image). [inferred from those
+                        // exports; corpus 2026-09-06: 382 body objects store
+                        // type 0, 370 of them with a 0,0 offset]
                         let wraps = drawable_wraps(&drawable);
                         // Keynote draws an inline equation at a font-dependent
                         // scale over its stored geometry (drawables.rs).
                         let mut drawable = drawable;
                         crate::drawables::scale_inline_equation(&mut drawable);
-                        let anchored = (moved(h_off) || moved(v_off) || wraps).then_some(true);
+                        let anchored = wraps.then_some(true);
                         items.push(ParagraphItem::InlineObject {
                             kind: InlineObjectTag::InlineObject,
                             drawable,

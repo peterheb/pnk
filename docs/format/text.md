@@ -148,6 +148,18 @@ Table message shapes (`[proto]` same file):
   (`[proto]` `.scratch/otorp/Keynote/TSWPArchives.proto → TSWP.DrawableAttachmentArchive`).
   dunhamsteve resolves `entry.Object → DrawableAttachmentArchive.drawable` and renders
   the drawable at that point (`[parser: iwork@02c26ebf] iwork2html/iwork2html.go:273-287`).
+- Inline versus "Move with Text" is decided by the drawable's
+  `TSD.ExteriorTextWrapArchive.type`, not by the attachment's offsets: type 0 is
+  Pages' "Inline with Text" (the object sits in the line; a table splits across
+  pages), and every other type floats at anchor + offset. An inline object's
+  `h_offset`/`v_offset` hold its cached laid-out position (G5's hand-built inline
+  image stores 125.0/21.7; cf4b76a33f5a's docx-imported inline table stores 72.25,
+  the left margin, and 15.6). Corpus 2026-09-06, 323 Pages documents: 382 body
+  attachments store type 0, 370 of them with a 0,0 offset; all 264 body tables
+  store type 0. `[inferred from Pages' exports of those two documents]`
+- `h_offset_type` / `v_offset_type` take 0, 1 and 2 (cf4b76a: 2 on objects a docx
+  positioned relative to the page, 1 on the rest, 0 on the one native object);
+  their meaning is not yet verified. `[inferred]`
 - Textual attachments: `TSWP.TextualAttachmentArchive { string_equivalent = 1,
   kind = 2 }` with `Kind { kKindPageNumber = 0, kKindPageCount = 1, kKindFootnoteMark = 2 }`;
   subtypes `TSWPTOCPageNumberAttachmentArchive`, `NumberAttachmentArchive`

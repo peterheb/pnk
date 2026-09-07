@@ -246,9 +246,11 @@ export interface InlineObjectRun {
    * "Move with Text" placement: the drawable floats on the page at
    * (text-area left + offset.hPt, anchor paragraph top + offset.vPt) and
    * body text wraps around it per `common.textWrap`; absent/false = inline
-   * with text, sitting in the line like a glyph. Converter rule: non-zero
-   * offset or an exterior wrap kind other than none [inferred, corpus
-   * survey 2026-09-01: 370/374 zero-offset objects wrap none].
+   * with text, sitting in the line like a glyph. Converter rule: an
+   * exterior wrap kind other than `none`; the stored offsets alone never
+   * anchor, because an inline object stores its cached laid-out position
+   * there (G5's inline image: 125/21.7; cf4b76a's inline table: 72.25/15.6)
+   * [inferred from Pages' exports, 2026-09-06].
    */
   anchored?: boolean;
 }
@@ -294,7 +296,14 @@ export interface DrawableCommon {
   hyperlink?: string;
   locked?: boolean;
   accessibilityDescription?: string;
-  /** Wrap text around this object's outline. [proto: TSD.ExteriorTextWrapArchive] */
+  /**
+   * Wrap text around this object's outline. [proto: TSD.ExteriorTextWrapArchive]
+   * `kind` "none" is stored type 0, which for a body attachment is Pages'
+   * "Inline with Text" (the object sits in the line, tables split across
+   * pages); "largest" is type 5, Pages' "Automatic". Types 3/4 = left/right
+   * are [inferred]: 4 is common (docx imports) and pushes text below a
+   * full-width object like the other wraps do (87560fc1 page 1).
+   */
   textWrap?: {
     kind: "none" | "around" | "above-below" | "left" | "right" | "largest";
     marginPt?: number;
@@ -355,9 +364,12 @@ export interface ShapeDrawable {
   verticalAlignment?: VerticalAlignment;
   /** Text insets. [proto: TSWP text insets] */
   textInsets?: { top?: number; left?: number; bottom?: number; right?: number };
-  /** How hosted text relates to the box: "grow" = box grows vertically to fit,
-   * "shrink" = text scales down to fit (Keynote placeholder shrink-to-fit).
-   * Absent = fixed box, viewer clips. [proto: TSWP.ShapeStylePropertiesArchive
+  /** How hosted text relates to the box: "grow" = box grows vertically to fit
+   * (Keynote text boxes only: Pages and Numbers keep the stored frame and
+   * clip, so their boxes carry no value — 7b8e38ed's title box, b31db822's
+   * cover shape, measured against Pages' exports 2026-09-06), "shrink" =
+   * text scales down to fit (Keynote placeholder shrink-to-fit). Absent =
+   * fixed box, viewer clips. [proto: TSWP.ShapeStylePropertiesArchive
    * shrink_to_fit; auto-grow per text-box flags — resolved at emission] */
   textFit?: "grow" | "shrink";
 }

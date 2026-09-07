@@ -1037,6 +1037,21 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedD
           // only the base (0839b6d2, a docx import, stores a 1pt cell font
           // under 11pt runs — flattened, "Nome:" vanished into a 1px line).
           const el = renderStyledText(rich, hdoc, ctx);
+          // Inside a cell Pages lays paragraphs out single-spaced with no
+          // space before or after, whatever their style says: 5c07d836's
+          // cover rows (Arial 11, style 1.5x, 3pt before and after) measure
+          // 20.64pt = 12.65 + 4 + 4 padding; 4047e81b0665's wrapped cell
+          // lines run 13.0pt apart under a 1.15x style; cf4b76a's first row
+          // (8pt after, 1.079x) is 25.9pt like the rows without them.
+          // [Pages A, 2026-09-06, measured on the exports]
+          for (const blk of Array.from(el.children) as HTMLElement[]) {
+            const para = blk.classList.contains("list-item") ? blk.querySelector<HTMLElement>(":scope > p") : blk;
+            if (!para) continue;
+            para.style.marginTop = "0";
+            para.style.marginBottom = "0";
+            const face = /^"([^"]+)"/.exec(para.style.fontFamily)?.[1];
+            para.style.lineHeight = String(naturalLineHeight(face));
+          }
           // Numbers sizes each line by its own runs; a CSS block's strut
           // makes every line at least the paragraph's size (eb299192a219's
           // "Total Charge (minimum charge is 4kg)": a 26px strut under the
@@ -1080,13 +1095,17 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedD
       // clipped, never grows it. A CSS row height is only a minimum, so
       // the cell's content is boxed at the row's height. Spanned cells
       // take the sum of their visible rows.
+      // In a Pages document the stored height is a MINIMUM: Pages grows a
+      // row to its content (cf4b76a33f5a: rows stored 22pt draw 25.9pt;
+      // 5c07d836849b: 17pt stored, 20.64pt drawn), so its cells are not
+      // boxed. [Pages A, 2026-09-07, measured on the exports]
       let spanPx = 0;
       for (let k = 0, i = visRows.indexOf(r); k < (merge?.rowSpan ?? 1) && i >= 0 && i < visRows.length; k++, i++) {
         const h = model.rows?.[visRows[i]]?.sizePt;
         if (!h) { spanPx = 0; break; }
         spanPx += h;
       }
-      boxCell(td, spanPx);
+      if ((hdoc as unknown as { kind?: string } | undefined)?.kind !== "pages") boxCell(td, spanPx);
       td.dataset.row = String(r);
       td.dataset.col = String(c);
       tr.appendChild(td);

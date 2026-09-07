@@ -159,7 +159,12 @@ function renderHeader(doc: PnkDocument, filename: string): void {
   }
 }
 
-function renderDocument(doc: PnkDocument, filename: string): void {
+/** Bumped per render; a render that awaited its fonts and finds a newer
+ *  generation gives way to it. */
+let renderGen = 0;
+
+async function renderDocument(doc: PnkDocument, filename: string): Promise<void> {
+  const gen = ++renderGen;
   ctx?.dispose();
   const mediaCtx = new ViewerCtx();
   ctx = mediaCtx;
@@ -177,10 +182,12 @@ function renderDocument(doc: PnkDocument, filename: string): void {
   renderHeader(doc, filename);
   setTableLocale(doc.meta.locale);
   renderWarnings(doc.warnings);
-  // Ask for the substitute faces BEFORE the render, so they are in flight
-  // while the DOM is built; `display=swap` restyles when they land.
+  // The substitute faces must be usable before the render: pagination
+  // measures lines, and a face that lands after the measurement re-wraps
+  // them under a layout made for another face (webfonts.ts).
   lastDoc = { doc, filename };
-  loadSubstituteFonts(doc.fonts);
+  await loadSubstituteFonts(doc.fonts);
+  if (gen !== renderGen) return;
 
   const view = $("view");
   view.replaceChildren();
@@ -224,7 +231,7 @@ async function handleFile(file: File): Promise<void> {
     const json = convert(bytes);
     const doc = JSON.parse(json) as PnkDocument;
     lastJson = { text: json, filename: file.name.replace(/\.[^.]+$/, "") + ".json" };
-    renderDocument(doc, file.name);
+    await renderDocument(doc, file.name);
   } catch (err) {
     showError(err, file.name);
   } finally {
@@ -276,7 +283,7 @@ function wireSettings(): void {
   box.checked = googleFontsEnabled();
   box.addEventListener("change", () => {
     setGoogleFontsEnabled(box.checked);
-    if (lastDoc) renderDocument(lastDoc.doc, lastDoc.filename);
+    if (lastDoc) renderDocument(lastDoc.doc, lastDoc.filename).catch((err) => showError(err, lastDoc!.filename));
   });
   // Numbers agent, 2026-09-06: number/date locale (tables.ts owns the rule)
   const loc = $("locale-toggle") as HTMLInputElement;
