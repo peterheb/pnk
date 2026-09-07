@@ -53,7 +53,7 @@ test.beforeEach(async ({ page }) => {
 
 // Same-origin requests are the viewer's own code (the pdf.js chunk and
 // worker load on demand); blob:/data: are local. Everything else counts.
-const ORIGIN = "http://127.0.0.1:8123/";
+const ORIGIN = `http://127.0.0.1:${process.env.PNK_GATE_PORT ?? 8123}/`;
 function trackRequests(page: Page): void {
   page.on("request", (req) => {
     const url = req.url();
