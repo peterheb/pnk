@@ -183,6 +183,7 @@ fn serde_field_names_match_ts_contract() {
                 width: 2.0,
                 height: 2.0,
             }),
+            format: None,
         }],
         slide_size: Size {
             width: 1280.0,

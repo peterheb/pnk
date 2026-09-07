@@ -62,6 +62,29 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
         );
     }
 
+    // TP.SettingsArchive (7) document settings [proto: TPArchives.proto]:
+    // creation_date (26) is an ISO string with offset; orig_template (25)
+    // the Apple template name; language (21) a primary subtag, emitted only
+    // when it differs from the locale's (77890685: "ar" in en_US);
+    // hyphenation (9) and document_is_rtl (18) default false.
+    let mut template = None;
+    let mut language = None;
+    let mut hyphenation = None;
+    let mut right_to_left = None;
+    if let Some(settings) = root.reference(7).and_then(|sid| ctx.loaded.msg(sid)) {
+        ctx.meta.created_at = settings.string(26).filter(|s| !s.is_empty());
+        template = settings.string(25).filter(|s| !s.is_empty());
+        language = settings.string(21).filter(|s| !s.is_empty()).filter(|lang| {
+            let loc_lang = locale
+                .as_deref()
+                .map(|l| l.split(['_', '-']).next().unwrap_or(l))
+                .unwrap_or("");
+            !loc_lang.eq_ignore_ascii_case(lang)
+        });
+        hyphenation = settings.varint(9).filter(|v| *v != 0).map(|_| true);
+        right_to_left = settings.varint(18).filter(|v| *v != 0).map(|_| true);
+    }
+
     let orientation = root.varint(42).map(|v| {
         if v != 0 {
             PageLayoutOrientation::Landscape
@@ -268,6 +291,8 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
         sections.push(sec);
     }
 
+    resolve_inherited_headers_footers(&mut sections, &mut page_templates);
+
     // Page-layout: resolve each canvas's template UNDERLAY into
     // FloatingPage.template_drawables (docs/model-review.md §3c) — the
     // section's first/even/odd template drawables plus placeholder drawables
@@ -366,6 +391,10 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
         page_margins,
         orientation,
         page_scale,
+        template,
+        language,
+        hyphenation,
+        right_to_left,
         body,
         hidden_body,
         footnotes: if footnotes.is_empty() {
@@ -382,6 +411,77 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
         changes,
     }
     .with_locale(locale)
+}
+
+/// Header/footer inheritance, resolved at emission (docs/model-review.md §3:
+/// the viewer never walks a chain). TP.SectionArchive
+/// .inherit_previous_header_footer (17) is Pages' "Match previous section":
+/// the section shows the PREVIOUS section's headers and footers, whatever
+/// its own masters store. 26a356dc (a Pages 5-era newsletter) keeps the
+/// original template's "Curabitur leo" placeholder header in the masters of
+/// sections 1-5 and Pages prints section 0's "JUN /JUL 26 · Issue 3" on
+/// every page; 48f5f124's second section stores empty header storages and
+/// prints the first section's "n von N" footer. The corpus sets the flag on
+/// 453 of 569 sections. The previous section's resolved storages are copied
+/// into this section's masters, role for role (first/even/odd, falling back
+/// to the odd master); a master another section also references is cloned
+/// first so the copy cannot leak into that section.
+fn resolve_inherited_headers_footers(sections: &mut [PagesSection], templates: &mut Vec<PageTemplate>) {
+    fn role_name(sec: &PagesSection, role: usize) -> Option<String> {
+        match role {
+            0 => sec.first_page_template.clone(),
+            1 => sec.even_page_template.clone(),
+            _ => sec.odd_page_template.clone(),
+        }
+    }
+    fn set_role_name(sec: &mut PagesSection, role: usize, name: String) {
+        match role {
+            0 => sec.first_page_template = Some(name),
+            1 => sec.even_page_template = Some(name),
+            _ => sec.odd_page_template = Some(name),
+        }
+    }
+    for i in 1..sections.len() {
+        if sections[i].inherit_previous_header_footer != Some(true) {
+            continue;
+        }
+        for role in 0..3 {
+            let Some(name) = role_name(&sections[i], role) else { continue };
+            // Source: the previous section's same-role master, else its odd
+            // (parity) master — already resolved when it inherited itself.
+            let source = role_name(&sections[i - 1], role)
+                .or_else(|| role_name(&sections[i - 1], 2))
+                .and_then(|n| templates.iter().find(|t| t.name.as_deref() == Some(n.as_str())))
+                .map(|t| (t.headers.clone(), t.footers.clone()));
+            let Some((headers, footers)) = source else { continue };
+            let Some(idx) = templates.iter().position(|t| t.name.as_deref() == Some(name.as_str()))
+            else {
+                continue;
+            };
+            if templates[idx].headers == headers && templates[idx].footers == footers {
+                continue;
+            }
+            let shared = sections.iter().enumerate().any(|(j, s)| {
+                j != i && (0..3).any(|r| role_name(s, r).as_deref() == Some(name.as_str()))
+            });
+            let idx = if shared {
+                let mut clone = templates[idx].clone();
+                let new_name = format!("{name} (section {})", i + 1);
+                clone.name = Some(new_name.clone());
+                templates.push(clone);
+                for r in 0..3 {
+                    if role_name(&sections[i], r).as_deref() == Some(name.as_str()) {
+                        set_role_name(&mut sections[i], r, new_name.clone());
+                    }
+                }
+                templates.len() - 1
+            } else {
+                idx
+            };
+            templates[idx].headers = headers;
+            templates[idx].footers = footers;
+        }
+    }
 }
 
 /// Paragraph index containing a UTF-16 offset in a storage text buffer:

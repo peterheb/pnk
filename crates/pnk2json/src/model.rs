@@ -356,6 +356,15 @@ pub struct CharOutline {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+pub enum BorderSide {
+    Top,
+    Bottom,
+    Left,
+    Right,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum WritingDirection {
     LeftToRight,
     RightToLeft,
@@ -402,6 +411,9 @@ pub struct ParaStyle {
     pub background_color: Option<HexColor>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub border: Option<Stroke>,
+    /// Sides `border` is drawn on; absent = all four (see primitives.ts).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub border_sides: Option<Vec<BorderSide>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub writing_direction: Option<WritingDirection>,
     /// Drop cap on the paragraph's leading characters (TSWP.DropCapArchive).
@@ -603,6 +615,12 @@ pub struct MediaAsset {
     pub byte_length: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pixel_size: Option<Size>,
+    /// Container format sniffed from the bytes when it is one browsers do
+    /// not decode ("heic", "avif"); absent = what the file name says.
+    /// iOS exports store HEIC under a .jpg name (bd5599: six
+    /// `FullSizeRender-N.jpg` files are `ftypheic`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub format: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -2233,6 +2251,22 @@ pub struct PagesDocument {
     pub orientation: Option<PageLayoutOrientation>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub page_scale: Option<f64>,
+    /// Document settings (TP.SettingsArchive) that shape extraction and
+    /// rendering; each is omitted at its default (2026-09-06, pages-3b).
+    /// Name of the Apple template the document was created from
+    /// (`orig_template`, 25), e.g. "Blank", "10_For_Sale_Bicycle".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub template: Option<String>,
+    /// Document language (`language`, 21) when its primary subtag differs
+    /// from `meta.locale`'s (77890685: "ar" in an en_US file).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+    /// Automatic hyphenation on (`hyphenation`, 9; default off).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hyphenation: Option<bool>,
+    /// Right-to-left document (`document_is_rtl`, 18; default off).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub right_to_left: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body: Option<StyledText>,
     /// Page-layout flavor only: the never-rendered body flow the file
