@@ -231,6 +231,12 @@
             ]
           },
           "verticalAlignment": "top",
+          "textInsets": {
+            "top": 4.0,
+            "left": 4.0,
+            "bottom": 4.0,
+            "right": 4.0
+          },
           "textFit": "grow"
         },
         {
@@ -279,7 +285,13 @@
               }
             ]
           },
-          "verticalAlignment": "middle"
+          "verticalAlignment": "middle",
+          "textInsets": {
+            "top": 4.0,
+            "left": 4.0,
+            "bottom": 4.0,
+            "right": 4.0
+          }
         },
         {
           "type": "shape",
@@ -390,7 +402,13 @@
               }
             ]
           },
-          "verticalAlignment": "middle"
+          "verticalAlignment": "middle",
+          "textInsets": {
+            "top": 4.0,
+            "left": 4.0,
+            "bottom": 4.0,
+            "right": 4.0
+          }
         },
         {
           "type": "shape",
@@ -471,7 +489,13 @@
               }
             ]
           },
-          "verticalAlignment": "middle"
+          "verticalAlignment": "middle",
+          "textInsets": {
+            "top": 4.0,
+            "left": 4.0,
+            "bottom": 4.0,
+            "right": 4.0
+          }
         },
         {
           "type": "shape",
@@ -530,7 +554,13 @@
               }
             ]
           },
-          "verticalAlignment": "middle"
+          "verticalAlignment": "middle",
+          "textInsets": {
+            "top": 4.0,
+            "left": 4.0,
+            "bottom": 4.0,
+            "right": 4.0
+          }
         },
         {
           "type": "shape",
@@ -638,7 +668,13 @@
               }
             ]
           },
-          "verticalAlignment": "middle"
+          "verticalAlignment": "middle",
+          "textInsets": {
+            "top": 4.0,
+            "left": 4.0,
+            "bottom": 4.0,
+            "right": 4.0
+          }
         },
         {
           "type": "shape",
@@ -726,7 +762,13 @@
               }
             ]
           },
-          "verticalAlignment": "middle"
+          "verticalAlignment": "middle",
+          "textInsets": {
+            "top": 4.0,
+            "left": 4.0,
+            "bottom": 4.0,
+            "right": 4.0
+          }
         },
         {
           "type": "shape",
@@ -851,7 +893,13 @@
               }
             ]
           },
-          "verticalAlignment": "middle"
+          "verticalAlignment": "middle",
+          "textInsets": {
+            "top": 4.0,
+            "left": 4.0,
+            "bottom": 4.0,
+            "right": 4.0
+          }
         },
         {
           "type": "shape",
@@ -955,7 +1003,13 @@
               }
             ]
           },
-          "verticalAlignment": "middle"
+          "verticalAlignment": "middle",
+          "textInsets": {
+            "top": 4.0,
+            "left": 4.0,
+            "bottom": 4.0,
+            "right": 4.0
+          }
         },
         {
           "type": "shape",
@@ -1124,7 +1178,13 @@
               }
             ]
           },
-          "verticalAlignment": "top"
+          "verticalAlignment": "top",
+          "textInsets": {
+            "top": 4.0,
+            "left": 4.0,
+            "bottom": 4.0,
+            "right": 4.0
+          }
         },
         {
           "type": "textbox",
@@ -1168,6 +1228,12 @@
             ]
           },
           "verticalAlignment": "top",
+          "textInsets": {
+            "top": 4.0,
+            "left": 4.0,
+            "bottom": 4.0,
+            "right": 4.0
+          },
           "textFit": "grow"
         },
         {
@@ -1285,7 +1351,13 @@
                   }
                 ]
               },
-              "verticalAlignment": "middle"
+              "verticalAlignment": "middle",
+              "textInsets": {
+                "top": 4.0,
+                "left": 4.0,
+                "bottom": 4.0,
+                "right": 4.0
+              }
             },
             {
               "type": "shape",
@@ -1386,7 +1458,13 @@
                   }
                 ]
               },
-              "verticalAlignment": "top"
+              "verticalAlignment": "top",
+              "textInsets": {
+                "top": 4.0,
+                "left": 4.0,
+                "bottom": 4.0,
+                "right": 4.0
+              }
             }
           ]
         }
@@ -1429,6 +1507,12 @@
             ]
           },
           "verticalAlignment": "middle",
+          "textInsets": {
+            "top": 4.0,
+            "left": 4.0,
+            "bottom": 4.0,
+            "right": 4.0
+          },
           "textFit": "grow"
         },
         {
@@ -1465,6 +1549,12 @@
             ]
           },
           "verticalAlignment": "top",
+          "textInsets": {
+            "top": 4.0,
+            "left": 4.0,
+            "bottom": 4.0,
+            "right": 4.0
+          },
           "textFit": "grow"
         }
       ]
