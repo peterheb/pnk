@@ -43,7 +43,11 @@ function templateCandidates(
   const even = sec.evenPageTemplate ? byName.get(sec.evenPageTemplate) : undefined;
   const odd = sec.oddPageTemplate ? byName.get(sec.oddPageTemplate) : undefined;
   const parity = (i + 1) % 2 === 0 ? [even, odd] : [odd, even];
-  return i === 0 ? [first, ...parity] : parity;
+  // A first-page template is only named when "first page is different" is
+  // on (the converter clears it otherwise), so its EMPTY header means no
+  // header on page 1 — never the parity template's (5c07d836's cover
+  // carries no "Praktikumsbericht" header and no "Seite | 1" footer).
+  return i === 0 ? (first ? [first] : parity) : parity;
 }
 
 /** `i` = 0-based page index WITHIN the section. A section that inherits the
@@ -62,6 +66,63 @@ function hfTemplateFor(
   if (i === 0 && candidates[0]?.hideHeadersFooters) return undefined;
   for (const c of candidates) if (templateHasHf(c)) return c;
   return undefined;
+}
+
+/**
+ * How far a header or footer taller than its margin gap pushes the body:
+ * Pages starts the body at max(top margin, header margin + header height)
+ * and ends it at min(page - bottom margin, page - footer margin - footer
+ * height). 5c07d836: a 31pt top margin and a three-line header under a
+ * logo; the body's first line sits at 68.6pt in Pages' export while the
+ * cover page, whose first-page template has no header, keeps the 31pt.
+ * Per page: measured once per template (offscreen, at the text width) and
+ * applied by pageExclusion as a band at the top or bottom of the printable
+ * area. The section is taken as the first one (one header for the whole
+ * document is the usual case; sections that "match previous" carry copies
+ * of it), so a later section with a taller header is approximated.
+ */
+interface HfPush {
+  top: number;
+  bottom: number;
+}
+let hfPushCtx: { doc: PagesDocument; hdoc: HydratedDoc; ctx: ViewerCtx } | null = null;
+const hfPushCache = new Map<PageTemplate, HfPush>();
+
+function hfPushForPage(pageIdx: number): HfPush {
+  const none: HfPush = { top: 0, bottom: 0 };
+  if (!hfPushCtx) return none;
+  const { doc, hdoc, ctx } = hfPushCtx;
+  const ps = doc.pageSize;
+  if (!ps || !doc.sections.length) return none;
+  const t = hfTemplateFor(doc, 0, pageIdx);
+  if (!t) return none;
+  const cached = hfPushCache.get(t);
+  if (cached) return cached;
+  const m = doc.pageMargins;
+  const contentW = ps.width - (m?.left ?? 72) - (m?.right ?? 72);
+  const meas = document.createElement("div");
+  meas.className = "pages-page";
+  meas.style.position = "absolute";
+  meas.style.left = "-100000px";
+  meas.style.width = `${contentW}px`;
+  const heights = { header: 0, footer: 0 };
+  document.body.appendChild(meas);
+  for (const [cols, kind] of [[t.headers, "header"], [t.footers, "footer"]] as const) {
+    if (!cols.some(hasText)) continue;
+    const row = hfRow(cols, hdoc, ctx, kind === "header" ? "pages-header" : "pages-footer");
+    row.style.position = "static";
+    row.style.width = `${contentW}px`;
+    meas.appendChild(row);
+    heights[kind] = row.offsetHeight;
+    row.remove();
+  }
+  meas.remove();
+  const push: HfPush = {
+    top: Math.max(0, (m?.header ?? 36) + heights.header - (m?.top ?? 72)),
+    bottom: Math.max(0, (m?.footer ?? 36) + heights.footer - (m?.bottom ?? 72)),
+  };
+  hfPushCache.set(t, push);
+  return push;
 }
 
 /** Template furniture (master drawables) under a section's page `i`: the
@@ -237,7 +298,7 @@ function collapseFloat(fl: HTMLElement): void {
  * eb2a7cde's cover photo and the full-page text box on its page 2 push
  * "About PA-ADOPT" to page 3, where Pages prints it.
  */
-function pageExclusion(drawables: Drawable[], g: PageGeom): { fls: HTMLElement[]; full: boolean } | null {
+function pageExclusion(drawables: Drawable[], g: PageGeom, pageIdx = -1): { fls: HTMLElement[]; full: boolean } | null {
   const bands: { top: number; bottom: number }[] = [];
   for (const d of drawables) {
     if (d.type === "unknown" || !d.common) continue;
@@ -252,14 +313,26 @@ function pageExclusion(drawables: Drawable[], g: PageGeom): { fls: HTMLElement[]
     if (bottom - top < 1) continue;
     bands.push({ top, bottom });
   }
+  // a header or footer taller than its margin gap (hfPushForPage) takes a
+  // band at the top or bottom of the printable area; it never fills a page
+  const push = pageIdx >= 0 ? hfPushForPage(pageIdx) : { top: 0, bottom: 0 };
+  const objectBands = bands.length;
+  // The footer push is not applied: its band would be a float reaching
+  // the page bottom, under which every later anchor float lands (the
+  // "floats never overlap" rule), and anchored paragraphs stop fitting.
+  if (push.top > 0) bands.push({ top: 0, bottom: Math.min(g.contentH, push.top) });
   if (!bands.length) return null;
-  bands.sort((a, b) => a.top - b.top);
-  const merged: { top: number; bottom: number }[] = [];
-  for (const b of bands) {
-    const last = merged[merged.length - 1];
-    if (last && b.top <= last.bottom + 1) last.bottom = Math.max(last.bottom, b.bottom);
-    else merged.push({ ...b });
-  }
+  const mergeBands = (list: { top: number; bottom: number }[]) => {
+    const out: { top: number; bottom: number }[] = [];
+    for (const b of [...list].sort((a, c) => a.top - c.top)) {
+      const last = out[out.length - 1];
+      if (last && b.top <= last.bottom + 1) last.bottom = Math.max(last.bottom, b.bottom);
+      else out.push({ ...b });
+    }
+    return out;
+  };
+  const merged = mergeBands(bands);
+  const objectsOnly = mergeBands(bands.slice(0, objectBands));
   const fls: HTMLElement[] = [];
   let prevBottom = 0;
   for (const b of merged) {
@@ -273,9 +346,9 @@ function pageExclusion(drawables: Drawable[], g: PageGeom): { fls: HTMLElement[]
     fls.push(fl);
     prevBottom = b.bottom;
   }
-  // no room for even one line above, between or below the bands: the page is full
-  let full = merged[0].top < 14 && merged[merged.length - 1].bottom > g.contentH - 14;
-  for (let i = 1; i < merged.length && full; i++) if (merged[i].top - merged[i - 1].bottom >= 14) full = false;
+  // no room for even one line above, between or below the OBJECT bands: the page is full
+  let full = objectsOnly.length > 0 && objectsOnly[0].top < 14 && objectsOnly[objectsOnly.length - 1].bottom > g.contentH - 14;
+  for (let i = 1; i < objectsOnly.length && full; i++) if (objectsOnly[i].top - objectsOnly[i - 1].bottom >= 14) full = false;
   return { fls, full };
 }
 
@@ -947,7 +1020,7 @@ function paginatedBody(
     floatingByPage.set(idx, [...(floatingByPage.get(idx) ?? []), ...gr.drawables]);
     if (idx > maxFloatPage) maxFloatPage = idx;
   }
-  const exclusionOf = (pageIdx: number) => pageExclusion(floatingByPage.get(pageIdx) ?? [], g);
+  const exclusionOf = (pageIdx: number) => pageExclusion(floatingByPage.get(pageIdx) ?? [], g, pageIdx);
 
   /** A page-sized printable-area container (the page's content element). */
   const newPageContent = (): HTMLElement => {
@@ -974,6 +1047,17 @@ function paginatedBody(
     fullBleedByPage.has(pages.length - 1) ||
     fullPages.has(pages.length - 1);
   const newPage = () => pages.push([]);
+  // The last paragraph with anything visible: text, an inline object or an
+  // anchored one. Empty paragraphs after it never open a page of their own
+  // (bd5599: a one-paragraph banner whose wrapping photos fill the page
+  // paginated to two pages in this viewer, one in Pages).
+  let lastVisiblePara = -1;
+  doc.body?.paragraphs.forEach((p, k) => {
+    if (p.items.some((it) => (typeof it === "string" ? it.length > 0 : "type" in it ? true : it.text.length > 0))) {
+      lastVisiblePara = k;
+    }
+  });
+  let curPara = 0;
   // Flow pagination is INCREMENTAL, in a live page-sized container: each
   // paragraph (with its anchor float) is appended and the page is read
   // back — so a page only ever sees its own floats. Measuring the whole
@@ -991,7 +1075,7 @@ function paginatedBody(
         // skip it (bounded by the last page that has floating objects)
         for (let guard = 0; guard < 64; guard++) {
           const ex = exclusionOf(pages.length - 1);
-          if (!ex?.full) break;
+          if (!ex?.full || curPara > lastVisiblePara) break;
           fullPages.add(pages.length - 1);
           newPage();
         }
@@ -1010,6 +1094,7 @@ function paginatedBody(
       };
       seg.els.forEach((el, j) => {
         const k = seg.start + j;
+        curPara = k;
         if (forceBreak[k] && pageHasContent()) {
           newPage();
           blk = null;
@@ -1078,8 +1163,8 @@ function paginatedBody(
         let first = true;
         while (piece) {
           const b: PageBlock = blk ?? (blk = currentBlock());
-          if (tryPlace(b, piece, first)) {
-            record(b, piece);
+          if (tryPlace(b, piece, first) || k > lastVisiblePara) {
+            record(b, piece); // an empty trailing paragraph stays where it is
             break;
           }
           const rest: HTMLElement | null = fl
@@ -1192,9 +1277,14 @@ function paginatedBody(
     const bg = fillToCss(sec?.backgroundFill);
     if (bg) inner.style.background = bg;
 
-    // template furniture, then floating drawables: both behind the body text
+    // template furniture, then floating drawables: both behind the body text.
+    // Furniture goes below even a no-room anchored cover (z-index -1):
+    // b31db822's rotated "DRAFT" master watermark is hidden behind the
+    // cover's full-page image in Pages and shows through on page 2.
     for (const d of templateDrawablesFor(doc, sec, pageInSection[i])) {
-      inner.appendChild(renderCanvasDrawable(d, hdoc, ctx));
+      const tel = renderCanvasDrawable(d, hdoc, ctx);
+      tel.style.zIndex = "-2";
+      inner.appendChild(tel);
     }
     for (const d of floatingByPage.get(i) ?? []) {
       inner.appendChild(renderCanvasDrawable(d, hdoc, ctx));
@@ -1284,6 +1374,14 @@ export function renderPages(doc: PagesDocument, hdoc: HydratedDoc, ctx: ViewerCt
   view.id = "pages-view";
 
   const wordProcessing = doc.flavor === "word-processing";
+  // Automatic hyphenation (TP.SettingsArchive.hyphenation): the browser
+  // hyphenates by the document language; 529b69bade51 (de_CH).
+  if (doc.hyphenation) {
+    view.lang = doc.language ?? (doc.meta.locale ?? "").split(/[_-]/)[0];
+    view.style.hyphens = "auto";
+  }
+  hfPushCtx = wordProcessing ? { doc, hdoc, ctx } : null;
+  hfPushCache.clear();
   const geom = pageGeom(doc);
 
   if (wordProcessing && doc.body && geom) {

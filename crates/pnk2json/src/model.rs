@@ -603,6 +603,12 @@ pub struct MediaAsset {
     pub byte_length: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pixel_size: Option<Size>,
+    /// Container format sniffed from the bytes when it is one browsers do
+    /// not decode ("heic", "avif"); absent = what the file name says.
+    /// iOS exports store HEIC under a .jpg name (bd5599: six
+    /// `FullSizeRender-N.jpg` files are `ftypheic`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub format: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -99,6 +99,15 @@ export interface MediaAsset {
   byteLength?: number;
   /** Pixel dimensions for images. */
   pixelSize?: Size;
+  /**
+   * Container format sniffed from the bytes when it is one browsers do not
+   * decode; absent = the file name's extension is right. iOS exports store
+   * HEIC under a .jpg name: 7 Pages and 71 Keynote corpus files carry
+   * `ftypheic` media, 6 of them named .jpg (bd5599). A viewer falls back to
+   * the drawable's `thumbnail` (a small JPEG Apple stores alongside).
+   * [inferred: ISO BMFF `ftyp` brand at byte 8]
+   */
+  format?: "heic" | "avif";
 }
 
 /**
