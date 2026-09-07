@@ -1526,6 +1526,13 @@ function chartSvg(chart: ChartModel, w: number, h: number, numbersAxis = false):
  *  block on the stored y, "bottom" stacks it above; "top" (default) flows
  *  down as before. Composed after any rotation so the shift is in the
  *  box's own frame. */
+/** A run with characters, or a field / inline object: an empty run is a storage, not content. */
+function textHasContent(t: StyledText | undefined): boolean {
+  return !!t?.paragraphs.some((p) =>
+    p.items.some((it) => (typeof it === "string" ? it.length > 0 : "type" in it ? true : (it as { text: string }).text.length > 0)),
+  );
+}
+
 function anchorLineVertical(div: HTMLElement, layer: HTMLElement | null, verticalAlignment: string | undefined): void {
   const ty = verticalAlignment === "middle" ? "-50%" : verticalAlignment === "bottom" ? "-100%" : null;
   if (!ty) return;
@@ -1785,7 +1792,7 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
         // above. Keynote's export of RIPE 75's "Questions?" (613×0, middle,
         // y=286) paints the 97pt line spanning 250–327; ours hung it below
         // the anchor, over the email link. Same for kcsrk's 368×0 code box.
-        if (c.size.height === 0 && c.size.width > 0) anchorLineVertical(div, layer, d.verticalAlignment);
+        if (c.size.height === 0 && c.size.width > 0 && textHasContent(d.text)) anchorLineVertical(div, layer, d.verticalAlignment);
       }
       div.appendChild(layer);
     } else div.textContent = "";
@@ -1806,7 +1813,14 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
     const svg = shapeSvg(d.geometry, w, effH, c.style, fillUrl || undefined);
     div.appendChild(svg);
     const layer = textLayer({ ...d, text: d.text, verticalAlignment: d.verticalAlignment, common: c }, doc, ctx);
-    if (layer) {
+    // An empty storage is still a storage: a plain rule carries one, and the
+    // zero-height TEXT anchoring below must not move it (michaelbrooks
+    // e525ca91's 90-degree timeline rule took the -50% shift of its default
+    // middle alignment and landed 19pt off its circle).
+    const hasContent = textHasContent(d.text);
+    if (layer && !hasContent) {
+      div.appendChild(layer);
+    } else if (layer) {
       if (w === 0 && effH === 0) {
         // 0×0 shape carrying text: a point anchor exactly like the 0×0
         // textbox labels (0d5851c0 slide 29's 51pt quote — Apple lays it
