@@ -1550,6 +1550,115 @@ prints them blank; not investigated this round.
    harness and the judge scores the crop; `--align-content` does not
    apply to sheets.
 
+### Pages, round 3a (text and pagination) (2026-09-06/07, Qwen thinking off, four pages per document, content-aligned)
+
+Eight documents: the three the work list named (cf4b76a33f5a,
+eb2a7cde90d6, ae1cc13b298f), the two round 3b left for this area
+(5c07d836849b, 77890685af37), and three that prove particular fixes
+(4047e81b0665, 7b8e38edb184, b31db8225fc6). The same Pages exports as
+rounds 2 and 3b; "before" is the merged main (a71e915 plus Numbers'
+#19) rendered fresh, "after" this branch. Scored with `--align-content`,
+up to four pages each, 29 pairs. Mean 6.03 to 7.00.
+
+| document | host | pages (Pages / before / after) | judged | before | after |
+| --- | --- | ---: | ---: | ---: | ---: |
+| cf4b76a33f5a | johnwheeldonacademy.co.uk | 32 / 35 / 32 | 4 | 4.5 | 7.5 |
+| b31db8225fc6 | (round 3b) | 65 / 65 / 65 | 4 | 5.5 | 8.0 |
+| 5c07d836849b | primus-minden.de | 11 / 11 / 11 | 4 | 7.5 | 8.5 |
+| 4047e81b0665 | bcss.org | 12 / 12 / 12 | 4 | 5.5 | 6.2 |
+| 77890685af37 | sa-uc.edu.iq | 1 / 1 / 1 | 1 | 8.0 | 9.0 |
+| 7b8e38edb184 | immobilienundleben.de | 9 / 9 / 9 | 4 | 8.0 | 8.0 |
+| eb2a7cde90d6 | paadopt.org | 61 / 67 / 63 | 4 | 9.0 | 8.8 |
+| ae1cc13b298f | rustedradishes.com | 7 / 7 / 7 | 4 | 1.8 | 1.5 |
+| all | 8 documents | | 29 | 6.03 | 7.00 |
+
+5c07d836's "before" already has Numbers' round-5 row heights, which
+took its cover from 13 pages to 11 on their own; the cell-spacing fix
+below is what moved its page 1 from 6 to 9. ae1cc13b's pages 2-4 score
+0 in both columns: the document's Tajawal is not installed here, Pages
+substitutes a naskh face with a different line height and glyph width,
+and every page after the first holds different text (below).
+
+Defects fixed, with cause and fix:
+
+| defect | documents | cause | fix |
+| --- | --- | --- | --- |
+| an inline table floated at its anchor plus a 72/15pt offset, the next paragraph painted over it, its last row ran off the page | cf4b76a (page 1), 4047e81b (three tables), 12 corpus tables, G5's inline image | the converter marked any attachment with an offset of 4pt or more "anchored"; on a wrap-type-0 object the offsets are its cached laid-out position (G5's hand-built inline image stores 125/21.7) | converter: `anchored` follows the exterior wrap kind alone; type 0 is Pages' "Inline with Text" and the table splits across the page break like Pages' |
+| every line 5-9% too tall: cf4b76a at 36 pages against Pages' 32, eb2a7cde 67 against 61 | every word-processing document | the viewer laid a line out at (ascent + descent + gap) × size × multiple, and the paragraph block's strut was the chrome's system face, so a Carlito run's 13.87px line box measured 16.8px | viewer: Pages' rule, measured on 24 exports (87 paragraphs, 43 within 0.15pt against 3 under the old rule): rounded ascent + rounded descent, times the multiple, plus the rounded gap; Helvetica/Times/Courier/Hoefler at round(1.2 × size); the block takes its dominant run's font stack |
+| pagination measured with the fallback face, then the Google Fonts substitute restyled the pages: body text over the footer | 4047e81b page 6, every substituted document | `display=swap` and an immediate render | viewer: `loadSubstituteFonts` resolves once every face is usable (4s cap); `renderDocument` awaits it, with a generation guard |
+| table rows taller than Pages': the cover table's rows 29pt against 20.64, cf4b76a's first row 36.8 against 25.9 | 5c07d836 (cover, and the page cascade behind it), cf4b76a, 4047e81b | cell paragraphs kept their style's line-spacing multiple and space before/after; Pages lays cell text out single-spaced with neither (three exports measured) | viewer (tables.ts, Numbers-owned): cell paragraphs take the natural single line height and no margins |
+| after Numbers' #19, a Pages table clipped its cells at the stored row height: the six-row cover table fit page 1 where Pages breaks it after five rows | cf4b76a page 1 | the stored height is exact in Numbers' export and a minimum in Pages' (22 stored, 25.9 drawn) | viewer (tables.ts): Pages documents do not box cells |
+| a heading stranded at a page bottom; a paragraph marked to stay whole broken across pages | cf4b76a's numbered headings (six styles carry both flags) | `keepWithNext` and `keepLinesTogether` have been in the model since the hackathon; the paginator never read them | viewer: up to three keep-with-next paragraphs leave with the paragraph that moves; keep-lines-together moves whole |
+| a Pages text box marked "grow": a 66pt title box grew (round 2 capped it at 1.5×); a cover shape printed a fifth paragraph Pages clips | 7b8e38ed, b31db822 (round 3b item 6) | every non-shrink text box was emitted `textFit: "grow"`; Pages keeps the stored frame and clips | converter (drawables.rs, Keynote-owned): "grow" only for Keynote text boxes; G2 golden re-synced (four lines) after a visual check |
+| a fixed frame's tolerance fit shrank the title to 0.6 because the five empty paragraphs after it counted as overflow | 7b8e38ed page 1 | the fit measured the whole content | viewer (drawables.ts): a fixed frame measures to the last inked block, through the inner's own rect ratio so the page's fit-to-viewport transform does not count |
+
+What remains, in the order it matters:
+
+1. Arabic documents in a face Pages substitutes: ae1cc13b names
+   Tajawal-Bold (not installed); Pages' export draws a naskh face at a
+   14.6pt pitch for 12pt at 1.15×, this viewer a heavier sans at 16.1pt,
+   and page 1 holds more text here. 77890685's Helvetica Neue 14pt
+   Arabic runs at 28.5pt in Pages (the glyphs come from a fallback face
+   and Pages takes the line height from it) against 24.6 here; its photo
+   sits 23pt higher for the same reason. Modelling this needs the
+   fallback face Pages picks per script, which the archive does not
+   store.
+2. eb2a7cde is 63 pages against 61: the remaining drift is the Verdana
+   16pt headings and the TOC box; cf4b76a lags Pages by half a page at
+   page 20 (32/32 pages) — the per-page composites show the same
+   breaks up to page 12 and a slow drift after, not yet located.
+3. b31db822's cover shape: the fixed-box tolerance path lays its
+   right-aligned lines wider than the frame and cuts them at the left;
+   Pages wraps them (drawables.ts).
+4. `h_offset_type` / `v_offset_type` on the attachment (0, 1, 2 in the
+   corpus) are read by nothing; their meaning is unverified.
+5. Numbers' round-5 measurement of auto-fit row leading (Helvetica 11 at
+   about 14pt per line, Times 12 at about 15.5) against this round's
+   text rule (13 and 14 plus cell padding) — the two were measured on
+   different things (a Numbers row against a Pages line) and have not
+   been reconciled.
+6. 4047e81b page 4 (score 4 both rounds): the judge names truncation at
+   the bottom and missing content at the top; not examined.
+
+#### Schema and converter findings
+
+- Inline versus "Move with Text": the converter decided by the
+  attachment's h/v offset (4pt or more = anchored). The archive decides
+  by the drawable's `ExteriorTextWrapArchive.type`: 0 is Pages' "Inline
+  with Text", and an inline object's offsets are its cached laid-out
+  position (G5's inline image: 125/21.7; cf4b76a's table: 72.25, the
+  left margin, and 15.6). Corpus: 382 body attachments store type 0,
+  370 with a 0,0 offset; all 264 body tables store type 0. Fixed;
+  docs/format/text.md records it. The JSON field is unchanged
+  (`InlineObjectRun.anchored`, doc comment corrected).
+- Wrap type 4 (`"right"`) is the second most common kind in the corpus
+  (139 images, 104 text boxes, 54 groups) and pushes text below a
+  full-width object like the other wraps (87560fc1 page 1), so it is
+  not "None"; whether 3/4 are left/right stays [inferred].
+- `textFit`: emitted "grow" for every non-shrink text box in all three
+  apps. Pages keeps the stored frame and clips (7b8e38ed, b31db822);
+  now only Keynote boxes carry "grow". G2's four boxes lost the value;
+  the render is unchanged.
+- Line spacing: 27254104743d's four "exactly 12pt" styles resolve
+  correctly (`lineSpacingExactPt`); the 12.0pt pitch on its other Arial
+  paragraphs is Pages' rounding rule, not a dropped value. No converter
+  change.
+- `keepWithNext`, `keepLinesTogether`, `widowControl`: the first two
+  are in the model and now read; `widow_control` (26) is neither read
+  nor modelled (the paginator keeps two lines on each side regardless).
+- Pages' line-height rule (rounded ascent + rounded descent, × multiple,
+  + rounded gap) and its cell rule (single, no before/after) are viewer
+  knowledge, not archive data; docs/format has no place for app layout
+  behaviour, so they live in text.ts and tables.ts with the fixtures.
+
+Proposals not implemented:
+
+- A `ParaStyle.widowControl` field from paragraph property 26, so the
+  paginator can turn the two-line rule off where the style does.
+- `InlineObjectRun.offsetOrigin` from `h_offset_type` / `v_offset_type`,
+  once a fixture shows what 1 and 2 mean (cf4b76a's docx-imported
+  objects store 2 where Word positioned them relative to the page).
+
 ### Next
 
 Numbers: two-axis charts (type 11, 666 in 0ab5dd52841e); auto-fit row leading per face (17891b89da2f 14 vs 16pt rows); the a720beed1ab2 header row the export prints blank; pie labels inside the slices (6914f46e51ab).
