@@ -473,17 +473,23 @@ fn shape_info_drawable(
             common,
             text: text.unwrap_or_default(),
             vertical_alignment: frame.vertical_alignment,
-            text_insets: None,
+            text_insets: frame.padding.flatten(),
             text_fit,
             natural_size: None,
             flow: flow_link,
         }
     } else {
         let mut d = shape_drawable(ctx, &shape, text, frame.vertical_alignment);
-        if text_fit.is_some() {
-            if let Drawable::Shape { text_fit: tf, .. } = &mut d {
+        if let Drawable::Shape {
+            text_fit: tf,
+            text_insets,
+            ..
+        } = &mut d
+        {
+            if text_fit.is_some() {
                 *tf = text_fit;
             }
+            *text_insets = frame.padding.flatten();
         }
         if let Some(role) = placeholder_role {
             if let Drawable::Shape { common, .. } = &mut d {
@@ -642,6 +648,29 @@ struct TextFrameProps {
     /// (field 2) with vertical_alignment at field 5 [proto:
     /// TSWPArchives.proto:468-493].
     shrink_to_fit: Option<bool>,
+    /// Text inset from the frame edge: TSWP.ShapeStylePropertiesArchive
+    /// .padding (field 6, TSWP.PaddingArchive left/top/right/bottom, with
+    /// padding_null at 5) [proto: TSWPArchives.proto:461-507]; the older
+    /// TSWP.ColumnStyleArchive keeps it at column_properties.padding (11,
+    /// null flag 10). `Some(None)` = resolved to "no padding" (null flag).
+    padding: Option<Option<TextInsets>>,
+}
+
+/// TSWP.PaddingArchive (left=1, top=2, right=3, bottom=4, floats) as the
+/// model's insets; all-zero padding reads as none.
+fn padding_insets(p: &Msg) -> Option<TextInsets> {
+    let f = |n: u32| p.f32v(n).map(|v| v as f64).filter(|v| *v != 0.0);
+    let ins = TextInsets {
+        top: f(2),
+        left: f(1),
+        bottom: f(4),
+        right: f(3),
+    };
+    if ins.top.is_none() && ins.left.is_none() && ins.bottom.is_none() && ins.right.is_none() {
+        None
+    } else {
+        Some(ins)
+    }
 }
 
 /// TSWP.ShapeStylePropertiesArchive.vertical_alignment (field 2, enum top=0/
@@ -656,6 +685,7 @@ fn shape_text_frame_props(ctx: &Ctx, shape: &Msg) -> TextFrameProps {
     let mut props = TextFrameProps {
         vertical_alignment: None,
         shrink_to_fit: None,
+        padding: None,
     };
     let Some(mut sid) = shape.reference(2) else {
         return props;
@@ -689,7 +719,17 @@ fn shape_text_frame_props(ctx: &Ctx, shape: &Msg) -> TextFrameProps {
                     props.shrink_to_fit = Some(b);
                 }
             }
-            if props.vertical_alignment.is_some() && props.shrink_to_fit.is_some() {
+            if props.padding.is_none() {
+                let (pad_field, null_field) = if is_column { (11, 10) } else { (6, 5) };
+                if let Some(p) = m.msg(11) {
+                    if p.boolean(null_field) == Some(true) {
+                        props.padding = Some(None);
+                    } else if let Some(pad) = p.msg(pad_field) {
+                        props.padding = Some(padding_insets(&pad));
+                    }
+                }
+            }
+            if props.vertical_alignment.is_some() && props.shrink_to_fit.is_some() && props.padding.is_some() {
                 return props;
             }
         }
