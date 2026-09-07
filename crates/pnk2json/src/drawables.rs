@@ -827,6 +827,23 @@ fn image_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
     let (style, extras) = drawable_style(ctx, m.reference(3), true);
     common.style = style;
     merge_extras(&mut common, extras);
+    // TSD.ImageArchive.flags (7): bit 1 marks a media placeholder. Census
+    // over 37 decks: 115 master images carry 1 and 50 carry 3 (the theme
+    // "Photo" masters' stock pictures, and masters whose placeholder holds
+    // a real photo); slides' own placeholder copies carry 3, plain inserted
+    // pictures 0 (1,433 of them). Keynote paints a slide's own copy of the
+    // placeholder, never the master's: ulmen b1287863 slide 3 moved its
+    // photo and the master's stock picture showed through behind it. The
+    // role keeps the master's copy out of the underlay and lets
+    // objectPlaceholderVisibility gate the slide's. KN.SlideArchive.
+    // objectPlaceholder (30) would name it too, but no deck in the corpus
+    // sample writes that field. [inferred]
+    if m.varint(7).unwrap_or(0) & 1 != 0 && common.placeholder.is_none() {
+        common.placeholder = Some(PlaceholderInfo {
+            role: "object".to_string(),
+            inherited: None,
+        });
+    }
 
     // Display data pick (agent P): prefer the primary data, but when its
     // bytes are absent from the package fall back to a materialized
