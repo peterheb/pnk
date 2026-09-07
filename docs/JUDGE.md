@@ -1237,11 +1237,170 @@ Proposals not implemented:
   be `TextboxDrawable.comments` and `TableCell.comments`, once a fixture
   exists.
 
+### Pages, round 3b (page structure and corpus) (2026-09-06, Qwen thinking off, two pages per document)
+
+A corpus pass first: 215 of the 238 Pages origin hosts had no judged
+document. 25 were picked from them, one per host, by a pnk2json feature
+survey of all 215 candidates so that they cover page-layout documents
+(7, with 1 to 16 sections), multi-section word-processing documents (5),
+a 65-page report with footnotes and a master-page watermark, a two-column
+book, two documents with explicit column widths, six documents with 14 to
+107 floating or anchored objects, two long numbered lists, and a
+248-paragraph form. All 25 were exported from Pages and the first two
+pages of each were scored (47 pairs). Mean 7.19 before the round's
+fixes, 7.43 after, on the same exports. Score counts before: 1 ×1, 2 ×1,
+5 ×8, 6 ×10, 7 ×3, 8 ×3, 9 ×20, 10 ×1; after: 1 ×1, 5 ×8, 6 ×8, 7 ×3,
+8 ×5, 9 ×21, 10 ×1.
+
+The ranked corpus, worst first (pages: Pages' export / this viewer,
+after the fixes):
+
+| document | host | pages | judged | before | after |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 5c07d836849b | primus-minden.de | 11 / 13 | 2 | 3.5 | 4.5 |
+| 4659b5b6a8db | creativeipadclassroom.com | 7 / 7 | 2 | 5.0 | 5.0 |
+| b31db8225fc6 | cosmeticsupport.com | 65 / 72 | 2 | 5.5 | 5.5 |
+| bdbcfdc26a60 | sedgefieldchurch.org | 16 / 16 | 2 | 6.0 | 5.5 |
+| 7edb1b23ebd6 | engeco.mc | 4 / 4 | 2 | 5.5 | 6.0 |
+| 93229becc769 | outburst.au | 4 / 4 | 2 | 6.0 | 6.0 |
+| c5c6beffa264 | orte-der-unsichtbarkeit.de | 4 / 5 | 2 | 5.5 | 6.0 |
+| 6a8fc1809d35 | cumberland.gov.uk | 12 / 13 | 2 | 7.0 | 7.0 |
+| dc4de3c02235 | strongroots.ca | 4 / 5 | 2 | 7.0 | 7.0 |
+| dd965179a23c | signoradeicalzini.it | 10 / 11 | 2 | 7.0 | 7.0 |
+| 10a06959a8c7 | voordeklas.com | 9 / 12 | 2 | 7.5 | 7.5 |
+| 1ea99385959d | crhf.org | 10 / 12 | 2 | 7.5 | 7.5 |
+| 2cb7a126f3a4 | kevinhoneycutt.org | 4 / 4 | 2 | 7.0 | 7.5 |
+| 25f4b519ec3f | maitressemegane.fr | 1 / 1 | 1 | 8.0 | 8.0 |
+| 95577fa077a3 | maitrefafa.fr | 3 / 3 | 2 | 8.0 | 8.0 |
+| bd5599cb5b49 | maniscalcovini.it | 1 / 1 | 1 | 2.0 | 8.0 |
+| 529b69bade51 | meta.ipadschule.ch | 12 / 15 | 2 | 9.0 | 8.5 |
+| 0b412bfe34b1 | burlovevent.se | 6 / 6 | 2 | 8.5 | 9.0 |
+| 16b4195d1cc6 | transcendencetoolbox.com | 8 / 8 | 2 | 9.0 | 9.0 |
+| 2dd0f3849d78 | primaryresources.co.uk | 13 / 13 | 2 | 9.0 | 9.0 |
+| 7a86fa49bfef | ipadlernen.de | 4 / 4 | 2 | 8.5 | 9.0 |
+| ad9cc81fff28 | u-helmich.de | 2 / 2 | 2 | 9.0 | 9.0 |
+| c7a568f0b655 | rucool.marine.rutgers.edu | 7 / 7 | 2 | 9.0 | 9.0 |
+| da3ef450931a | brfnyponet.se | 1 / 1 | 1 | 9.0 | 9.0 |
+| 2725d84498fb | prayerletters.com | 2 / 2 | 2 | 9.5 | 9.5 |
+| all | 25 documents | | 47 | 7.19 | 7.43 |
+
+The seven page-layout documents score 7.5 to 9.5; the low scores are all
+word-processing documents, and in nine of them the page count differs
+from Pages'. Two pages per document hides most of what this round fixed:
+the header fix on 5c07d836 shows on page 2 only when page 1 stops
+overflowing (a line-pitch difference, below), and the watermark fix on
+b31db822 changes its page 1 but the judge's verdict there is dominated by
+the clipped title box.
+
+Round-2 documents re-exported and scored after the fixes (round-2 scores
+were on different exports): 26a356dc8651 7 and 7 (6.0 in round 2),
+e2e0bff371c1 7 and 6 (6.0), 77890685af37 9 (8.0), cf4b76a33f5a 5 and 4
+(3.5).
+
+Defects fixed, with cause and fix:
+
+| defect | documents | cause | fix |
+| --- | --- | --- | --- |
+| five of six bottles missing and a white box across a banner | bd5599 | six photos named `FullSizeRender-N.jpg` are HEIC (`ftypheic`), which Chrome does not decode; the JSON called them images by extension | converter: `MediaAsset.format: "heic"` sniffed from the ISO BMFF brand (24 HEIC files in 4 corpus documents, 1 Pages, 3 Keynote); viewer: an image that fails to decode swaps in the drawable's JPEG thumbnail |
+| page-layout page 2 printed the template's "6 JANUARY 2026 · CURABITUR LEO" header where Pages prints "JUN /JUL 26 · ISSUE 3" | 26a356dc (round-2 item 2) | `inherit_previous_header_footer` ("Match previous section") makes a section show the previous section's headers whatever its own masters store; the viewer preferred a master's own non-empty text | converter: the previous section's resolved storages are copied into the inheriting section's masters (cloning a shared master); the viewer no longer walks sections. 453 of the corpus's 569 sections set the flag |
+| header text printed over the section title bar on every page after the cover | 5c07d836 (also 7edb1b23, not fixed there) | Pages starts the body at max(top margin, header margin + header height); the viewer used the top margin (31pt) under a three-line header | viewer: the header row is measured per template and a top exclusion band pushes the body (68.6pt in Pages' export, matched) |
+| header and "Seite \| 1" footer on a cover page Pages prints bare | 5c07d836 | the section names a first-page master with empty storages and the viewer fell through to the parity master | viewer: a named first-page master is used as is; empty means none |
+| "DRAFT" master watermark painted over the cover | b31db822 | the cover is a no-room anchored image at z-index -1, below template furniture at z-index auto | viewer: furniture paints at z-index -2; Pages hides it under the cover and shows it from page 2 |
+| a one-paragraph banner paginated to two pages | bd5599 | the wrapping photos fill the page, so the empty body paragraph was pushed to a new page | viewer: empty paragraphs after the last visible one never open a page |
+| a dashed box around "FINANCIAL REVIEW" and around "NEWSLETTER" where Pages draws a dotted rule below, or rules above and below | e2e0bff3, 26a356dc (round-2 item 3) | the paragraph border's position (`border_positions` 45 / `deprecated_borders` 15) was not read; the viewer drew all four sides, and a 0.002-long dash as "dashed" | converter: `ParaStyle.borderSides` (bits 1 top, 2 bottom, 4 all, 8 left, 16 right, inferred from three fixtures); viewer draws the named sides, dots when the dash is no longer than the stroke |
+| document settings absent from the JSON | every Pages fixture | `TP.SettingsArchive` was read for the flavor and footnote kind only | `meta.createdAt` (never filled before), `PagesDocument.template`, `.language`, `.hyphenation`, `.rightToLeft`; the viewer hyphenates by language when the setting is on |
+| "unequal-width columns degraded to 1 equal columns" warning | 12 of 215 surveyed documents | a single explicit-width column warned as unequal columns | converter: warn for two or more columns only |
+
+What remains, in the order the judge names it after the fixes:
+
+1. Line pitch: 5c07d836's cover prints "Mappe von:" and "Lerngruppe:"
+   20.6pt apart in Pages (11pt text) and 32pt apart here, so the last
+   line spills to a page of its own and every later page of the
+   document is one page behind its floating objects (11 pages in Pages,
+   13 here). Text area (Pages A's files).
+2. Rotated wrapping objects: 10a06959's tilted polaroid (page 2) takes
+   its bounding box as the exclusion; Pages wraps to the rotated
+   contour and keeps "Het script" above it (baseline 161pt, contour
+   top-left corner about 180pt). The overflow cascades into three extra
+   pages. 25 word-processing documents carry rotated wrapping objects
+   (186 objects, 120 of them anchored).
+3. Shape image fills are in the JSON (4659b5b6: two `fill.type:
+   "image"`) and not painted: the "Spelling Workbook" box is white where
+   Pages shows a photo of letters. drawables.ts (Keynote's file).
+4. 7edb1b23: a header of seven empty paragraphs and four body
+   paragraphs holding only anchored logos; Pages prints the title at
+   102pt from the top, this viewer at 54pt. Neither "header height
+   pushes the body" nor "empty lines take their line height" reproduces
+   102pt; the header row is skipped by the measurement because it has
+   no text. Needs a fixture built by hand.
+5. Mirrored shapes: 26a356dc's sidebar arrow (`right-arrow` preset)
+   points left in Pages. `TSD.GeometryArchive.flags` (3) is not read;
+   `DrawableCommon.flipped` exists but is filled from PathSource flips
+   only. tsd.rs (Keynote's file).
+6. b31db822's cover shape prints a fifth paragraph ("V13 27 November
+   2014") that Pages clips: the `textFit` item (Pages A).
+7. Unexamined judge verdicts: bdbcfdc2 page 1 (title text duplicated
+   behind the image), c5c6beff (vertical order of a question and an
+   instruction box), 6a8fc180 page 2 (two input boxes missing), 93229bec
+   (headline face), 4659b5b6 page 2 (media placeholders).
+8. 77890685's photo sits about 25pt higher than in Pages (round 2
+   guessed 30pt to the right; the horizontal position matches within
+   8px at 150dpi).
+9. The anchor-paragraph wrap exemption (round 1, 6d4f8527) is contradicted
+   by 26a356dc's WhatsApp paragraph, whose own lines Pages wraps beside
+   the icon; here they run under it and leave a gap.
+
+#### Schema and converter findings
+
+Data that was in the archives and absent or wrong in the JSON, and what
+was done (proof fixtures in parentheses):
+
+- `TP.SettingsArchive` (DocumentArchive field 7) fields never read:
+  `creation_date` (26) and `orig_template` (25) in all 323 corpus files,
+  `language` (21) differing from the locale's in 10, `hyphenation` (9) on
+  in 10, `document_is_rtl` (18) in 1 (77890685). Now `meta.createdAt`,
+  `PagesDocument.template`, `.language` (only when it differs),
+  `.hyphenation`, `.rightToLeft` (7a86fa49: "10_For_Sale_Bicycle",
+  2021-04-29T11:00:24+0200). `footnote_format`, `footnote_numbering`,
+  `facing_pages` are default in every corpus file and stay unmodeled;
+  `section_authoring` is set in 3 files and `paper_id`/`printer_id` in
+  most, none of which affects extraction.
+- Media container format: `MediaAsset.kind` came from the file name, so
+  HEIC bytes under `.jpg` names were "image" and undecodable. Now
+  `MediaAsset.format` ("heic" | "avif") from the `ftyp` brand (bd5599).
+- Header/footer inheritance was left to the viewer as a chain walk
+  across sections (docs/model-review.md §3 forbids it); the converter
+  now resolves it into the section's own masters (26a356dc, 48f5f124).
+- Paragraph border position (`border_positions` 45, `deprecated_borders`
+  15) was used only as an on/off gate; `ParaStyle.borderSides` carries
+  the sides (e2e0bff3, 0c563c6d: value 2 = below; 26a356dc: 3 = above and
+  below). The bit meanings for 8 and 16 (left, right) are inferred from
+  the enum's value set (0-4, 8-11, 16-19, 24), not from a fixture.
+- `TP.SectionArchive.section_hyperlink_uuid` (31) and
+  `TP.DocumentArchive.uses_single_header_footer` (21),
+  `citation_records` (13), `merge_data` (50): absent from every corpus
+  file; nothing to model.
+- The `MediaAsset` inventory reads each image's first 12 bytes now; the
+  survey found no `avif` in the corpus.
+
+Proposals not implemented:
+
+- `TSD.GeometryArchive.flags` (3): the horizontal/vertical flip bits.
+  26a356dc's arrow proves a flip is stored somewhere the converter does
+  not read; the bit assignment needs a fixture with one known flip
+  (Keynote's file).
+- Rotated wrap contour: emit nothing new; the viewer has `angleDeg` and
+  could take, per exclusion band, the rotated rectangle's top edge at
+  the text's start side instead of the bounding box.
+- Header height as data: `PageTemplate.headerHeightPt`/`footerHeightPt`
+  measured by Pages are not stored (the archives keep only the margins);
+  the viewer measures its own rendering.
+
 ### Next
 
 Numbers: grouped shapes placed beside the wrong table (181f2b199bd3), zero-height line shapes, chart legend markers; then the locale question for number formatting.
 Keynote: text position drift of a few points (measure RIPE 82's footer and greenberg's title first), chart markers and hidden legends on slides (Numbers-owned), then wrap differences from fallback faces.
-Pages: the page-layout header master choice (26a356dc), box strokes Pages does not draw, the paragraph painting over an inline table (cf4b76a), then fonts; score the long documents with `--align-content` so pagination drift stops hiding the render.
+Pages: line pitch on 11pt text (5c07d836 cover, 20.6pt in Pages against 32pt here) and the page cascade it causes; rotated wrapping objects (10a06959, 25 documents); shape image fills in the JSON that the viewer does not paint (4659b5b6); the paragraph painting over an inline table (cf4b76a); then the unexamined verdicts in round 3b's list.
 Score more of the corpus, one or two pages per document, with Qwen; use
 the ranked list to choose fidelity work; add a reference re-run with
 Claude when the prompt changes again.

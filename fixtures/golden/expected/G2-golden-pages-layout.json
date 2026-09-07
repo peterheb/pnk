@@ -9,6 +9,7 @@
       "M15.3.1-7050.1.1-2"
     ],
     "documentId": "806DE6E4-AEBA-4D9C-88D2-AFE63A4527E8",
+    "createdAt": "2026-08-29T12:31:47-0400",
     "locale": "en_US"
   },
   "warnings": [
@@ -156,6 +157,7 @@
   },
   "orientation": "portrait",
   "pageScale": 1.0,
+  "template": "Blank",
   "hiddenBody": {
     "paragraphs": [
       {
