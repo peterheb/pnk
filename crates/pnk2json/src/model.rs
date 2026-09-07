@@ -356,6 +356,15 @@ pub struct CharOutline {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+pub enum BorderSide {
+    Top,
+    Bottom,
+    Left,
+    Right,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum WritingDirection {
     LeftToRight,
     RightToLeft,
@@ -402,6 +411,9 @@ pub struct ParaStyle {
     pub background_color: Option<HexColor>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub border: Option<Stroke>,
+    /// Sides `border` is drawn on; absent = all four (see primitives.ts).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub border_sides: Option<Vec<BorderSide>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub writing_direction: Option<WritingDirection>,
     /// Drop cap on the paragraph's leading characters (TSWP.DropCapArchive).

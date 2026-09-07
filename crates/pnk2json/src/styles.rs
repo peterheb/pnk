@@ -342,13 +342,25 @@ pub fn para_style_from(ctx: &mut Ctx, msgs: &[Msg]) -> ParaStyle {
         // (fixture 0c563c6d: 15 = 45 = 2). Emit only when the effective
         // type/positions value along the chain is nonzero
         // [proto: TSWPArchives.proto fields 15/45; inferred semantics].
-        let border_on = take(msgs, 45, None)
+        let positions = take(msgs, 45, None)
             .and_then(|p| p.int(45))
             .or_else(|| take(msgs, 15, None).and_then(|p| p.int(15)))
-            .unwrap_or(0)
-            != 0;
-        if border_on {
+            .unwrap_or(0);
+        if positions != 0 {
             s.border = m.msg(32).and_then(|st| crate::tsd::stroke_of(ctx, &st));
+            // Position bits: 1 top, 2 bottom, 4 all sides, 8 left, 16 right
+            // [inferred: e2e0bff3 and 0c563c6d store 2, Pages draws a rule
+            // under the paragraph only]. All four sides = absent.
+            if s.border.is_some() && positions != 4 {
+                let mut sides = Vec::new();
+                if positions & 1 != 0 { sides.push(BorderSide::Top); }
+                if positions & 2 != 0 { sides.push(BorderSide::Bottom); }
+                if positions & 8 != 0 { sides.push(BorderSide::Left); }
+                if positions & 16 != 0 { sides.push(BorderSide::Right); }
+                if !sides.is_empty() && sides.len() < 4 {
+                    s.border_sides = Some(sides);
+                }
+            }
         }
     }
     if let Some(m) = take(msgs, 38, None) {

@@ -102,8 +102,8 @@ export interface MediaAsset {
   /**
    * Container format sniffed from the bytes when it is one browsers do not
    * decode; absent = the file name's extension is right. iOS exports store
-   * HEIC under a .jpg name: 7 Pages and 71 Keynote corpus files carry
-   * `ftypheic` media, 6 of them named .jpg (bd5599). A viewer falls back to
+   * HEIC under a .jpg name: 24 `ftypheic` files in 4 corpus documents (1
+   * Pages, 3 Keynote), 6 of them named .jpg (bd5599). A viewer falls back to
    * the drawable's `thumbnail` (a small JPEG Apple stores alongside).
    * [inferred: ISO BMFF `ftyp` brand at byte 8]
    */

@@ -246,7 +246,17 @@ export function applyParaStyle(el: HTMLElement, ps: ParaStyle, fontName?: string
   if (ps.backgroundColor) s.backgroundColor = ps.backgroundColor;
   if (ps.border) {
     const b = ps.border;
-    s.border = `${b.widthPt}px ${b.dash?.length ? "dashed" : "solid"} ${b.color}`;
+    const css = `${b.widthPt}px ${b.dash?.length ? "dashed" : "solid"} ${b.color}`;
+    // borderSides: a rule on the named sides only (e2e0bff3's dotted rule
+    // under "FINANCIAL REVIEW"; absent = all four)
+    if (ps.borderSides) {
+      for (const side of ps.borderSides) {
+        if (side === "top") s.borderTop = css;
+        else if (side === "bottom") s.borderBottom = css;
+        else if (side === "left") s.borderLeft = css;
+        else s.borderRight = css;
+      }
+    } else s.border = css;
   }
   if (ps.writingDirection === "right-to-left") s.direction = "rtl";
   // tabs render via white-space: pre-wrap (set in CSS for print areas);
