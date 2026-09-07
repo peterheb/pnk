@@ -918,12 +918,21 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedD
           // only the base (0839b6d2, a docx import, stores a 1pt cell font
           // under 11pt runs — flattened, "Nome:" vanished into a 1px line).
           const rich_el = renderStyledText(rich, hdoc, ctx);
-          // Pages/Numbers add no space after a cell's LAST paragraph: cf4b76a
-          // page 1, whose first row carries an 8pt space-after and measures
-          // 25.9pt in Pages like the rows without it. [Pages A, 2026-09-06]
-          const last = rich_el.lastElementChild as HTMLElement | null;
-          const lastP = last?.classList.contains("list-item") ? last.querySelector<HTMLElement>(":scope > p") : last;
-          if (lastP) lastP.style.marginBottom = "0";
+          // Inside a cell Pages lays paragraphs out single-spaced with no
+          // space before or after, whatever their style says: 5c07d836's
+          // cover rows (Arial 11, style 1.5x, 3pt before and after) measure
+          // 20.64pt = 12.65 + 4 + 4 padding; 4047e81b0665's wrapped cell
+          // lines run 13.0pt apart under a 1.15x style; cf4b76a's first row
+          // (8pt after, 1.079x) is 25.9pt like the rows without them.
+          // [Pages A, 2026-09-06, measured on the exports]
+          for (const blk of Array.from(rich_el.children) as HTMLElement[]) {
+            const para = blk.classList.contains("list-item") ? blk.querySelector<HTMLElement>(":scope > p") : blk;
+            if (!para) continue;
+            para.style.marginTop = "0";
+            para.style.marginBottom = "0";
+            const face = /^"([^"]+)"/.exec(para.style.fontFamily)?.[1];
+            para.style.lineHeight = String(naturalLineHeight(face));
+          }
           td.replaceChildren(rich_el);
         } else if (format?.accounting && text.includes("\t")) {
           // accounting-style currency: symbol and amount pushed to
