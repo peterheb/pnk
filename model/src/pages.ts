@@ -161,6 +161,24 @@ export interface PagesDocument extends DocumentEnvelope {
   pageScale?: number;
 
   /**
+   * Name of the Apple template the document was created from, e.g. "Blank",
+   * "10_For_Sale_Bicycle". [proto: TP.SettingsArchive.orig_template (25);
+   * present in all 323 corpus documents]
+   */
+  template?: string;
+  /**
+   * Document language (BCP 47 primary subtag) when it differs from
+   * `meta.locale`'s language; absent = the locale's. [proto:
+   * TP.SettingsArchive.language (21); fixture 77890685: "ar" in an en_US
+   * file, 10 of 323 corpus documents differ]
+   */
+  language?: string;
+  /** Automatic hyphenation is on; absent = off. [proto: TP.SettingsArchive.hyphenation (9); 10 corpus documents] */
+  hyphenation?: boolean;
+  /** Right-to-left document; absent = left-to-right. [proto: TP.SettingsArchive.document_is_rtl (18); fixture 77890685] */
+  rightToLeft?: boolean;
+
+  /**
    * Word-processing flavor: the flowing document text, fully split into
    * styled paragraphs with inline objects/fields resolved.
    */

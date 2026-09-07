@@ -62,6 +62,29 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
         );
     }
 
+    // TP.SettingsArchive (7) document settings [proto: TPArchives.proto]:
+    // creation_date (26) is an ISO string with offset; orig_template (25)
+    // the Apple template name; language (21) a primary subtag, emitted only
+    // when it differs from the locale's (77890685: "ar" in en_US);
+    // hyphenation (9) and document_is_rtl (18) default false.
+    let mut template = None;
+    let mut language = None;
+    let mut hyphenation = None;
+    let mut right_to_left = None;
+    if let Some(settings) = root.reference(7).and_then(|sid| ctx.loaded.msg(sid)) {
+        ctx.meta.created_at = settings.string(26).filter(|s| !s.is_empty());
+        template = settings.string(25).filter(|s| !s.is_empty());
+        language = settings.string(21).filter(|s| !s.is_empty()).filter(|lang| {
+            let loc_lang = locale
+                .as_deref()
+                .map(|l| l.split(['_', '-']).next().unwrap_or(l))
+                .unwrap_or("");
+            !loc_lang.eq_ignore_ascii_case(lang)
+        });
+        hyphenation = settings.varint(9).filter(|v| *v != 0).map(|_| true);
+        right_to_left = settings.varint(18).filter(|v| *v != 0).map(|_| true);
+    }
+
     let orientation = root.varint(42).map(|v| {
         if v != 0 {
             PageLayoutOrientation::Landscape
@@ -366,6 +389,10 @@ pub fn convert_document(ctx: &mut Ctx, root: &Msg) -> PagesDocument {
         page_margins,
         orientation,
         page_scale,
+        template,
+        language,
+        hyphenation,
+        right_to_left,
         body,
         hidden_body,
         footnotes: if footnotes.is_empty() {

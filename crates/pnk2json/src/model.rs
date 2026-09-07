@@ -2233,6 +2233,22 @@ pub struct PagesDocument {
     pub orientation: Option<PageLayoutOrientation>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub page_scale: Option<f64>,
+    /// Document settings (TP.SettingsArchive) that shape extraction and
+    /// rendering; each is omitted at its default (2026-09-06, pages-3b).
+    /// Name of the Apple template the document was created from
+    /// (`orig_template`, 25), e.g. "Blank", "10_For_Sale_Bicycle".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub template: Option<String>,
+    /// Document language (`language`, 21) when its primary subtag differs
+    /// from `meta.locale`'s (77890685: "ar" in an en_US file).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+    /// Automatic hyphenation on (`hyphenation`, 9; default off).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hyphenation: Option<bool>,
+    /// Right-to-left document (`document_is_rtl`, 18; default off).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub right_to_left: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body: Option<StyledText>,
     /// Page-layout flavor only: the never-rendered body flow the file
