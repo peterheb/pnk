@@ -917,7 +917,14 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedD
           // Rich-text cells keep their runs: the cell style's text look is
           // only the base (0839b6d2, a docx import, stores a 1pt cell font
           // under 11pt runs — flattened, "Nome:" vanished into a 1px line).
-          td.replaceChildren(renderStyledText(rich, hdoc, ctx));
+          const rich_el = renderStyledText(rich, hdoc, ctx);
+          // Pages/Numbers add no space after a cell's LAST paragraph: cf4b76a
+          // page 1, whose first row carries an 8pt space-after and measures
+          // 25.9pt in Pages like the rows without it. [Pages A, 2026-09-06]
+          const last = rich_el.lastElementChild as HTMLElement | null;
+          const lastP = last?.classList.contains("list-item") ? last.querySelector<HTMLElement>(":scope > p") : last;
+          if (lastP) lastP.style.marginBottom = "0";
+          td.replaceChildren(rich_el);
         } else if (format?.accounting && text.includes("\t")) {
           // accounting-style currency: symbol and amount pushed to
           // opposite edges of the cell
