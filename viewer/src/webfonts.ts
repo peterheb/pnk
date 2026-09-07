@@ -74,13 +74,21 @@ function familyParam(family: string, faces: ReadonlySet<string>): string {
   return `family=${name}:ital,wght@${specs.join(";")}`;
 }
 
+/** One substitute face a document needs: a Google Fonts family plus the
+ *  weight and slope actually requested. */
+interface Face {
+  family: string;
+  weight: number;
+  italic: boolean;
+}
+
 /**
- * The stylesheet URL for the faces a document uses, or null when it needs
- * none. Only the weights the fallback actually ships are asked for —
+ * The substitute faces a document's font list resolves to, grouped by
+ * family. Only the weights the fallback actually ships are asked for —
  * requesting a weight a family does not have makes the whole request 400.
  */
-export function googleFontsHref(fontNames: readonly string[]): string | null {
-  if (!enabled) return null;
+function wantedFaces(fontNames: readonly string[]): Face[] {
+  if (!enabled) return [];
   const wanted = new Map<string, Set<string>>();
   for (const name of fontNames) {
     const fb = fallbackFor(name);
@@ -96,32 +104,87 @@ export function googleFontsHref(fontNames: readonly string[]): string | null {
     }
     faces.add(`${ital},${weight}`);
   }
-  if (wanted.size === 0) return null;
-  const params = [...wanted].map(([family, faces]) => familyParam(family, faces));
+  const out: Face[] = [];
+  for (const [family, faces] of wanted) {
+    for (const f of faces) {
+      const [ital, weight] = f.split(",").map(Number) as [number, number];
+      out.push({ family, weight, italic: ital === 1 });
+    }
+  }
+  return out;
+}
+
+/** The stylesheet URL for the faces a document uses, or null when it needs none. */
+export function googleFontsHref(fontNames: readonly string[]): string | null {
+  const faces = wantedFaces(fontNames);
+  if (faces.length === 0) return null;
+  const byFamily = new Map<string, Set<string>>();
+  for (const f of faces) {
+    let set = byFamily.get(f.family);
+    if (!set) byFamily.set(f.family, (set = new Set<string>()));
+    set.add(`${f.italic ? 1 : 0},${f.weight}`);
+  }
+  const params = [...byFamily].map(([family, set]) => familyParam(family, set));
   // display=swap: paint the document immediately in whatever is available
   // and restyle when the substitute arrives, rather than blocking on it.
   return `https://fonts.googleapis.com/css2?${params.join("&")}&display=swap`;
 }
 
+/** How long a render waits for the substitute faces before going ahead with
+ *  what it has. Google Fonts answers in well under a second on a normal
+ *  connection; an offline reader should not stare at a blank page. */
+const FONT_WAIT_MS = 4000;
+
+/**
+ * Resolve once every face is usable for layout, the wait expires, or the
+ * stylesheet fails. A paginated document must be MEASURED with the faces
+ * it will be painted in: with display=swap the fallback face lays the pages
+ * out and the substitute then restyles them, so lines re-wrap and the text
+ * runs past the page bottom (4047e81b0665 page 6, the body over the footer).
+ * `document.fonts.load` fetches a face even before any text uses it.
+ */
+function fontsSettled(faces: readonly Face[], link: HTMLLinkElement, fresh: boolean): Promise<void> {
+  if (faces.length === 0 || typeof document.fonts?.load !== "function") return Promise.resolve();
+  const sheet = fresh
+    ? new Promise<void>((resolve) => {
+        link.addEventListener("load", () => resolve(), { once: true });
+        link.addEventListener("error", () => resolve(), { once: true });
+      })
+    : Promise.resolve();
+  const loads = sheet.then(() =>
+    Promise.all(
+      faces.map((f) =>
+        document.fonts.load(`${f.italic ? "italic " : ""}${f.weight} 16px "${f.family}"`).catch(() => []),
+      ),
+    ),
+  );
+  const expiry = new Promise<void>((resolve) => setTimeout(resolve, FONT_WAIT_MS));
+  return Promise.race([loads.then(() => undefined), expiry]);
+}
+
 /**
  * Point the document's substitute-font stylesheet at what THIS document
  * needs, or remove it. One <link>, replaced per document: the browser's HTTP
- * cache makes a repeat open free.
+ * cache makes a repeat open free. Resolves when the faces are usable for
+ * layout (or the wait expires), so a caller can measure with them.
  */
-export function loadSubstituteFonts(fontNames: readonly string[]): void {
+export function loadSubstituteFonts(fontNames: readonly string[]): Promise<void> {
   const href = googleFontsHref(fontNames);
   const existing = document.getElementById(LINK_ID) as HTMLLinkElement | null;
   if (!href) {
     existing?.remove();
-    return;
+    return Promise.resolve();
   }
+  const faces = wantedFaces(fontNames);
   if (existing) {
-    if (existing.href !== href) existing.href = href;
-    return;
+    const fresh = existing.href !== href;
+    if (fresh) existing.href = href;
+    return fontsSettled(faces, existing, fresh);
   }
   const link = document.createElement("link");
   link.id = LINK_ID;
   link.rel = "stylesheet";
   link.href = href;
   document.head.appendChild(link);
+  return fontsSettled(faces, link, true);
 }
