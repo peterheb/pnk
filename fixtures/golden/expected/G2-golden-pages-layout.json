@@ -230,7 +230,13 @@
               }
             ]
           },
-          "verticalAlignment": "top"
+          "verticalAlignment": "top",
+          "textInsets": {
+            "top": 4.0,
+            "left": 4.0,
+            "bottom": 4.0,
+            "right": 4.0
+          }
         },
         {
           "type": "shape",
@@ -278,7 +284,13 @@
               }
             ]
           },
-          "verticalAlignment": "middle"
+          "verticalAlignment": "middle",
+          "textInsets": {
+            "top": 4.0,
+            "left": 4.0,
+            "bottom": 4.0,
+            "right": 4.0
+          }
         },
         {
           "type": "shape",
@@ -389,7 +401,13 @@
               }
             ]
           },
-          "verticalAlignment": "middle"
+          "verticalAlignment": "middle",
+          "textInsets": {
+            "top": 4.0,
+            "left": 4.0,
+            "bottom": 4.0,
+            "right": 4.0
+          }
         },
         {
           "type": "shape",
@@ -470,7 +488,13 @@
               }
             ]
           },
-          "verticalAlignment": "middle"
+          "verticalAlignment": "middle",
+          "textInsets": {
+            "top": 4.0,
+            "left": 4.0,
+            "bottom": 4.0,
+            "right": 4.0
+          }
         },
         {
           "type": "shape",
@@ -529,7 +553,13 @@
               }
             ]
           },
-          "verticalAlignment": "middle"
+          "verticalAlignment": "middle",
+          "textInsets": {
+            "top": 4.0,
+            "left": 4.0,
+            "bottom": 4.0,
+            "right": 4.0
+          }
         },
         {
           "type": "shape",
@@ -637,7 +667,13 @@
               }
             ]
           },
-          "verticalAlignment": "middle"
+          "verticalAlignment": "middle",
+          "textInsets": {
+            "top": 4.0,
+            "left": 4.0,
+            "bottom": 4.0,
+            "right": 4.0
+          }
         },
         {
           "type": "shape",
@@ -725,7 +761,13 @@
               }
             ]
           },
-          "verticalAlignment": "middle"
+          "verticalAlignment": "middle",
+          "textInsets": {
+            "top": 4.0,
+            "left": 4.0,
+            "bottom": 4.0,
+            "right": 4.0
+          }
         },
         {
           "type": "shape",
@@ -850,7 +892,13 @@
               }
             ]
           },
-          "verticalAlignment": "middle"
+          "verticalAlignment": "middle",
+          "textInsets": {
+            "top": 4.0,
+            "left": 4.0,
+            "bottom": 4.0,
+            "right": 4.0
+          }
         },
         {
           "type": "shape",
@@ -954,7 +1002,13 @@
               }
             ]
           },
-          "verticalAlignment": "middle"
+          "verticalAlignment": "middle",
+          "textInsets": {
+            "top": 4.0,
+            "left": 4.0,
+            "bottom": 4.0,
+            "right": 4.0
+          }
         },
         {
           "type": "shape",
@@ -1123,7 +1177,13 @@
               }
             ]
           },
-          "verticalAlignment": "top"
+          "verticalAlignment": "top",
+          "textInsets": {
+            "top": 4.0,
+            "left": 4.0,
+            "bottom": 4.0,
+            "right": 4.0
+          }
         },
         {
           "type": "textbox",
@@ -1166,7 +1226,13 @@
               }
             ]
           },
-          "verticalAlignment": "top"
+          "verticalAlignment": "top",
+          "textInsets": {
+            "top": 4.0,
+            "left": 4.0,
+            "bottom": 4.0,
+            "right": 4.0
+          }
         },
         {
           "type": "image",
@@ -1283,7 +1349,13 @@
                   }
                 ]
               },
-              "verticalAlignment": "middle"
+              "verticalAlignment": "middle",
+              "textInsets": {
+                "top": 4.0,
+                "left": 4.0,
+                "bottom": 4.0,
+                "right": 4.0
+              }
             },
             {
               "type": "shape",
@@ -1384,7 +1456,13 @@
                   }
                 ]
               },
-              "verticalAlignment": "top"
+              "verticalAlignment": "top",
+              "textInsets": {
+                "top": 4.0,
+                "left": 4.0,
+                "bottom": 4.0,
+                "right": 4.0
+              }
             }
           ]
         }
@@ -1426,7 +1504,13 @@
               }
             ]
           },
-          "verticalAlignment": "middle"
+          "verticalAlignment": "middle",
+          "textInsets": {
+            "top": 4.0,
+            "left": 4.0,
+            "bottom": 4.0,
+            "right": 4.0
+          }
         },
         {
           "type": "textbox",
@@ -1461,7 +1545,13 @@
               }
             ]
           },
-          "verticalAlignment": "top"
+          "verticalAlignment": "top",
+          "textInsets": {
+            "top": 4.0,
+            "left": 4.0,
+            "bottom": 4.0,
+            "right": 4.0
+          }
         }
       ]
     }

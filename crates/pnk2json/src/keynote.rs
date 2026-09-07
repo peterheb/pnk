@@ -377,6 +377,23 @@ fn convert_slide_raw(ctx: &mut Ctx, slide_id: u64, is_master: bool) -> (Slide, O
     // Apple paints them). The slide-number placeholder (20) is the
     // exception: it lives outside the lists and is gated by
     // slideNumberVisible downstream.
+    // The object (media) placeholder is a plain image/movie archive, not a
+    // KN.PlaceholderArchive, so it carries no role of its own; field 30
+    // names it. Tag it so the master underlay leaves it out (a slide paints
+    // its OWN copy of the placeholder, replaced or not: ulmen b1287863
+    // slide 3 drew the master's stock photo behind the slide's diagram).
+    if let Some(oid) = m.reference(30) {
+        if let Some((_, d)) = converted.iter_mut().find(|(id, _)| *id == oid) {
+            if let Some(c) = drawable_common_mut(d) {
+                if c.placeholder.is_none() {
+                    c.placeholder = Some(PlaceholderInfo {
+                        role: "media".to_string(),
+                        inherited: None,
+                    });
+                }
+            }
+        }
+    }
     let painted: std::collections::HashSet<u64> = converted.iter().map(|(id, _)| *id).collect();
     for pid in m.references(20) {
         if !painted.contains(&pid) {
@@ -891,6 +908,20 @@ fn slide_background_fill(ctx: &mut Ctx, style_id: u64, depth: u32) -> Option<Fil
 // under a given slide. Ported from the viewer's compositing rules so the
 // contract lives in ONE place — the converter — and viewers paint verbatim.
 // ---------------------------------------------------------------------------
+
+fn drawable_common_mut(d: &mut Drawable) -> Option<&mut DrawableCommon> {
+    match d {
+        Drawable::Shape { common, .. }
+        | Drawable::Textbox { common, .. }
+        | Drawable::Image { common, .. }
+        | Drawable::Movie { common, .. }
+        | Drawable::Group { common, .. }
+        | Drawable::ConnectionLine { common, .. }
+        | Drawable::Table { common, .. }
+        | Drawable::Chart { common, .. } => Some(common),
+        _ => None,
+    }
+}
 
 fn drawable_common(d: &Drawable) -> Option<&DrawableCommon> {
     match d {

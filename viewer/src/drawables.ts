@@ -27,6 +27,7 @@ import { renderTable } from "./tables";
 import { layoutTabs, naturalLineHeight, renderStyledText } from "./text";
 import { charStyleOf, paraStyleOf, type HydratedDoc } from "./hydrate";
 import { substituteFamily } from "./webfonts";
+import { lineMetrics } from "./fontmetrics";
 
 function el(tag: string, className?: string): HTMLElement {
   const e = document.createElement(tag);
@@ -50,9 +51,24 @@ export function fillToCss(f: Fill | undefined): string | undefined {
     const a = f.gradient.kind === "linear" ? (f.gradient.angleDeg ?? 0) : 0;
     return `linear-gradient(${90 - a}deg, ${stops})`;
   }
-  // A tinted image fill (tile/pattern textures): the tint is the visible
-  // color modulating a near-white texture — paint it when bytes are absent.
-  return f.tint ?? "#d9d9de";
+  // A tinted image fill (tile/pattern textures) whose bytes are absent
+  // (Apple's theme tiles never ship in the file): the tint modulates the
+  // texture, so compose it over the texture's tone rather than the page.
+  // Apple's tile names carry it: tile_paper_medgray under a 50% blue is a
+  // slate blue in Keynote (deeplearningbook 2bb490dc slide 8), light blue
+  // over white.
+  if (f.tint) {
+    const name = (f.image.preferredFileName ?? f.image.fileName ?? "").toLowerCase();
+    const base = /darkgr[ae]y|black/.test(name) ? 0x44 : /medgr[ae]y|gr[ae]y/.test(name) ? 0x66 : null;
+    const m = /^#([0-9a-f]{6})([0-9a-f]{2})$/i.exec(f.tint);
+    if (base !== null && m) {
+      const a = parseInt(m[2], 16) / 255;
+      const ch = (i: number) => Math.round(parseInt(m[1].slice(i, i + 2), 16) * a + base * (1 - a)).toString(16).padStart(2, "0");
+      return `#${ch(0)}${ch(2)}${ch(4)}`;
+    }
+    return f.tint;
+  }
+  return "#d9d9de";
 }
 
 /** A CurvePath (any coordinate space) -> SVG path data, scaled by sx/sy. */
@@ -256,7 +272,10 @@ function presetPathD(preset: string, g: ShapeGeometry, w: number, h: number): st
       // export of a default 174×100 arrow (atnf.csiro.au Bayesian deck)
       // measures a 63pt head and a 31pt shaft, from a stored 64 × 0.34;
       // the old 0.35/0.45 guesses drew a chevron with a fat shaft.
-      const horizontal = preset.endsWith("left") || preset.endsWith("right");
+      // "right-arrow" ends in "arrow": endsWith("right") was false for every
+      // horizontal arrow, so the shaft fraction applied to the WIDTH
+      // (perimeterinstitute 0e4ad34c: a 311x100 arrow drew a 99pt shaft).
+      const horizontal = preset.startsWith("left") || preset.startsWith("right");
       const along = horizontal ? w : h;
       const across = horizontal ? h : w;
       const nAlong = horizontal ? g.naturalSize?.width : g.naturalSize?.height;
@@ -492,7 +511,45 @@ function lineEndGlyph(
 // SVG shape
 // ---------------------------------------------------------------------------
 
-function shapeSvg(g: ShapeGeometry, w: number, h: number, style: DrawableCommon["style"]): SVGSVGElement {
+let imageFillSeq = 0;
+
+/**
+ * Image fill of a shape as an SVG pattern over the shape's box: the model
+ * carries `Fill { type: "image", image, technique }` and the viewer painted
+ * the tint or a grey (Pages B's proposal, 4659b5b6a8db; deeplearningbook
+ * 2bb490dc's photo-filled shapes). "tile" repeats the picture at its pixel
+ * size, the scale techniques fit it to the box like the slide background.
+ */
+function imageFillPattern(svg: SVGSVGElement, fill: Fill, url: string, w: number, h: number): string {
+  const NS = "http://www.w3.org/2000/svg";
+  const id = `imgfill-${++imageFillSeq}`;
+  const defs = document.createElementNS(NS, "defs");
+  const pat = document.createElementNS(NS, "pattern");
+  pat.setAttribute("id", id);
+  pat.setAttribute("patternUnits", "userSpaceOnUse");
+  const img = document.createElementNS(NS, "image");
+  img.setAttribute("href", url);
+  const f = fill as Extract<Fill, { type: "image" }>;
+  const px = f.image.pixelSize;
+  if (f.technique === "tile" && px?.width && px?.height) {
+    pat.setAttribute("width", String(px.width));
+    pat.setAttribute("height", String(px.height));
+    img.setAttribute("width", String(px.width));
+    img.setAttribute("height", String(px.height));
+  } else {
+    pat.setAttribute("width", String(Math.max(w, 1)));
+    pat.setAttribute("height", String(Math.max(h, 1)));
+    img.setAttribute("width", String(Math.max(w, 1)));
+    img.setAttribute("height", String(Math.max(h, 1)));
+    img.setAttribute("preserveAspectRatio", f.technique === "scale-to-fit" ? "xMidYMid meet" : f.technique === "stretch" ? "none" : "xMidYMid slice");
+  }
+  pat.appendChild(img);
+  defs.appendChild(pat);
+  svg.insertBefore(defs, svg.firstChild);
+  return id;
+}
+
+function shapeSvg(g: ShapeGeometry, w: number, h: number, style: DrawableCommon["style"], imageFillUrl?: string): SVGSVGElement {
   const NS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(NS, "svg") as SVGSVGElement;
   // Degenerate boxes are real: Keynote stores horizontal/vertical rules as
@@ -554,7 +611,8 @@ function shapeSvg(g: ShapeGeometry, w: number, h: number, style: DrawableCommon[
 
   path.setAttribute("d", d);
   const fill = style?.fill;
-  path.setAttribute("fill", fill ? (fill.type === "gradient" ? `url(#${svg.dataset.fillRef})` : (fillToCss(fill) ?? "none")) : "none");
+  const imageFillId = fill && fill.type === "image" && imageFillUrl ? imageFillPattern(svg, fill, imageFillUrl, w, h) : null;
+  path.setAttribute("fill", imageFillId ? `url(#${imageFillId})` : fill ? (fill.type === "gradient" ? `url(#${svg.dataset.fillRef})` : (fillToCss(fill) ?? "none")) : "none");
   if (stroke) svgStrokeAttrs(path, stroke, scale);
   svg.appendChild(path);
   for (const gl of glyphs) svg.appendChild(gl);
@@ -663,8 +721,145 @@ function textLayer(d: Drawable & { text?: unknown; common?: DrawableCommon }, do
     (paras[0] as HTMLElement).style.marginTop = "0";
     (paras[paras.length - 1] as HTMLElement).style.marginBottom = "0";
   }
+  // Text insets (TSWP.ShapeStylePropertiesArchive.padding, resolved by the
+  // converter): the text area is the frame minus these. RIPE 82's Helvetica
+  // title starts 5.625pt inside its frame in the export, where the converter
+  // used to emit no insets and the text sat on the frame edge.
+  const ins = (d as { textInsets?: { top?: number; left?: number; bottom?: number; right?: number } }).textInsets;
+  if (ins) {
+    layer.style.padding = `${ins.top ?? 0}px ${ins.right ?? 0}px ${ins.bottom ?? 0}px ${ins.left ?? 0}px`;
+  }
+  if ((doc as { kind?: string }).kind === "keynote") applyKeynoteLineMetrics(inner, d.text as StyledText, doc, (d as { verticalAlignment?: string }).verticalAlignment);
   layer.appendChild(inner);
   return layer;
+}
+
+let measureCanvas: HTMLCanvasElement | undefined;
+const browserMetricsCache = new Map<string, [number, number] | null>();
+
+/**
+ * Ascent and descent (per em) of the face the browser will actually draw
+ * for a CSS font shorthand, from canvas text metrics. That is the content
+ * area of the run's inline box, which is where CSS puts the baseline
+ * inside a line box; it is the substitute's numbers when the document's
+ * face is missing.
+ */
+function browserAscentDescent(fontCss: string): [number, number] | null {
+  const hit = browserMetricsCache.get(fontCss);
+  if (hit !== undefined) return hit;
+  measureCanvas ??= document.createElement("canvas");
+  const g = measureCanvas.getContext("2d");
+  let out: [number, number] | null = null;
+  if (g) {
+    g.font = fontCss;
+    const tm = g.measureText("Hg");
+    if (tm.fontBoundingBoxAscent > 0) out = [tm.fontBoundingBoxAscent / 100, tm.fontBoundingBoxDescent / 100];
+  }
+  browserMetricsCache.set(fontCss, out);
+  return out;
+}
+
+/**
+ * Lay each paragraph's lines out where Keynote puts them. Keynote's line
+ * pitch is the paragraph's multiple times AppKit's default line height for
+ * the face, and its first baseline sits at AppKit's baseline offset below
+ * the top of the text area whatever the multiple (fontmetrics.ts; measured
+ * on 37 exported decks). CSS centres a run's content area in its line box,
+ * so with the pitch as the line height the baseline lands at
+ * (pitch + ascent - descent) / 2; the block is shifted by the difference.
+ * Helvetica is the large case: AppKit gives it 1.2 em lines with the
+ * baseline at 0.97 em, CSS 0.87 em, so a 95pt title drew 9.5pt high.
+ * The paragraph element takes the run's face so the strut (which was the
+ * page's system font) no longer widens the line box.
+ */
+function applyKeynoteLineMetrics(inner: HTMLElement, text: StyledText | undefined, doc: HydratedDoc, align: string | undefined): void {
+  const st = inner.querySelector<HTMLElement>(":scope > .styled-text");
+  if (!st || !text) return;
+  const blocks = Array.from(st.children) as HTMLElement[];
+  text.paragraphs.forEach((p, i) => {
+    const block = blocks[i];
+    if (!block) return;
+    const para = block.classList.contains("list-item")
+      ? block.querySelector<HTMLElement>(":scope > p, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5")
+      : block;
+    if (!para) return;
+    // the largest run sets the first line (renderParagraph's strut size);
+    // the smallest sets the strut here, so a line of small runs after a
+    // forced break is pitched for its own size
+    let size = 0;
+    let font: string | undefined;
+    let minSize = Infinity;
+    let minFont: string | undefined;
+    for (const it of p.items) {
+      if (typeof it === "string" || "type" in it) continue;
+      const cs = charStyleOf(doc, (it as { cStyle?: number }).cStyle);
+      if (!cs?.fontSizePt) continue;
+      if (cs.fontSizePt > size) {
+        size = cs.fontSizePt;
+        font = cs.fontName;
+      }
+      if (cs.fontSizePt < minSize) {
+        minSize = cs.fontSizePt;
+        minFont = cs.fontName;
+      }
+    }
+    if (!size) return;
+    const ps = paraStyleOf(doc, p.pStyle);
+    const pitchFor = (fontName: string | undefined, sizePt: number): number => {
+      const natural = lineMetrics(fontName).height * sizePt;
+      if (ps?.lineSpacingMultiple) return ps.lineSpacingMultiple * natural;
+      if (ps?.lineSpacingExactPt) {
+        const v = ps.lineSpacingExactPt;
+        const mode = ps.lineSpacingMode;
+        return mode === "min" ? Math.max(v, natural) : mode === "max" ? Math.min(v, natural) : mode === "space-between" ? natural + v : v;
+      }
+      return natural;
+    };
+    const lm = lineMetrics(font);
+    const pitch = pitchFor(font, size);
+    // the face the browser draws that run with (inline style from applyCharStyle)
+    const spans = Array.from(para.querySelectorAll<HTMLElement>("span"));
+    const span = spans.find((s) => s.style.fontFamily) ?? null;
+    const family = span?.style.fontFamily || para.style.fontFamily || "sans-serif";
+    const weight = span?.style.fontWeight || "400";
+    const style = span?.style.fontStyle || "normal";
+    const ad = browserAscentDescent(`${style} ${weight} 100px ${family}`);
+    if (!ad) return;
+    // Mixed sizes in one paragraph (enog 85c3a6f1: 34pt headings with a
+    // forced break and a 20pt line under each): Keynote pitches each line
+    // for the runs on it, so every run carries its own pitch and the
+    // paragraph's strut is the smallest run's.
+    if (minSize < size) {
+      for (const sp of spans) {
+        if (!sp.style.fontSize || !sp.style.fontSize.endsWith("px") || sp.style.lineHeight === "0") continue;
+        const spSize = parseFloat(sp.style.fontSize);
+        const spFont = /^"([^"]+)"/.exec(sp.style.fontFamily)?.[1];
+        sp.style.lineHeight = `${pitchFor(spFont, spSize).toFixed(3)}px`;
+      }
+      para.style.fontSize = `${minSize}px`;
+    }
+    // Keynote's block is B + (n-1)*pitch + d tall: the first baseline B
+    // below the area top, the last one d above its bottom, the line gap
+    // between lines only (greenberg's bottom-aligned HelveticaNeue-Bold
+    // title ends 0.220 em under its last baseline, the descent, not the
+    // 0.246 em of pitch - B). CSS centres each content area in its pitch,
+    // so the correction depends on which edge the block hangs from; a
+    // middle-aligned block needs none of the pitch term at all.
+    const [a, d] = ad;
+    const shift = align === "bottom"
+      ? ((pitch - (a - d) * size) / 2 - lm.descent * size)
+      : align === "middle"
+        ? ((lm.baseline - a + d - lm.descent) * size) / 2
+        : lm.baseline * size - (pitch + (a - d) * size) / 2;
+    para.style.lineHeight = `${(minSize < size ? pitchFor(minFont, minSize) : pitch).toFixed(3)}px`;
+    // the face only: a weight or style on the block would be inherited by
+    // runs that carry none (neas 251aeddf: an italic first run made the
+    // whole paragraph italic)
+    para.style.fontFamily = family;
+    if (block !== para) block.style.lineHeight = para.style.lineHeight;
+    block.style.position = "relative";
+    block.style.top = `${shift.toFixed(2)}px`;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -707,6 +902,13 @@ function applyTextFitMode(
     layer.style.position = "relative";
     layer.style.overflow = "visible";
     layer.style.height = "auto";
+    // Keynote sized the box to its own layout and lets a line run a hair
+    // past the right indent rather than wrap it: ijclab bd1b298e's author
+    // box is 255.4pt for a 243.2pt name that has 241.0pt after insets and
+    // indents, drawn on one line in the export and wrapped here. The same
+    // 3% slack the zero-size boxes get.
+    const inner = layer.querySelector<HTMLElement>(":scope > .drawable-text-inner");
+    if (inner) inner.style.marginRight = "-3%";
   } else if (fit === "shrink") {
     div.dataset.textFit = "shrink";
   } else {
@@ -1344,6 +1546,13 @@ function chartSvg(chart: ChartModel, w: number, h: number, numbersAxis = false):
  *  block on the stored y, "bottom" stacks it above; "top" (default) flows
  *  down as before. Composed after any rotation so the shift is in the
  *  box's own frame. */
+/** A run with characters, or a field / inline object: an empty run is a storage, not content. */
+function textHasContent(t: StyledText | undefined): boolean {
+  return !!t?.paragraphs.some((p) =>
+    p.items.some((it) => (typeof it === "string" ? it.length > 0 : "type" in it ? true : (it as { text: string }).text.length > 0)),
+  );
+}
+
 function anchorLineVertical(div: HTMLElement, layer: HTMLElement | null, verticalAlignment: string | undefined): void {
   const ty = verticalAlignment === "middle" ? "-50%" : verticalAlignment === "bottom" ? "-100%" : null;
   if (!ty) return;
@@ -1603,7 +1812,7 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
         // above. Keynote's export of RIPE 75's "Questions?" (613×0, middle,
         // y=286) paints the 97pt line spanning 250–327; ours hung it below
         // the anchor, over the email link. Same for kcsrk's 368×0 code box.
-        if (c.size.height === 0 && c.size.width > 0) anchorLineVertical(div, layer, d.verticalAlignment);
+        if (c.size.height === 0 && c.size.width > 0 && textHasContent(d.text)) anchorLineVertical(div, layer, d.verticalAlignment);
       }
       div.appendChild(layer);
     } else div.textContent = "";
@@ -1620,10 +1829,18 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
     const naturalH = d.geometry.naturalSize?.height ?? 0;
     const effH = h === 0 && w > 0 && d.geometry.path && naturalH > 1 ? naturalH : h;
     if (effH !== h) div.style.height = `${effH}px`;
-    const svg = shapeSvg(d.geometry, w, effH, c.style);
+    const fillUrl = c.style?.fill?.type === "image" ? ctx.url(c.style.fill.image.dataId) : undefined;
+    const svg = shapeSvg(d.geometry, w, effH, c.style, fillUrl || undefined);
     div.appendChild(svg);
     const layer = textLayer({ ...d, text: d.text, verticalAlignment: d.verticalAlignment, common: c }, doc, ctx);
-    if (layer) {
+    // An empty storage is still a storage: a plain rule carries one, and the
+    // zero-height TEXT anchoring below must not move it (michaelbrooks
+    // e525ca91's 90-degree timeline rule took the -50% shift of its default
+    // middle alignment and landed 19pt off its circle).
+    const hasContent = textHasContent(d.text);
+    if (layer && !hasContent) {
+      div.appendChild(layer);
+    } else if (layer) {
       if (w === 0 && effH === 0) {
         // 0×0 shape carrying text: a point anchor exactly like the 0×0
         // textbox labels (0d5851c0 slide 29's 51pt quote — Apple lays it
@@ -1676,6 +1893,15 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
       wrap.style.height = `${m.size.height + sw}px`;
       wrap.style.boxSizing = "border-box";
       wrap.style.overflow = "hidden";
+      // A rotated mask turns the window AND the image in it about the
+      // window's centre: lofar c7429dce slide 4 stores angle 335.6 on the
+      // mask (the image's own geometry is unrotated) and Keynote draws the
+      // panel and its content tilted 24.4 degrees. Same sign convention as
+      // applyCommonGeometry.
+      if (m.angleDeg) {
+        wrap.style.transform = `rotate(${-m.angleDeg}deg)`;
+        wrap.style.transformOrigin = "center";
+      }
       applyBoxStroke(wrap, stroke);
       if (div.style.filter) { wrap.style.filter = div.style.filter; div.style.filter = ""; }
       img.style.position = "absolute";

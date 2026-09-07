@@ -481,17 +481,23 @@ fn shape_info_drawable(
             common,
             text: text.unwrap_or_default(),
             vertical_alignment: frame.vertical_alignment,
-            text_insets: None,
+            text_insets: frame.padding.flatten(),
             text_fit,
             natural_size: None,
             flow: flow_link,
         }
     } else {
         let mut d = shape_drawable(ctx, &shape, text, frame.vertical_alignment);
-        if text_fit.is_some() {
-            if let Drawable::Shape { text_fit: tf, .. } = &mut d {
+        if let Drawable::Shape {
+            text_fit: tf,
+            text_insets,
+            ..
+        } = &mut d
+        {
+            if text_fit.is_some() {
                 *tf = text_fit;
             }
+            *text_insets = frame.padding.flatten();
         }
         if let Some(role) = placeholder_role {
             if let Drawable::Shape { common, .. } = &mut d {
@@ -504,29 +510,87 @@ fn shape_info_drawable(
         d
     };
 
-    // Classic-import anchored geometry: Keynote-'09-converted decks (format
-    // 1.5) store some text shapes' geometry with flags == 0 and position =
-    // the shape's CENTER, not its top-left. 0d5851c0 slide 1: the title
-    // stores (512, 638) — the slide's horizontal center — and Apple lays the
-    // 500×36 rect out at 262..762 with its centered text on x=512; modern
-    // archives (G2, 0f9df553) always write flags 3 (7 when rotated).
-    // Re-anchor to top-left here so the model's geometry contract holds and
-    // the viewer never learns about the flag. A 0×0 anchored label is
-    // unaffected (shift of half-zero), and rotation is left alone — no
-    // rotated flags==0 sample exists to verify against. [inferred: flag-bit
-    // semantics are undocumented; behavior verified against Apple's own
-    // render of 0d5851c0 slides 1/27/28]
-    if shape
+    // Anchored geometry. TSD.GeometryArchive.flags (field 3) is a bitfield;
+    // modern archives write 3 (7 when rotated), and for those the position
+    // is the frame's top-left. With bit 1 (value 1) clear the stored x is
+    // the frame's horizontal anchor for the text's paragraph alignment (the
+    // left edge, the centre or the right edge); with bit 2 (value 2) clear
+    // the stored y is the vertical anchor for the frame's vertical alignment
+    // (top edge, centre, bottom edge). Checked against Keynote's export of
+    // 37 decks: 9ad6cfab's bottom-aligned footer stores y = 1071.26 for a
+    // 50pt box whose text sits at 1021..1071 (flags 1); c184e5a7's
+    // middle-aligned "Aula 03" stores its centre; 0d5851c0's centred titles
+    // (flags 0, round 1) store their centre on both axes; enog's right-
+    // aligned URL box stores its right edge. Every flagged box with text in
+    // those exports lands inside the frame this rule predicts. Re-anchor to
+    // top-left so the model's geometry contract holds and the viewer never
+    // learns about the flag. Rotation is left alone (no rotated sample).
+    // [inferred: the bit semantics are undocumented; docs/format/drawables.md]
+    let flags = shape
         .msg(1)
         .and_then(|d| d.msg(1))
         .and_then(|g| g.varint(3))
-        == Some(0)
-    {
-        if let Drawable::Shape { common, .. } | Drawable::Textbox { common, .. } = &mut drawable {
+        .unwrap_or(3);
+    if flags & 3 != 3 {
+        fn first_p_style(t: &StyledText) -> Option<u32> {
+            t.paragraphs
+                .iter()
+                .find(|p| !p.items.is_empty())
+                .or(t.paragraphs.first())
+                .and_then(|p| p.p_style)
+        }
+        let anchored = match &mut drawable {
+            Drawable::Shape {
+                common,
+                text,
+                vertical_alignment,
+                ..
+            } => Some((common, text.as_ref().and_then(first_p_style), vertical_alignment.clone())),
+            Drawable::Textbox {
+                common,
+                text,
+                vertical_alignment,
+                ..
+            } => Some((common, first_p_style(text), vertical_alignment.clone())),
+            _ => None,
+        };
+        if let Some((common, p_style, vertical_alignment)) = anchored {
             if common.angle_deg.unwrap_or(0.0) == 0.0 {
+                // The alignment anchor is a property of laid-out text; a
+                // shape without text (michaelbrooks e525ca91's timeline
+                // rules, flags 1, middle-aligned by default) keeps its
+                // stored corner, and a text-less flags-0 shape keeps the
+                // round-1 centre reading.
+                let has_text = p_style.is_some();
+                let h_align = p_style
+                    .and_then(|i| ctx.para_pool.items.get(i as usize))
+                    .and_then(|ps| ps.horizontal_alignment.clone());
+                let fx = if !has_text {
+                    0.5
+                } else {
+                    match h_align {
+                        Some(HorizontalAlignment::Center) => 0.5,
+                        Some(HorizontalAlignment::Right) => 1.0,
+                        _ => 0.0,
+                    }
+                };
+                let fy = if !has_text {
+                    0.5
+                } else {
+                    match vertical_alignment {
+                        Some(VerticalAlignment::Middle) => 0.5,
+                        Some(VerticalAlignment::Bottom) => 1.0,
+                        _ => 0.0,
+                    }
+                };
+                let flags = if !has_text && flags != 0 { 3 } else { flags };
                 if let (Some(p), Some(s)) = (common.position.as_mut(), common.size.as_ref()) {
-                    p.x -= s.width / 2.0;
-                    p.y -= s.height / 2.0;
+                    if flags & 1 == 0 {
+                        p.x -= s.width * fx;
+                    }
+                    if flags & 2 == 0 {
+                        p.y -= s.height * fy;
+                    }
                 }
             }
         }
@@ -650,6 +714,29 @@ struct TextFrameProps {
     /// (field 2) with vertical_alignment at field 5 [proto:
     /// TSWPArchives.proto:468-493].
     shrink_to_fit: Option<bool>,
+    /// Text inset from the frame edge: TSWP.ShapeStylePropertiesArchive
+    /// .padding (field 6, TSWP.PaddingArchive left/top/right/bottom, with
+    /// padding_null at 5) [proto: TSWPArchives.proto:461-507]; the older
+    /// TSWP.ColumnStyleArchive keeps it at column_properties.padding (11,
+    /// null flag 10). `Some(None)` = resolved to "no padding" (null flag).
+    padding: Option<Option<TextInsets>>,
+}
+
+/// TSWP.PaddingArchive (left=1, top=2, right=3, bottom=4, floats) as the
+/// model's insets; all-zero padding reads as none.
+fn padding_insets(p: &Msg) -> Option<TextInsets> {
+    let f = |n: u32| p.f32v(n).map(|v| v as f64).filter(|v| *v != 0.0);
+    let ins = TextInsets {
+        top: f(2),
+        left: f(1),
+        bottom: f(4),
+        right: f(3),
+    };
+    if ins.top.is_none() && ins.left.is_none() && ins.bottom.is_none() && ins.right.is_none() {
+        None
+    } else {
+        Some(ins)
+    }
 }
 
 /// TSWP.ShapeStylePropertiesArchive.vertical_alignment (field 2, enum top=0/
@@ -664,6 +751,7 @@ fn shape_text_frame_props(ctx: &Ctx, shape: &Msg) -> TextFrameProps {
     let mut props = TextFrameProps {
         vertical_alignment: None,
         shrink_to_fit: None,
+        padding: None,
     };
     let Some(mut sid) = shape.reference(2) else {
         return props;
@@ -697,7 +785,17 @@ fn shape_text_frame_props(ctx: &Ctx, shape: &Msg) -> TextFrameProps {
                     props.shrink_to_fit = Some(b);
                 }
             }
-            if props.vertical_alignment.is_some() && props.shrink_to_fit.is_some() {
+            if props.padding.is_none() {
+                let (pad_field, null_field) = if is_column { (11, 10) } else { (6, 5) };
+                if let Some(p) = m.msg(11) {
+                    if p.boolean(null_field) == Some(true) {
+                        props.padding = Some(None);
+                    } else if let Some(pad) = p.msg(pad_field) {
+                        props.padding = Some(padding_insets(&pad));
+                    }
+                }
+            }
+            if props.vertical_alignment.is_some() && props.shrink_to_fit.is_some() && props.padding.is_some() {
                 return props;
             }
         }
@@ -752,6 +850,24 @@ fn image_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
     let (style, extras) = drawable_style(ctx, m.reference(3), true);
     common.style = style;
     merge_extras(&mut common, extras);
+    // TSD.ImageArchive.flags (7): bit 1 marks a media placeholder. Census
+    // over 37 decks: 115 master images carry 1 and 50 carry 3 (the theme
+    // "Photo" masters' stock pictures, and masters whose placeholder holds
+    // a real photo); slides' own placeholder copies carry 3, plain inserted
+    // pictures 0 (1,433 of them). Keynote paints a slide's own copy of the
+    // placeholder, never the master's: ulmen b1287863 slide 3 moved its
+    // photo and the master's stock picture showed through behind it. The
+    // "media" role keeps the master's copy out of the underlay; the slide's
+    // own copy paints regardless of objectPlaceholderVisibility (ulmen's
+    // slide style stores false and Keynote draws the photo). KN.SlideArchive.
+    // objectPlaceholder (30) would name it too, but no deck in the corpus
+    // sample writes that field. [inferred]
+    if m.varint(7).unwrap_or(0) & 1 != 0 && common.placeholder.is_none() {
+        common.placeholder = Some(PlaceholderInfo {
+            role: "media".to_string(),
+            inherited: None,
+        });
+    }
 
     // Display data pick (agent P): prefer the primary data, but when its
     // bytes are absent from the package fall back to a materialized

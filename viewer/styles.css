@@ -581,3 +581,6 @@ table.sheet-table .cell-clip { overflow-x: visible; overflow-y: clip; box-sizing
 /* The sheet's drawables live in an origin box shifted by the negative
    extent of the stored positions (numbers.ts originShift). */
 .sheet-canvas .sheet-origin { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: visible; }
+
+/* ---- Keynote agent, 2026-09-06: text insets are padding on the text layer ---- */
+.canvas-drawable > .drawable-text { box-sizing: border-box; }

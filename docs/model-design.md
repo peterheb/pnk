@@ -361,6 +361,12 @@ A slide (or page) placeholder — title/body/object/slide-number — is a
    `placeholder.inherited = true`.
 3. Master placeholders with no slide-side counterpart stay in `masters[]`
    only.
+4. Media placeholders (an image or movie with `TSD.ImageArchive.flags` bit 1,
+   or the drawable `KN.SlideArchive.objectPlaceholder` names) carry
+   `placeholder.role = "media"`. A slide paints its own copy whatever the
+   slide style's `objectPlaceholderVisibility` says, so the role gates
+   nothing on the slide; it keeps the master's copy out of
+   `masterDrawables` (2026-09-07, Keynote round 4).
 
 ### 3.3 Text splitting
 

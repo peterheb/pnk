@@ -27,8 +27,20 @@ dunhamsteve/iwork and DevExzh/litchi.
 Geometry lives in `TSD.GeometryArchive` (lines 21-26): `position = 1`
 (`TSP.Point { x = 1, y = 2 }`, floats — `TSPMessages.proto:45-48`),
 `size = 2` (`TSP.Size { width = 1, height = 2 }` — `TSPMessages.proto:61-64`),
-`flags = 3` (uint32 bitfield; semantics not documented in any local proto
-[inferred: flags exist but no local source defines the bits]),
+`flags = 3` (uint32 bitfield; semantics not documented in any local proto.
+Modern archives write 3, or 7 when rotated; bits 1 and 2 say which point
+of the frame `position` names. With bit 1 (value 1) clear the x is the
+frame's horizontal anchor for the text's paragraph alignment: the left edge
+for left-aligned text, the centre for centred, the right edge for
+right-aligned. With bit 2 (value 2) clear the y is the vertical anchor for
+the text frame's vertical alignment: top edge, centre, or bottom edge.
+Corpus census over 37 exported decks: 6952 text shapes at 3, 3020 at 0
+(nearly all 0x0 labels), 1012 at 1, 50 at 2, 53 at 7. [inferred: every
+flagged box with text in Keynote's exports of those decks lands inside the
+frame this rule predicts, e.g. 9ad6cfab0ac1's bottom-aligned footer stores
+y = 1071.26 for a 50pt box drawn at 1021..1071, c184e5a76807's
+middle-aligned "Aula 03" stores its centre; bit 4/8 = mirrored, see
+below]),
 `angle = 4` (float, **degrees** [inferred→fixture-verified 2026-08-29: the
 24_Briefing.key master's tick rules store `angle = 90.0` and Keynote's own PDF
 export renders them vertical — 90 radians would display as ≡116.6°]). [proto]
