@@ -1095,13 +1095,17 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedD
       // clipped, never grows it. A CSS row height is only a minimum, so
       // the cell's content is boxed at the row's height. Spanned cells
       // take the sum of their visible rows.
+      // In a Pages document the stored height is a MINIMUM: Pages grows a
+      // row to its content (cf4b76a33f5a: rows stored 22pt draw 25.9pt;
+      // 5c07d836849b: 17pt stored, 20.64pt drawn), so its cells are not
+      // boxed. [Pages A, 2026-09-07, measured on the exports]
       let spanPx = 0;
       for (let k = 0, i = visRows.indexOf(r); k < (merge?.rowSpan ?? 1) && i >= 0 && i < visRows.length; k++, i++) {
         const h = model.rows?.[visRows[i]]?.sizePt;
         if (!h) { spanPx = 0; break; }
         spanPx += h;
       }
-      boxCell(td, spanPx);
+      if ((hdoc as unknown as { kind?: string } | undefined)?.kind !== "pages") boxCell(td, spanPx);
       td.dataset.row = String(r);
       td.dataset.col = String(c);
       tr.appendChild(td);
