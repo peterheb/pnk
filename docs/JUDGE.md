@@ -1396,9 +1396,163 @@ Proposals not implemented:
   measured by Pages are not stored (the archives keep only the margins);
   the viewer measures its own rendering.
 
+### Numbers, round 5 (2026-09-06, Qwen thinking off, up to 3 pages per document)
+
+Round 4's remaining list in order: the grouped shapes beside the wrong
+table (181f2b199bd3), the "zero-height line shapes" (021084ac7183),
+chart legend markers (baabe23e067f), the number-formatting locale; then
+fifteen documents from hosts not judged before. Every defect was traced
+to the JSON first. Thirteen documents from rounds 3 and 4 were
+re-rendered against their existing Numbers exports and re-scored before
+and after on the same build of main (363933e) plus this branch.
+
+| defect | documents | cause | fix |
+| --- | --- | --- | --- |
+| Grouped shapes beside the wrong table section | 181f2b199bd3 | Not the groups: the table drew 982px for a 907pt frame. The 55 stored row heights predict every gridline of the export within 2px and sum to the frame, but a CSS row height is a minimum and cells with 4px padding and a line box pushed 8-17pt rows to 22px | tables.ts boxes each cell's content at the row's stored height (vertical clip only, so unwrapped text still spills); spanned cells take the sum of their rows. Table height 982 → 908; the groups now sit in the set-list section |
+| Cell text 4px too low in nearly every table | corpus-wide (6,070 of 9,700 cell styles in a 70-file census) | `TSWP.PaddingArchive` omits a side that is 0: the stock body style stores left/right/bottom = 2 and no top; Excel imports store only left/right = 5. The viewer read a missing side as its 4px/8px CSS default. Measured on the exports: a top-aligned cap sits 1.4pt under the cell top (c4b881955676 r7c0), middle-aligned text centres 0.5pt above the cell centre (181f r6c19, eb29 r3c4, c4b8 r3), a bottom-aligned baseline sits 3.9pt above the cell bottom = 2pt inset + descent (5c152beb2a3b) | an absent side is 0 when a padding object exists |
+| Blank unsized rows collapsed to 3px | 17891b89da2f (55 rows with no stored height), 021084ac7183 | Numbers fits an unsized row to its content and an empty cell still counts one line of its text style: 17891's blank rows are 16pt in the export; 021084ac7183's 1x3 tables store size 0 with a 90pt Noteworthy-Light cell and draw 151.65pt (= 90 × 1.585 + 8 + 1), which round 4 misread as "zero-height line shapes drawn as 32pt bars" | an unsized row's cell box asks for one line (`min-height: 1lh`). 07_Calendar's mini-months (the case the old comment cited) still match the export |
+| Rich-text continuation line clipped | eb299192a219 "Total Charge (minimum charge is 4kg)", 5c152beb2a3b's link cell | the paragraph carries the cell's 26px size, so every CSS line box includes a 26px strut and the 12px continuation line was 31px tall (62px in a 48px row). Numbers sizes each line by its runs. Round 4 blamed a missing run size; the run carries 12pt | the paragraph's unitless leading moves onto its inline elements (spans and anchors) and the strut collapses; a capped cell that still overshoots by up to 20% tightens its leading instead of clipping |
+| Pre-BNC conditional fills painted where the export is white | 021084ac7183 (1x3 tables blue, 1x1 "0" cell yellow) | the v4 cell's fired-rule index is not reliable: rule 15 of a 55-rule set on empty cells compares against the number 2 (formula nodes 63, 17 = 2.0, 11); rule 15 of the 48-rule set carries the string "entre 5 et 10" on a numeric cell | tables.rs drops a fired rule whose predicate constant cannot match the cell's type or an empty cell; the v5 path (cdrky verified) is untouched. The 1x3 tables print white; the "0" cell stays yellow because both of its pooled styles carry the fill as a base style (see what remains) |
+| Chart legend keys: a line segment where Numbers draws the data symbol | baabe23e067f (every line chart) | `ChartArchive.series_non_styles` (19) → `TSCH.Generated.ChartSeriesNonStyleArchive` showsymbol/symboltype and the style chain's symbolsize were never read | new `ChartSeries.symbol { kind, sizePt? }`; the viewer keys a line series that shows symbols with a hollow circle and draws markers from the field (kind 0 = hidden: the "Adjusted Story Points" chart stores no non-style, draws no markers and keys with a line, which the proto default of showsymbol = false predicts) |
+| "$2.00" for a custom currency format that prints "CA$2.00 ea." | 4b5a7b9d32af | `TSK.CustomFormatArchive.default_format` (type 274) carries `currency_code = "CAD"` (f3) and the pattern `¤#,##0.00' ea.'` (f18); the converter emitted the pattern and the name and dropped the code | `CellFormat.currencyCode` now carries it for custom formats (looked up by uuid the way the name is); the viewer renders ¤ patterns and takes the symbol from Intl in the formatting locale ("CA$" in en-US, "$" in en-CA), which is what NSNumberFormatter prints |
+| First column and captions cut at the canvas edge | baabe23e067f ("Sprint Summaries 2019" at x = -10; sheet 2's "Sprint x" and "Planning" at y = -9) | the canvas started at 0 where Numbers' export starts at the content's bounding box (the gridline measurements in this round assumed that origin and matched) | numbers.ts shifts the drawables' origin box by the negative extent. Landed after the scored run; the judge's "titles cut at the top edge" on page 2 is this |
+| Number and date locale | eb299192a219, 181f2b199bd3 | Numbers formats in the machine locale: eb29 stores `locale_identifier = en_EE` (round 4 recorded it as it_IT; en_EE is a comma-decimal region) and the en_US export prints "523.4"; 181f stores ja_JP and the export prints "1/11(Sun)" | a setting (localStorage `pnk.numberLocale`): "document" (default, Peter's ruling: one rendering for every reader) or "browser" (what Numbers prints on the reader's machine). Four lines each in main.ts and index.html; the rule is in tables.ts |
+
+Qwen scores on the same exports, before and after (28 pages; the
+e8625984c6c3 page-2 strip scored 0 before as "corrupted" and 9 after,
+which is judge noise on a 30pt-wide page and is excluded from both means
+below):
+
+| document | page | before | after | what the judge still names |
+| --- | ---: | ---: | ---: | --- |
+| 021084ac7183 | 1 | 7 | 7 | text wrapping in the purple circle (3 lines vs 4) |
+| 021084ac7183 | 2 | 6 | 7 | the "0" box yellow where the export is white |
+| 021084ac7183 | 3 | 7 | 7 | "0" values shown where the export shows empty cells |
+| 17891b89da2f | 1-3 | 9, 9, 9 | 9, 9, 9 | vertical separators, row alignment |
+| 181f2b199bd3 | 1 | 6 | 9 | "1/11(日)" where the export prints "1/11(Sun)" (the locale setting) |
+| 33499baadcc3 | 1 | 9 | 8 | "Kč" where the export prints "CZK" (Intl's symbol for CZK in the document's cs locale; the browser-locale setting prints "CZK") |
+| 3383a82d3b32 | 1 | 9 | 9 | resolution |
+| 4b5a7b9d32af | 1 | 8 | 6 | header block shifted; the page is a 4227pt-tall sheet and the composite scales it to a strip |
+| 5c152beb2a3b | 1-3 | 9, 9, 8 | 9, 8, 9 | totals rounding ($1,060.71 vs .70) |
+| 66ba951f59ea | 1-3 | 8, 9, 8 | 8, 8, 8 | a 5th instruction line the export cuts off; box borders |
+| 6914f46e51ab | 1-2 | 8, 5 | 9, 6 | intro wrapping; pie labels outside the slices |
+| baabe23e067f | 1-3 | 8, 8, 8 | 8, 8, 8 | "Averages" header missing; titles cut at the top; page 3's legend |
+| c4b881955676 | 1-2 | 9, 9 | 9, 9 | logo size; footer crop |
+| e8625984c6c3 | 1 | 9 | 8 | one continuous page where the export paginates |
+| eb299192a219 | 1-3 | 8, 9, 8 | 8, 9, 8 | 5.47 vs 5.48; decimal comma |
+
+Mean over the 27 pages: 8.11 before, 8.15 after (7.82 and 8.18 over all
+28; most of the 28-page gain is the strip page). The scores move on five
+pages: 181f2b199bd3 (+3, the row-height fix), 021084ac7183 page 2 (+1,
+the fills), 6914f46e51ab (+1, +1), 5c152beb2a3b page 3 (+1), and down on
+33499baadcc3 (the CZK symbol), 4b5a7b9d32af (the judge reading a
+4227pt-tall sheet scaled into a strip differently on two runs; its
+render is unchanged apart from the row heights, which now sum to the
+stored 3965pt where they ran 4086 before), 5c152beb2a3b page 2,
+66ba951f59ea page 2 and e8625984c6c3 page 1 (the judge names the same
+things before and after). The judge does not see the cell inset fix or
+the chart legend keys at this page scale; those were confirmed against
+the exports by measurement (the inset numbers above) and by eye
+(baabe23e067f's legends).
+
+Fourteen more documents, one per origin host not judged before
+(`fixtures/success.tsv`; 30 of 55 Numbers hosts were unjudged), exported
+from Numbers and scored, up to two pages each (17 pages). Two picks were
+dropped: 901b43822fa1 (gotoportugal.eu) has no file under
+fixtures/crawl, and 675f65591c27 (hayappy.com, 3.6 MB) never opens in
+Numbers within the harness's 90 s. Numbers also stopped opening
+documents after the first export of the run and every later export fell
+back to the embedded QuickLook preview until the app was quit; those
+runs were discarded and re-exported.
+
+| document | host | pages | mean | what the judge names |
+| --- | --- | ---: | ---: | --- |
+| e14a63a92477 | www.tonychachere.com | 2 | 0 | an 8930pt-tall sheet scaled into a strip; "candidate wider than the golden" |
+| af6119acf94b | californiaglobe.com | 2 | 5.5 | a 2292pt-tall sheet scaled into a strip; the render matches the export by eye |
+| a720beed1ab2 | egmtemperingga.com | 2 | 8 | a "Column1, Column2, ..." header row the export does not print; grid at the top-left |
+| dc3dc072c897 | celebrant.institute | 1 | 8 | "$" where the export prints "A$" (AUD in the document's en_AU locale; the browser-locale setting prints "A$") |
+| 7253a6d256ca | online210.psych.wisc.edu | 1 | 8 | white margin on the right |
+| 6359764330a7 | www.shaapb.fr | 1 | 9 | text wrapping in one cell |
+| 81706ab71fe9 | aoiro-chiba.jp | 1 | 9 | font hinting |
+| 9fedd6476d98 | www.krfy.org | 1 | 9 | a legend box's text truncated at the right |
+| a12887dc38e5 | files.causeofamerica.org | 1 | 9 | slight vertical compression |
+| d83ffe52557d | knea.org | 1 | 9 | the caption's last digits (the composite cuts our taller render) |
+| dfd8d16858a9 | assets.ctfassets.net | 1 | 9 | anti-aliasing |
+| eb25e763b62f | adl-security.be | 1 | 9 | aspect ratio |
+| fac62c5609f0 | igbildendekunst.at | 1 | 9 | "Standort" wraps to two lines in the export, one here |
+| 76f95117ebe8 | coco-lo.net | 1 | 9 | vertical spacing in the lower section |
+
+Mean over the 17 pages 7.29; 8.62 without the two strip documents. The
+only rendering item in the list is a720beed1ab2's header row: the table
+stores "Column1".."Column7" as its header-row values and the export
+prints them blank; not investigated this round.
+
+#### Schema and converter findings
+
+- `ChartSeries.symbol { kind, sizePt? }` (additive, docs/model-design.md
+  §2.7): kind 0 = hidden, 1 = circle; the corpus stores only 0 and 1 on
+  line charts (6 series with the f32::MAX "automatic" size, 6 with 2-5pt).
+  Scatter series store no non-style in the corpus and stay unknown.
+- `CellFormat.currencyCode` on custom formats (an existing field that was
+  never filled on the custom path): the code lives in the custom format's
+  `default_format.currency_code`, not on the cell's format struct.
+- Padding: an absent side of `TSWP.PaddingArchive` is 0 (proto has no
+  default; the stock body style and Excel imports prove it). The JSON was
+  right; the viewer's fallback was wrong. No model change.
+- Row heights: a stored 0 or an absent entry means "fit to content", and
+  the content includes an empty cell's one line at the row's text style.
+  The stored non-zero height is exact in the export (four documents
+  measured). No model change; the rule is now in tables.ts.
+- Chart type 11 (`twoAxisChartType2D`, TSCHArchives.Common.proto) is
+  "other": 0ab5dd52841e (www.waclimate.net) stores 666 of them, 1,332
+  series, and every one renders through the fallback. Proposal: map it
+  to the column family for the plot and colour slots, and carry the
+  per-series axis assignment (`ChartArchive` axis maps) so a viewer can
+  draw the line series against the second axis. Not done this round.
+- Pre-BNC conditional formatting: the fired-rule index cannot be trusted
+  on v4 cells. The predicate archive is `FormulaPredicatePrePivotArchive
+  { formula, predicate_type, qualifiers, param indices }`; the type enum
+  is not in the extracted protos, so only the type-level check above is
+  implemented. Proposal: name the predicate types from a fixture with one
+  rule of each kind (docs/format request) and evaluate the numeric and
+  text comparisons.
+- Locale: `TSK.DocumentArchive.locale_identifier` is the only locale the
+  archive stores, and Numbers does not format with it. The viewer's
+  setting is the honest answer; nothing to add to the model.
+- Auto-fit row heights measured for the Pages agent (text.ts owns the
+  per-face line-height table): Numbers fits an unsized row at line height
+  + top/bottom insets with the stroke inside the pitch. Helvetica 11pt
+  with 0/2 insets: 16.0pt per row (17891b89da2f), so the line is 14pt,
+  where the table says 1.0 (11pt); Times New Roman 12pt: 17.5pt rows
+  (3383a82d3b32), a 15.5pt line against the table's 1.15 (13.8);
+  Helvetica Neue 12pt with 4/4 insets: 22.08pt rows (33499baadcc3), a
+  14pt line where 1.193 gives 14.3 and our 1px border makes the row 23.3.
+  The residuals go both ways by 1-2pt per row; not changed here.
+
+#### What remains (ranked)
+
+1. Two-axis charts (type 11): 666 charts in one document render as
+   "other"; the proposal above.
+2. Auto-fit row leading: the per-face measurements above; 17891b89da2f
+   draws 55 rows at 14pt where the export has 16pt (110pt over the sheet).
+3. 021084ac7183's 1x1 "0" cell: yellow in both pooled styles (base fill,
+   not a fired rule) where the export prints white; the cell is a pop-up
+   control cell, so the export may be drawing the control's own look.
+4. 6914f46e51ab page 2: pie data labels outside the slices where Numbers
+   puts them inside (5-6 both rounds).
+5. baabe23e067f: the "Averages (3 Sprint Rolling Avg)" header cell and
+   titles cut at the top of the canvas (a 0-y drawable above the first
+   table).
+6. Value-axis maxima (round 4's item 5) and the group summary rule codes
+   (G8 checklist) are unchanged.
+7. Composite pairing: a sheet shorter than its export page (d83ffe52557d)
+   or taller (4b5a7b9d32af, e8625984c6c3) is scaled or cut by the
+   harness and the judge scores the crop; `--align-content` does not
+   apply to sheets.
+
 ### Next
 
-Numbers: grouped shapes placed beside the wrong table (181f2b199bd3), zero-height line shapes, chart legend markers; then the locale question for number formatting.
+Numbers: two-axis charts (type 11, 666 in 0ab5dd52841e); auto-fit row leading per face (17891b89da2f 14 vs 16pt rows); the a720beed1ab2 header row the export prints blank; pie labels inside the slices (6914f46e51ab).
 Keynote: text position drift of a few points (measure RIPE 82's footer and greenberg's title first), chart markers and hidden legends on slides (Numbers-owned), then wrap differences from fallback faces.
 Pages: line pitch on 11pt text (5c07d836 cover, 20.6pt in Pages against 32pt here) and the page cascade it causes; rotated wrapping objects (10a06959, 25 documents); shape image fills in the JSON that the viewer does not paint (4659b5b6); the paragraph painting over an inline table (cf4b76a); then the unexamined verdicts in round 3b's list.
 Score more of the corpus, one or two pages per document, with Qwen; use

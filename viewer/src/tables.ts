@@ -37,7 +37,35 @@ const COMMA_DECIMAL_REGION = /^(ee|de|fr|it|es|pt|nl|dk|fi|no|gr|pl|ru|tr|br)$/i
 let decimalComma = false;
 let docLocale = "en";
 
-export function setTableLocale(locale: string | undefined): void {
+// Round 5 (2026-09-06): the divergence is now a setting. Numbers formats
+// in the MACHINE locale (verified again: eb299192a219 stores en_EE, a
+// comma-decimal region, and the en_US export prints "523.4"; 181f2b199bd3
+// stores ja_JP and the export prints "1/11(Sun)" for the document's
+// "1/11(日)"). The browser's locale is the viewer's machine locale, so
+// "browser" reproduces what Numbers would print on the reader's Mac and
+// "document" (the default, Peter's ruling above) keeps one rendering for
+// every reader. Stored under localStorage "pnk.numberLocale".
+const LOCALE_SETTING_KEY = "pnk.numberLocale";
+export type NumberLocaleMode = "document" | "browser";
+
+export function numberLocaleMode(): NumberLocaleMode {
+  try {
+    return localStorage.getItem(LOCALE_SETTING_KEY) === "browser" ? "browser" : "document";
+  } catch {
+    return "document";
+  }
+}
+
+export function setNumberLocaleMode(mode: NumberLocaleMode): void {
+  try {
+    localStorage.setItem(LOCALE_SETTING_KEY, mode);
+  } catch {
+    /* private mode: the choice lasts for the page */
+  }
+}
+
+export function setTableLocale(docLocaleId: string | undefined): void {
+  const locale = numberLocaleMode() === "browser" ? navigator.language : docLocaleId;
   const [lang, region] = (locale ?? "").split(/[-_]/);
   decimalComma = COMMA_DECIMAL_LANG.test(lang) || COMMA_DECIMAL_REGION.test(region);
   docLocale = locale ? locale.replace(/_/g, "-") : "en";
@@ -118,6 +146,24 @@ const CURRENCY_SYMBOL: Record<string, string> = {
   THB: "฿", VND: "₫", UAH: "₴", NGN: "₦", BRL: "R$",
   ZAR: "R", CHF: "CHF ",
 };
+
+/** The symbol Numbers prints for a currency code in the formatting
+ * locale: Intl's "symbol" form ("CA$" for CAD in en-US, "$" in en-CA,
+ * "$US" for USD in fr-FR), which is what NSNumberFormatter prints
+ * (4b5a7b9d32af's export on an en_US Mac: "CA$2.00 ea."). The hand table
+ * stays as the fallback for codes Intl rejects; no code means "$". */
+function currencySymbol(code: string): string {
+  if (!code) return "$";
+  try {
+    const part = new Intl.NumberFormat(docLocale, { style: "currency", currency: code })
+      .formatToParts(1)
+      .find((p) => p.type === "currency");
+    if (part) return part.value;
+  } catch {
+    /* unknown code */
+  }
+  return CURRENCY_SYMBOL[code] ?? code + " ";
+}
 
 /**
  * Apple duration rendering, following numbers-parser's decode of
@@ -385,11 +431,18 @@ function valueToText(cell: TableCell, format: CellFormat | undefined): string {
       // unless the format says otherwise; unknown codes keep "CODE " prefix
       const n = typeof v === "number" ? v : Number(v);
       const code = cell.cur ?? format?.currencyCode ?? "";
+      // A custom currency pattern ("¤#,##0.00' ea.'"): ¤ is the symbol
+      // and the rest is the number pattern (4b5a7b9d32af: Numbers prints
+      // "CA$2.00 ea." for CAD).
+      if (format?.kind === "custom" && format.formatString?.includes("¤")) {
+        const custom = formatCustomNumber(n, format.formatString.replace(/¤/g, currencySymbol(code)));
+        if (custom !== undefined) return custom;
+      }
       const decimals = format?.decimals ?? 2;
       // currency groups by default (Apple: $1,234.56); an explicit
       // grouping:false in the stored format turns it off
       const body = formatNumber(Math.abs(n), decimals, true, format?.grouping ?? true);
-      const sym = CURRENCY_SYMBOL[code] ?? (code ? code + " " : "$");
+      const sym = currencySymbol(code);
       if (format?.accounting) {
         // accounting style: symbol at the cell's left edge, amount at the
         // right, negatives in parentheses; the tab marks the split for the
@@ -497,7 +550,13 @@ function applyCellStyle(td: HTMLTableCellElement, style: TableCellStyle | undefi
     td.style.textAlign = style.paragraph.horizontalAlignment;
   }
   if (style?.verticalAlignment) s.verticalAlign = style.verticalAlignment === "middle" ? "middle" : style.verticalAlignment === "bottom" ? "bottom" : "top";
-  if (style?.padding) s.padding = `${style.padding.top ?? 4}px ${style.padding.right ?? 8}px ${style.padding.bottom ?? 4}px ${style.padding.left ?? 8}px`;
+  // A side the padding archive leaves out is 0, not the CSS default: the
+  // stock "tableCell-0-bodyStyle" stores left/right/bottom = 2 and no top
+  // (6,070 of 9,700 styles in a 70-file census; Excel imports store only
+  // left/right = 5). Numbers' export centres a middle-aligned cell 0.5pt
+  // above the cell's centre, which is the 0/2 content box, not 4/2
+  // (181f2b199bd3 r6c19, eb299192a219 r3c4, c4b881955676 r3).
+  if (style?.padding) s.padding = `${style.padding.top ?? 0}px ${style.padding.right ?? 0}px ${style.padding.bottom ?? 0}px ${style.padding.left ?? 0}px`;
   // Wrap is resolved through the style chain by the converter and omitted
   // when false, so absent means "one line": Numbers keeps unwrapped text on
   // a single line, clipped at the cell edge unless the cells to the right
@@ -519,6 +578,66 @@ function applyCellStyle(td: HTMLTableCellElement, style: TableCellStyle | undefi
   }
   if (header) td.classList.add("cell-header");
   if (footer) td.classList.add("cell-footer");
+}
+
+/**
+ * Box a cell's content so the row takes the height Numbers draws.
+ *
+ * Sized row (rowPx > 0): the box is capped at the row's stored height so
+ * the row cannot grow past it. The bottom padding moves into the box so
+ * the text keeps its place while the overflow, like Numbers', runs into
+ * the padding and is clipped at the cell edge. Vertical clip only: the
+ * horizontal overflow stays visible so spillUnwrappedCells still measures
+ * it on the cell.
+ *
+ * Unsized row (rowPx = 0, a stored 0 or a truncated rows array): Numbers
+ * fits the row to its content, and an EMPTY cell still counts one line of
+ * the row's text style (17891b89da2f: 55 rows with no stored height, the
+ * blank ones 16pt in the export for 11pt Helvetica = one line + 2pt inset
+ * + the 1pt stroke; 3383a82d3b32: 12pt Times rows at 17.5pt over a
+ * 12.75pt default). A cell with no text has no line box in the DOM, so
+ * an empty row collapsed to its padding; the box asks for one line.
+ */
+function boxCell(td: HTMLTableCellElement, rowPx: number): void {
+  const box = document.createElement("div");
+  box.className = "cell-clip";
+  box.append(...Array.from(td.childNodes));
+  if (rowPx > 0) {
+    const padT = parseFloat(td.style.paddingTop) || (td.style.padding ? 0 : 4);
+    const padB = parseFloat(td.style.paddingBottom) || (td.style.padding ? 0 : 4);
+    // 1px: the collapsed border's share of the row
+    box.style.maxHeight = `${Math.max(0, rowPx - 1 - padT)}px`;
+    box.style.paddingBottom = `${padB}px`;
+    td.style.paddingBottom = "0";
+  } else {
+    box.style.minHeight = "1lh";
+  }
+  td.appendChild(box);
+}
+
+/**
+ * A capped cell whose content overshoots the row by a little is a metric
+ * difference, not a clip Numbers makes: eb299192a219's "Total Charge
+ * (minimum charge is 4kg)" stores a 43.95pt row for a 26pt and a 12pt
+ * Calibri line, which Carlito's 1.193 leading lays out at 45.3px, and the
+ * export shows both lines whole. Up to a 20% overshoot the leading is
+ * tightened to fit (the box's unitless line-height is inherited by every
+ * run); past that the clip stands. Needs layout: call after the table is
+ * in the document.
+ */
+export function fitCappedCells(root: HTMLElement): void {
+  for (const box of Array.from(root.querySelectorAll<HTMLElement>("table.sheet-table .cell-clip"))) {
+    if (!box.style.maxHeight) continue;
+    const need = box.scrollHeight;
+    const have = box.clientHeight;
+    if (need <= have || have <= 0) continue;
+    const ratio = have / need;
+    if (ratio < 0.8) continue;
+    const lh = parseFloat(getComputedStyle(box).lineHeight);
+    const fs = parseFloat(getComputedStyle(box).fontSize);
+    if (!(lh > 0) || !(fs > 0)) continue;
+    box.style.lineHeight = ((lh / fs) * ratio).toFixed(3);
+  }
 }
 
 /**
@@ -917,7 +1036,25 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedD
           // Rich-text cells keep their runs: the cell style's text look is
           // only the base (0839b6d2, a docx import, stores a 1pt cell font
           // under 11pt runs — flattened, "Nome:" vanished into a 1px line).
-          td.replaceChildren(renderStyledText(rich, hdoc, ctx));
+          const el = renderStyledText(rich, hdoc, ctx);
+          // Numbers sizes each line by its own runs; a CSS block's strut
+          // makes every line at least the paragraph's size (eb299192a219's
+          // "Total Charge (minimum charge is 4kg)": a 26px strut under the
+          // 12px continuation line, 62px in a 48px row, and the line was
+          // clipped). The unitless leading moves onto the runs and the
+          // strut collapses; an exact (px) paragraph spacing is kept.
+          for (const para of Array.from(el.querySelectorAll<HTMLElement>("p"))) {
+            const mult = para.style.lineHeight || td.style.lineHeight;
+            if (!mult || /[a-z%]/i.test(mult)) continue;
+            // every inline element: runs are spans, hyperlinks are anchors
+            // (5c152beb2a3b's "www.gsa.gov/perdiem" collapsed to 2px when
+            // only spans were covered)
+            for (const run of Array.from(para.querySelectorAll<HTMLElement>("*"))) {
+              if (!run.style.lineHeight) run.style.lineHeight = mult;
+            }
+            para.style.lineHeight = "0";
+          }
+          td.replaceChildren(el);
         } else if (format?.accounting && text.includes("\t")) {
           // accounting-style currency: symbol and amount pushed to
           // opposite edges of the cell
@@ -937,6 +1074,19 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedD
           if (text.includes("\n")) td.style.whiteSpace = "pre-line";
         }
       }
+      // Stored row heights are exact in Numbers' export (181f2b199bd3:
+      // the 55 cumulative heights predict every gridline within 2px, and
+      // the frame is their sum, 907pt); content taller than the row is
+      // clipped, never grows it. A CSS row height is only a minimum, so
+      // the cell's content is boxed at the row's height. Spanned cells
+      // take the sum of their visible rows.
+      let spanPx = 0;
+      for (let k = 0, i = visRows.indexOf(r); k < (merge?.rowSpan ?? 1) && i >= 0 && i < visRows.length; k++, i++) {
+        const h = model.rows?.[visRows[i]]?.sizePt;
+        if (!h) { spanPx = 0; break; }
+        spanPx += h;
+      }
+      boxCell(td, spanPx);
       td.dataset.row = String(r);
       td.dataset.col = String(c);
       tr.appendChild(td);
