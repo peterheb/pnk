@@ -381,14 +381,13 @@ fn convert_slide_raw(ctx: &mut Ctx, slide_id: u64, is_master: bool) -> (Slide, O
     // KN.PlaceholderArchive, so it carries no role of its own; field 30
     // names it. Tag it so the master underlay leaves it out (a slide paints
     // its OWN copy of the placeholder, replaced or not: ulmen b1287863
-    // slide 3 drew the master's stock photo behind the slide's diagram) and
-    // objectPlaceholderVisibility can gate it like the text roles.
+    // slide 3 drew the master's stock photo behind the slide's diagram).
     if let Some(oid) = m.reference(30) {
         if let Some((_, d)) = converted.iter_mut().find(|(id, _)| *id == oid) {
             if let Some(c) = drawable_common_mut(d) {
                 if c.placeholder.is_none() {
                     c.placeholder = Some(PlaceholderInfo {
-                        role: "object".to_string(),
+                        role: "media".to_string(),
                         inherited: None,
                     });
                 }

@@ -49,7 +49,9 @@ function buildCanvas(
     }
     // Empty placeholders are editor chrome: Keynote's own export paints
     // nothing for them (their theme para styles can carry stray borders).
-    if (roleOf(d) && !hasVisibleText(d)) continue;
+    // A media placeholder holds a picture, not text: the slide's copy paints
+    // (ulmen b1287863 slide 3's diagram sits in one).
+    if (roleOf(d) && roleOf(d) !== "media" && !hasVisibleText(d)) continue;
     inner.appendChild(renderCanvasDrawable(d, hdoc, ctx));
   }
 

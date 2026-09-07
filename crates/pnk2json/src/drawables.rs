@@ -834,13 +834,14 @@ fn image_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
     // pictures 0 (1,433 of them). Keynote paints a slide's own copy of the
     // placeholder, never the master's: ulmen b1287863 slide 3 moved its
     // photo and the master's stock picture showed through behind it. The
-    // role keeps the master's copy out of the underlay and lets
-    // objectPlaceholderVisibility gate the slide's. KN.SlideArchive.
+    // "media" role keeps the master's copy out of the underlay; the slide's
+    // own copy paints regardless of objectPlaceholderVisibility (ulmen's
+    // slide style stores false and Keynote draws the photo). KN.SlideArchive.
     // objectPlaceholder (30) would name it too, but no deck in the corpus
     // sample writes that field. [inferred]
     if m.varint(7).unwrap_or(0) & 1 != 0 && common.placeholder.is_none() {
         common.placeholder = Some(PlaceholderInfo {
-            role: "object".to_string(),
+            role: "media".to_string(),
             inherited: None,
         });
     }

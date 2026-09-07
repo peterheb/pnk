@@ -199,7 +199,11 @@ declare module "./shared" {
     keynoteBuilds?: BuildSpec[];
     /**
      * Placeholder identity: role from the converter plus the inherited flag
-     * (master-derived geometry/style). [proto: KN.PlaceholderArchive.Kind]
+     * (master-derived geometry/style). Roles: "title", "body", "object",
+     * "slide-number" [proto: KN.PlaceholderArchive.Kind]; "media" for an
+     * image or movie placeholder (TSD.ImageArchive.flags bit 1, or the
+     * drawable KN.SlideArchive.objectPlaceholder names) — a slide paints its
+     * own copy, so a master's "media" drawable never joins masterDrawables.
      */
     placeholder?: { role: string; inherited?: boolean };
   }
