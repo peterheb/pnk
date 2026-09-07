@@ -601,11 +601,15 @@ pub fn resolve_section_columns(
     } else {
         let ne = cols.msg(2)?;
         // first (1) + following (2, repeated GapWidthArchive) — degrade.
+        // A single explicit-width column is one column: nothing is lost
+        // (12 of 215 surveyed documents warned about "1 equal columns").
         let count = 1 + ne.msgs(2).len() as u32;
-        ctx.warn(
-            WarningCode::UnsupportedFeature,
-            format!("unequal-width columns degraded to {count} equal columns"),
-        );
+        if count >= 2 {
+            ctx.warn(
+                WarningCode::UnsupportedFeature,
+                format!("unequal-width columns degraded to {count} equal columns"),
+            );
+        }
         (count, None)
     };
     if count < 2 {

@@ -246,7 +246,9 @@ export function applyParaStyle(el: HTMLElement, ps: ParaStyle, fontName?: string
   if (ps.backgroundColor) s.backgroundColor = ps.backgroundColor;
   if (ps.border) {
     const b = ps.border;
-    const css = `${b.widthPt}px ${b.dash?.length ? "dashed" : "solid"} ${b.color}`;
+    // a dash no longer than the stroke is a dot (e2e0bff3: [0.002, 4] on 2pt)
+    const pattern = !b.dash?.length ? "solid" : b.dash[0] <= b.widthPt ? "dotted" : "dashed";
+    const css = `${b.widthPt}px ${pattern} ${b.color}`;
     // borderSides: a rule on the named sides only (e2e0bff3's dotted rule
     // under "FINANCIAL REVIEW"; absent = all four)
     if (ps.borderSides) {
