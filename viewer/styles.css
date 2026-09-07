@@ -578,3 +578,6 @@ table.sheet-table .cell-fit { white-space: pre; display: inline-block; }
    (overflow-x stays visible so unwrapped text can spill across empty
    neighbours); box-sizing keeps the moved bottom padding inside the cap. */
 table.sheet-table .cell-clip { overflow-x: visible; overflow-y: clip; box-sizing: border-box; }
+/* The sheet's drawables live in an origin box shifted by the negative
+   extent of the stored positions (numbers.ts originShift). */
+.sheet-canvas .sheet-origin { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: visible; }
