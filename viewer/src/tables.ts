@@ -497,7 +497,13 @@ function applyCellStyle(td: HTMLTableCellElement, style: TableCellStyle | undefi
     td.style.textAlign = style.paragraph.horizontalAlignment;
   }
   if (style?.verticalAlignment) s.verticalAlign = style.verticalAlignment === "middle" ? "middle" : style.verticalAlignment === "bottom" ? "bottom" : "top";
-  if (style?.padding) s.padding = `${style.padding.top ?? 4}px ${style.padding.right ?? 8}px ${style.padding.bottom ?? 4}px ${style.padding.left ?? 8}px`;
+  // A side the padding archive leaves out is 0, not the CSS default: the
+  // stock "tableCell-0-bodyStyle" stores left/right/bottom = 2 and no top
+  // (6,070 of 9,700 styles in a 70-file census; Excel imports store only
+  // left/right = 5). Numbers' export centres a middle-aligned cell 0.5pt
+  // above the cell's centre, which is the 0/2 content box, not 4/2
+  // (181f2b199bd3 r6c19, eb299192a219 r3c4, c4b881955676 r3).
+  if (style?.padding) s.padding = `${style.padding.top ?? 0}px ${style.padding.right ?? 0}px ${style.padding.bottom ?? 0}px ${style.padding.left ?? 0}px`;
   // Wrap is resolved through the style chain by the converter and omitted
   // when false, so absent means "one line": Numbers keeps unwrapped text on
   // a single line, clipped at the cell edge unless the cells to the right
@@ -519,6 +525,41 @@ function applyCellStyle(td: HTMLTableCellElement, style: TableCellStyle | undefi
   }
   if (header) td.classList.add("cell-header");
   if (footer) td.classList.add("cell-footer");
+}
+
+/**
+ * Box a cell's content so the row takes the height Numbers draws.
+ *
+ * Sized row (rowPx > 0): the box is capped at the row's stored height so
+ * the row cannot grow past it. The bottom padding moves into the box so
+ * the text keeps its place while the overflow, like Numbers', runs into
+ * the padding and is clipped at the cell edge. Vertical clip only: the
+ * horizontal overflow stays visible so spillUnwrappedCells still measures
+ * it on the cell.
+ *
+ * Unsized row (rowPx = 0, a stored 0 or a truncated rows array): Numbers
+ * fits the row to its content, and an EMPTY cell still counts one line of
+ * the row's text style (17891b89da2f: 55 rows with no stored height, the
+ * blank ones 16pt in the export for 11pt Helvetica = one line + 2pt inset
+ * + the 1pt stroke; 3383a82d3b32: 12pt Times rows at 17.5pt over a
+ * 12.75pt default). A cell with no text has no line box in the DOM, so
+ * an empty row collapsed to its padding; the box asks for one line.
+ */
+function boxCell(td: HTMLTableCellElement, rowPx: number): void {
+  const box = document.createElement("div");
+  box.className = "cell-clip";
+  box.append(...Array.from(td.childNodes));
+  if (rowPx > 0) {
+    const padT = parseFloat(td.style.paddingTop) || (td.style.padding ? 0 : 4);
+    const padB = parseFloat(td.style.paddingBottom) || (td.style.padding ? 0 : 4);
+    // 1px: the collapsed border's share of the row
+    box.style.maxHeight = `${Math.max(0, rowPx - 1 - padT)}px`;
+    box.style.paddingBottom = `${padB}px`;
+    td.style.paddingBottom = "0";
+  } else {
+    box.style.minHeight = "1lh";
+  }
+  td.appendChild(box);
 }
 
 /**
@@ -937,6 +978,19 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedD
           if (text.includes("\n")) td.style.whiteSpace = "pre-line";
         }
       }
+      // Stored row heights are exact in Numbers' export (181f2b199bd3:
+      // the 55 cumulative heights predict every gridline within 2px, and
+      // the frame is their sum, 907pt); content taller than the row is
+      // clipped, never grows it. A CSS row height is only a minimum, so
+      // the cell's content is boxed at the row's height. Spanned cells
+      // take the sum of their visible rows.
+      let spanPx = 0;
+      for (let k = 0, i = visRows.indexOf(r); k < (merge?.rowSpan ?? 1) && i >= 0 && i < visRows.length; k++, i++) {
+        const h = model.rows?.[visRows[i]]?.sizePt;
+        if (!h) { spanPx = 0; break; }
+        spanPx += h;
+      }
+      boxCell(td, spanPx);
       td.dataset.row = String(r);
       td.dataset.col = String(c);
       tr.appendChild(td);
