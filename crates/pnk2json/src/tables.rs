@@ -599,6 +599,65 @@ fn conditional_style(
     (s != TableCellStyle::default()).then_some(s)
 }
 
+/// Whether the rule a pre-BNC cell names as "fired" can hold for the
+/// cell's value, judged from types alone.
+///
+/// The stored index is not reliable on pre-BNC files: 021084ac7183's 1x3
+/// tables store rule 15 of a 55-rule set on empty-string cells, and rule
+/// 15 compares against the number 2 (formula nodes 63, 17 = 2.0, 11); its
+/// 1x1 "0" cell stores rule 15 of a 48-rule set whose predicate carries
+/// the string "entre 5 et 10". Numbers' export paints all of them white.
+/// A predicate whose formula carries a constant (node 17 number, node 19
+/// string) compares the cell against it, and an empty cell, or a cell of
+/// the other type, cannot satisfy that comparison. A predicate with no
+/// constant (blank / not blank) is left to the stored index. Only the
+/// pre-pivot rule shape (set f2) is inspected. [inferred, two fixtures]
+fn predicate_can_fire(
+    ctx: &Ctx,
+    cond_table: &DataList,
+    set_key: i32,
+    rule_index: u32,
+    value: &CellValue,
+) -> bool {
+    let Some(set_ref) = cond_table.entries.get(&set_key).and_then(|e| e.reference) else {
+        return true;
+    };
+    let Some(set) = ctx.loaded.msg(set_ref) else {
+        return true;
+    };
+    let Some(rule) = set.msgs(2).into_iter().nth(rule_index as usize) else {
+        return true;
+    };
+    let nodes = rule
+        .msg(1)
+        .and_then(|pred| pred.msg(1))
+        .and_then(|formula| formula.msg(1))
+        .map(|array| array.msgs(1))
+        .unwrap_or_default();
+    let (mut numbers, mut strings) = (false, false);
+    for node in &nodes {
+        match node.varint(1) {
+            Some(17) => numbers = true,
+            Some(19) => strings = true,
+            _ => {}
+        }
+    }
+    if !numbers && !strings {
+        return true;
+    }
+    match value {
+        CellValue::Empty => false,
+        CellValue::Text { value } if value.is_empty() => false,
+        CellValue::Text { .. } | CellValue::Richtext { .. } => strings,
+        CellValue::Number { .. }
+        | CellValue::Currency { .. }
+        | CellValue::Date { .. }
+        | CellValue::Duration { .. }
+        | CellValue::Bool { .. } => numbers,
+        CellValue::Error { .. } => true,
+    }
+}
+
 /// Overlay a conditional highlight on a cell's own style: the highlight
 /// wins where it speaks (fill, text look) and the base style keeps the
 /// rest (borders, padding, alignment).
@@ -2865,6 +2924,7 @@ fn decode_cell_v4(
     // ("Green Fill") of set 38257 — and the 2015 Assessments row red.
     if let Some(cond) = fmt_lead
         .zip(cond_rule)
+        .filter(|(set, rule)| predicate_can_fire(ctx, cond_style_table, *set, *rule as u32, &value))
         .and_then(|(set, rule)| conditional_style(ctx, cond_style_table, set, rule as u32))
     {
         style = Some(overlay_conditional(style, cond));
