@@ -1021,7 +1021,10 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedD
           for (const para of Array.from(el.querySelectorAll<HTMLElement>("p"))) {
             const mult = para.style.lineHeight || td.style.lineHeight;
             if (!mult || /[a-z%]/i.test(mult)) continue;
-            for (const run of Array.from(para.querySelectorAll<HTMLElement>("span"))) {
+            // every inline element: runs are spans, hyperlinks are anchors
+            // (5c152beb2a3b's "www.gsa.gov/perdiem" collapsed to 2px when
+            // only spans were covered)
+            for (const run of Array.from(para.querySelectorAll<HTMLElement>("*"))) {
               if (!run.style.lineHeight) run.style.lineHeight = mult;
             }
             para.style.lineHeight = "0";
