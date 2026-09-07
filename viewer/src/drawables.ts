@@ -51,9 +51,24 @@ export function fillToCss(f: Fill | undefined): string | undefined {
     const a = f.gradient.kind === "linear" ? (f.gradient.angleDeg ?? 0) : 0;
     return `linear-gradient(${90 - a}deg, ${stops})`;
   }
-  // A tinted image fill (tile/pattern textures): the tint is the visible
-  // color modulating a near-white texture — paint it when bytes are absent.
-  return f.tint ?? "#d9d9de";
+  // A tinted image fill (tile/pattern textures) whose bytes are absent
+  // (Apple's theme tiles never ship in the file): the tint modulates the
+  // texture, so compose it over the texture's tone rather than the page.
+  // Apple's tile names carry it: tile_paper_medgray under a 50% blue is a
+  // slate blue in Keynote (deeplearningbook 2bb490dc slide 8), light blue
+  // over white.
+  if (f.tint) {
+    const name = (f.image.preferredFileName ?? f.image.fileName ?? "").toLowerCase();
+    const base = /darkgr[ae]y|black/.test(name) ? 0x44 : /medgr[ae]y|gr[ae]y/.test(name) ? 0x66 : null;
+    const m = /^#([0-9a-f]{6})([0-9a-f]{2})$/i.exec(f.tint);
+    if (base !== null && m) {
+      const a = parseInt(m[2], 16) / 255;
+      const ch = (i: number) => Math.round(parseInt(m[1].slice(i, i + 2), 16) * a + base * (1 - a)).toString(16).padStart(2, "0");
+      return `#${ch(0)}${ch(2)}${ch(4)}`;
+    }
+    return f.tint;
+  }
+  return "#d9d9de";
 }
 
 /** A CurvePath (any coordinate space) -> SVG path data, scaled by sx/sy. */
@@ -496,7 +511,45 @@ function lineEndGlyph(
 // SVG shape
 // ---------------------------------------------------------------------------
 
-function shapeSvg(g: ShapeGeometry, w: number, h: number, style: DrawableCommon["style"]): SVGSVGElement {
+let imageFillSeq = 0;
+
+/**
+ * Image fill of a shape as an SVG pattern over the shape's box: the model
+ * carries `Fill { type: "image", image, technique }` and the viewer painted
+ * the tint or a grey (Pages B's proposal, 4659b5b6a8db; deeplearningbook
+ * 2bb490dc's photo-filled shapes). "tile" repeats the picture at its pixel
+ * size, the scale techniques fit it to the box like the slide background.
+ */
+function imageFillPattern(svg: SVGSVGElement, fill: Fill, url: string, w: number, h: number): string {
+  const NS = "http://www.w3.org/2000/svg";
+  const id = `imgfill-${++imageFillSeq}`;
+  const defs = document.createElementNS(NS, "defs");
+  const pat = document.createElementNS(NS, "pattern");
+  pat.setAttribute("id", id);
+  pat.setAttribute("patternUnits", "userSpaceOnUse");
+  const img = document.createElementNS(NS, "image");
+  img.setAttribute("href", url);
+  const f = fill as Extract<Fill, { type: "image" }>;
+  const px = f.image.pixelSize;
+  if (f.technique === "tile" && px?.width && px?.height) {
+    pat.setAttribute("width", String(px.width));
+    pat.setAttribute("height", String(px.height));
+    img.setAttribute("width", String(px.width));
+    img.setAttribute("height", String(px.height));
+  } else {
+    pat.setAttribute("width", String(Math.max(w, 1)));
+    pat.setAttribute("height", String(Math.max(h, 1)));
+    img.setAttribute("width", String(Math.max(w, 1)));
+    img.setAttribute("height", String(Math.max(h, 1)));
+    img.setAttribute("preserveAspectRatio", f.technique === "scale-to-fit" ? "xMidYMid meet" : f.technique === "stretch" ? "none" : "xMidYMid slice");
+  }
+  pat.appendChild(img);
+  defs.appendChild(pat);
+  svg.insertBefore(defs, svg.firstChild);
+  return id;
+}
+
+function shapeSvg(g: ShapeGeometry, w: number, h: number, style: DrawableCommon["style"], imageFillUrl?: string): SVGSVGElement {
   const NS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(NS, "svg") as SVGSVGElement;
   // Degenerate boxes are real: Keynote stores horizontal/vertical rules as
@@ -558,7 +611,8 @@ function shapeSvg(g: ShapeGeometry, w: number, h: number, style: DrawableCommon[
 
   path.setAttribute("d", d);
   const fill = style?.fill;
-  path.setAttribute("fill", fill ? (fill.type === "gradient" ? `url(#${svg.dataset.fillRef})` : (fillToCss(fill) ?? "none")) : "none");
+  const imageFillId = fill && fill.type === "image" && imageFillUrl ? imageFillPattern(svg, fill, imageFillUrl, w, h) : null;
+  path.setAttribute("fill", imageFillId ? `url(#${imageFillId})` : fill ? (fill.type === "gradient" ? `url(#${svg.dataset.fillRef})` : (fillToCss(fill) ?? "none")) : "none");
   if (stroke) svgStrokeAttrs(path, stroke, scale);
   svg.appendChild(path);
   for (const gl of glyphs) svg.appendChild(gl);
@@ -1748,7 +1802,8 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
     const naturalH = d.geometry.naturalSize?.height ?? 0;
     const effH = h === 0 && w > 0 && d.geometry.path && naturalH > 1 ? naturalH : h;
     if (effH !== h) div.style.height = `${effH}px`;
-    const svg = shapeSvg(d.geometry, w, effH, c.style);
+    const fillUrl = c.style?.fill?.type === "image" ? ctx.url(c.style.fill.image.dataId) : undefined;
+    const svg = shapeSvg(d.geometry, w, effH, c.style, fillUrl || undefined);
     div.appendChild(svg);
     const layer = textLayer({ ...d, text: d.text, verticalAlignment: d.verticalAlignment, common: c }, doc, ctx);
     if (layer) {
