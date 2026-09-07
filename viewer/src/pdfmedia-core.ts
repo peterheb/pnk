@@ -59,7 +59,7 @@ export async function renderPdfToCanvas(bytes: Uint8Array, cssW: number, cssH: n
   // the context is opened here with alpha.
   const canvasContext = canvas.getContext("2d");
   if (!canvasContext) throw new Error("no 2d context");
-  await page.render({ canvasContext, viewport, background: "rgba(0,0,0,0)" }).promise;
+  await page.render({ canvas, canvasContext, viewport, background: "rgba(0,0,0,0)" }).promise;
   page.cleanup();
   return canvas;
 }
