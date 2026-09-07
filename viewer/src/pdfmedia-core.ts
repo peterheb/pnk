@@ -51,7 +51,10 @@ export async function renderPdfToCanvas(bytes: Uint8Array, cssW: number, cssH: n
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.ceil(viewport.width));
   canvas.height = Math.max(1, Math.ceil(viewport.height));
-  await page.render({ canvas, viewport }).promise;
+  // Transparent page ground: pdf.js paints white by default, and a white
+  // equation on a dark slide (perimeterinstitute 0e4ad34c) came out as a
+  // white box. Keynote composites the PDF over the slide.
+  await page.render({ canvas, viewport, background: "rgba(0,0,0,0)" }).promise;
   page.cleanup();
   return canvas;
 }
