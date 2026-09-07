@@ -502,29 +502,72 @@ fn shape_info_drawable(
         d
     };
 
-    // Classic-import anchored geometry: Keynote-'09-converted decks (format
-    // 1.5) store some text shapes' geometry with flags == 0 and position =
-    // the shape's CENTER, not its top-left. 0d5851c0 slide 1: the title
-    // stores (512, 638) — the slide's horizontal center — and Apple lays the
-    // 500×36 rect out at 262..762 with its centered text on x=512; modern
-    // archives (G2, 0f9df553) always write flags 3 (7 when rotated).
-    // Re-anchor to top-left here so the model's geometry contract holds and
-    // the viewer never learns about the flag. A 0×0 anchored label is
-    // unaffected (shift of half-zero), and rotation is left alone — no
-    // rotated flags==0 sample exists to verify against. [inferred: flag-bit
-    // semantics are undocumented; behavior verified against Apple's own
-    // render of 0d5851c0 slides 1/27/28]
-    if shape
+    // Anchored geometry. TSD.GeometryArchive.flags (field 3) is a bitfield;
+    // modern archives write 3 (7 when rotated), and for those the position
+    // is the frame's top-left. With bit 1 (value 1) clear the stored x is
+    // the frame's horizontal anchor for the text's paragraph alignment (the
+    // left edge, the centre or the right edge); with bit 2 (value 2) clear
+    // the stored y is the vertical anchor for the frame's vertical alignment
+    // (top edge, centre, bottom edge). Checked against Keynote's export of
+    // 37 decks: 9ad6cfab's bottom-aligned footer stores y = 1071.26 for a
+    // 50pt box whose text sits at 1021..1071 (flags 1); c184e5a7's
+    // middle-aligned "Aula 03" stores its centre; 0d5851c0's centred titles
+    // (flags 0, round 1) store their centre on both axes; enog's right-
+    // aligned URL box stores its right edge. Every flagged box with text in
+    // those exports lands inside the frame this rule predicts. Re-anchor to
+    // top-left so the model's geometry contract holds and the viewer never
+    // learns about the flag. Rotation is left alone (no rotated sample).
+    // [inferred: the bit semantics are undocumented; docs/format/drawables.md]
+    let flags = shape
         .msg(1)
         .and_then(|d| d.msg(1))
         .and_then(|g| g.varint(3))
-        == Some(0)
-    {
-        if let Drawable::Shape { common, .. } | Drawable::Textbox { common, .. } = &mut drawable {
+        .unwrap_or(3);
+    if flags & 3 != 3 {
+        fn first_p_style(t: &StyledText) -> Option<u32> {
+            t.paragraphs
+                .iter()
+                .find(|p| !p.items.is_empty())
+                .or(t.paragraphs.first())
+                .and_then(|p| p.p_style)
+        }
+        let anchored = match &mut drawable {
+            Drawable::Shape {
+                common,
+                text,
+                vertical_alignment,
+                ..
+            } => Some((common, text.as_ref().and_then(first_p_style), vertical_alignment.clone())),
+            Drawable::Textbox {
+                common,
+                text,
+                vertical_alignment,
+                ..
+            } => Some((common, first_p_style(text), vertical_alignment.clone())),
+            _ => None,
+        };
+        if let Some((common, p_style, vertical_alignment)) = anchored {
             if common.angle_deg.unwrap_or(0.0) == 0.0 {
+                let h_align = p_style
+                    .and_then(|i| ctx.para_pool.items.get(i as usize))
+                    .and_then(|ps| ps.horizontal_alignment.clone());
+                let fx = match h_align {
+                    Some(HorizontalAlignment::Center) => 0.5,
+                    Some(HorizontalAlignment::Right) => 1.0,
+                    _ => 0.0,
+                };
+                let fy = match vertical_alignment {
+                    Some(VerticalAlignment::Middle) => 0.5,
+                    Some(VerticalAlignment::Bottom) => 1.0,
+                    _ => 0.0,
+                };
                 if let (Some(p), Some(s)) = (common.position.as_mut(), common.size.as_ref()) {
-                    p.x -= s.width / 2.0;
-                    p.y -= s.height / 2.0;
+                    if flags & 1 == 0 {
+                        p.x -= s.width * fx;
+                    }
+                    if flags & 2 == 0 {
+                        p.y -= s.height * fy;
+                    }
                 }
             }
         }
