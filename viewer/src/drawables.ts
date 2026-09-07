@@ -1776,6 +1776,15 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
       wrap.style.height = `${m.size.height + sw}px`;
       wrap.style.boxSizing = "border-box";
       wrap.style.overflow = "hidden";
+      // A rotated mask turns the window AND the image in it about the
+      // window's centre: lofar c7429dce slide 4 stores angle 335.6 on the
+      // mask (the image's own geometry is unrotated) and Keynote draws the
+      // panel and its content tilted 24.4 degrees. Same sign convention as
+      // applyCommonGeometry.
+      if (m.angleDeg) {
+        wrap.style.transform = `rotate(${-m.angleDeg}deg)`;
+        wrap.style.transformOrigin = "center";
+      }
       applyBoxStroke(wrap, stroke);
       if (div.style.filter) { wrap.style.filter = div.style.filter; div.style.filter = ""; }
       img.style.position = "absolute";
