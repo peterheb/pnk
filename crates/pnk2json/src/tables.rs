@@ -1627,6 +1627,7 @@ fn convert_tile(
                     rich_text_table,
                     formula_table,
                     cond_style_table,
+                    aux,
                     cell_pool,
                 )
             } else {
@@ -2418,11 +2419,23 @@ fn pick_format(
 /// `[03][00][cell_type][?]` + flags u64 LE at 4..12 + payload at 12,
 /// fields in fixed order, each present iff its flag bit is set:
 ///   bit 1 cell style key · bit 7 text style key · bit 2 format key ·
-///   bit 4 string key · bit 5 f64 value · bit 9 rich-text key ·
-///   bit 48 trailing u32 (repeats the format key on number cells; skipped).
+///   bit 3 formula key · bit 4 string key · bit 5 f64 value ·
+///   bit 9 rich-text key · bit 48 trailing u32 (repeats the format key on
+///   number cells; skipped).
 /// High bits 20/22/23/27 vary without consuming payload (metadata).
 /// cell_type at byte 2 matches the v5 enum: 0 empty (style-only), 2 number,
-/// 3 text, 9 rich text. Keys index the same DataLists as v5.
+/// 3 text, 6 bool, 8 formula (no cached value), 9 rich text. Keys index the
+/// same DataLists as v5.
+///
+/// The formula key sits between the format and string keys, as in v4
+/// (2c11610b44c5, a Numbers 1.5 estimating sheet: type-8 cells
+/// `[cs][ts][fmt][formula][trailing]` at flags 0x8e, type-6 cells
+/// `[cs][ts][fmt][formula][f64]` at 0xae with 0.0 = FALSE, type-3 cells
+/// `[cs][ts][fmt][formula][string]` at 0x9e whose string is the cached
+/// result "0", type-2 cells at 0xae caching their f64). Before this the
+/// decoder refused bit 3 as unknown and dropped 166 of that sheet's cells,
+/// with their yellow fills, and Numbers' export prints every one. A corpus
+/// census (PNK_DEBUG_V3) finds v3 cells in four files and no other types.
 #[allow(clippy::too_many_arguments)]
 fn decode_cell_v3(
     ctx: &mut Ctx,
@@ -2440,9 +2453,17 @@ fn decode_cell_v3(
     }
     let cell_type = buf[2];
     let flags = u64::from_le_bytes(buf[4..12].try_into().unwrap());
+    if std::env::var("PNK_DEBUG_V3").is_ok() {
+        eprintln!(
+            "v3 r{row}c{col} type={cell_type} flags={flags:#x} len={} hex={}",
+            buf.len(),
+            buf.iter().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(" ")
+        );
+    }
 
     // Unknown low bits would shift every later field — refuse to guess.
-    const KNOWN_CONSUMING: u64 = (1 << 1) | (1 << 2) | (1 << 4) | (1 << 5) | (1 << 7) | (1 << 9);
+    const KNOWN_CONSUMING: u64 =
+        (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4) | (1 << 5) | (1 << 7) | (1 << 9);
     if flags & 0xffff & !KNOWN_CONSUMING != 0 {
         ctx.warn_detail(
             WarningCode::TableDegraded,
@@ -2474,6 +2495,7 @@ fn decode_cell_v3(
     let cell_style_id = take_u32_if!(1);
     let text_style_id = take_u32_if!(7);
     let format_id = take_u32_if!(2);
+    let formula_id = take_u32_if!(3);
     let string_id = take_u32_if!(4);
     let double = if flags & (1 << 5) != 0 {
         buf.get(off..off + 8).map(|b| {
@@ -2489,6 +2511,22 @@ fn decode_cell_v3(
     let value = match cell_type {
         0 | 1 => CellValue::Empty, // style-only cell (image/fill cells in the LED doc)
         2 => CellValue::Number { value: double? },
+        6 => CellValue::Bool {
+            value: double? > 0.0,
+        },
+        // Formula cell with no cached value: the styled, empty cell exists
+        // (2c11610b44c5's yellow input cells) and carries the formula ref.
+        8 => {
+            if formula_id.is_none() {
+                ctx.warn_detail(
+                    WarningCode::TableDegraded,
+                    format!("v3 formula cell without a formula key; cell r{row}c{col} dropped"),
+                    format!("r{row}c{col}"),
+                );
+                return None;
+            }
+            CellValue::Empty
+        }
         3 => {
             let sid = string_id?;
             match string_table
@@ -2563,7 +2601,7 @@ fn decode_cell_v3(
         }
     }
     let cell_style_index = style.and_then(|s| cell_pool.intern(s));
-    if matches!(value, CellValue::Empty) && cell_style_index.is_none() {
+    if matches!(value, CellValue::Empty) && cell_style_index.is_none() && formula_id.is_none() {
         return None;
     }
 
@@ -2601,7 +2639,7 @@ fn decode_cell_v3(
             cur,
             fmt: None,
             cell_style_index,
-            formula: None,
+            formula: formula_id.map(|k| TsceFormulaRef::unparsed(k.to_string())),
             comment: None,
             control: None,
         },
@@ -2628,6 +2666,7 @@ fn decode_cell_v4(
     rich_text_table: &DataList,
     formula_table: &DataList,
     cond_style_table: &DataList,
+    aux: &mut TableAux,
     cell_pool: &mut StylePool<TableCellStyle>,
 ) -> Option<(u32, u32, TableCell, Option<CellFormat>)> {
     if std::env::var("PNK_DEBUG").is_ok() {
@@ -2719,6 +2758,14 @@ fn decode_cell_v4(
         eprintln!(
             "v4slot r{row}c{col} type={cell_type} flags1={flags1:#x} u32s={u32s:?} fills={fills:?}"
         );
+    }
+    if std::env::var("PNK_DEBUG_FMTMSG").is_ok() {
+        if let Some(f) = fmt_lead.and_then(|k| format_table.entries.get(&k)).and_then(|e| e.format.as_ref()) {
+            eprintln!("v4fmtmsg r{row}c{col} key={fmt_lead:?} {f:?}");
+        }
+        if let Some(cid) = cell_style_id.and_then(|id| style_table.entries.get(&id)).and_then(|e| e.reference) {
+            eprintln!("v4csmsg r{row}c{col} key={cell_style_id:?} obj={cid} chain={:?}", styles::chain(ctx, cid, 11));
+        }
     }
     if std::env::var("PNK_DEBUG_FMT").is_ok() {
         let kinds: Vec<String> = trailing_keys
@@ -3019,6 +3066,37 @@ fn decode_cell_v4(
         _ => None,
     };
 
+    // A pre-BNC checkbox: the bool cell's LEADING format key names a
+    // format of type 263 (TSK FormatType CHECKBOX, numbers-parser
+    // constants.py) and nothing else; v4 storage has no control-spec list
+    // (the v5 flag 0x400). bd3a64fbd954's rubric stores 12 of them and
+    // Numbers' export prints a square where the value "false" printed
+    // here. Pooled once per table, like the v5 controls.
+    let control = if cell_type == 6
+        && fmt_lead
+            .and_then(|k| format_table.entries.get(&k))
+            .and_then(|e| e.format.as_ref())
+            .and_then(|f| f.varint(1))
+            == Some(263)
+    {
+        let found = aux
+            .controls
+            .iter()
+            .position(|c| c.kind == CellControlKind::Checkbox && c.options.is_none() && c.min.is_none());
+        Some(found.unwrap_or_else(|| {
+            aux.controls.push(CellControl {
+                kind: CellControlKind::Checkbox,
+                options: None,
+                min: None,
+                max: None,
+                step: None,
+            });
+            aux.controls.len() - 1
+        }) as u32)
+    } else {
+        None
+    };
+
     let (v, type_tag, cur) = value_into_parts(value);
     Some((
         row,
@@ -3031,7 +3109,7 @@ fn decode_cell_v4(
             cell_style_index,
             formula,
             comment: None,
-            control: None,
+            control,
         },
         format,
     ))
