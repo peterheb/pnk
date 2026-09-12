@@ -103,6 +103,15 @@ function wantedFaces(fontNames: readonly string[]): Face[] {
       wanted.set(fb.family, faces);
     }
     faces.add(`${ital},${weight}`);
+    // The font list names faces, not runs: a PowerPoint-import deck stores
+    // "Calibri" with `bold: true` on the run, never "Calibri-Bold", so the
+    // bold cut was never requested and Chromium drew the 400 face for the
+    // 700 run without emboldening it (tpc.ispras 6d0a262a slide 1's
+    // subtitle, bold in Keynote's export). Ask for the bold counterpart of
+    // every regular face the substitute ships; the italic of a 400 face
+    // Chromium slants on its own.
+    const bold = nearestWeight(fb.weights, 700);
+    if (weight < 600 && bold >= 600) faces.add(`${ital},${bold}`);
   }
   const out: Face[] = [];
   for (const [family, faces] of wanted) {
