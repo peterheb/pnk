@@ -1616,7 +1616,14 @@ function anchorZeroSizeText(
       if (cs?.fontSizePt && cs.fontSizePt > sizePt) { sizePt = cs.fontSizePt; font = cs.fontName; }
     }
     const lineH = sizePt ? sizePt * naturalLineHeight(font) : 0;
-    if (lineH && naturalSize.height > 1.5 * lineH) {
+    const paraCount = text?.paragraphs.filter((p) => p.items.length > 0).length ?? 1;
+    const leading = paraStyleOf(doc, typeof first === "string" ? undefined : first?.pStyle)?.lineSpacingMultiple ?? 1;
+    // "Taller than one line" is per paragraph: a box of N single-line
+    // paragraphs is N lines tall without any wrapping. cmb-s4 2406adf5
+    // slide 2 stores 1137x138.5 for two 60pt lines and its export draws the
+    // second one 1606pt wide, unwrapped; treating 138.5 as a wrapped
+    // paragraph broke it in two at the stale width.
+    if (lineH && naturalSize.height > (paraCount + 0.5) * lineH * leading) {
       // 3% wider than Apple's laid-out width: browser faces run a hair
       // wider, and at the exact width a line that just fit in Keynote
       // wraps its last word (pre-trib slide 9, Helvetica Bold 42pt).
@@ -1627,8 +1634,6 @@ function anchorZeroSizeText(
       // section list stores 305pt for seven 42pt paragraphs at 1.6 leading,
       // a stale size that shrank the block to 65% where Keynote draws it
       // full size below the anchor.
-      const paraCount = text?.paragraphs.filter((p) => p.items.length > 0).length ?? 1;
-      const leading = paraStyleOf(doc, typeof first === "string" ? undefined : first?.pStyle)?.lineSpacingMultiple ?? 1;
       if (naturalSize.height >= 0.9 * paraCount * lineH * leading) {
         layer.style.height = `${naturalSize.height}px`;
         multiLine = true;
@@ -1847,6 +1852,17 @@ export function renderCanvasDrawable(d: Drawable, doc: HydratedDoc, ctx: ViewerC
         // out natural-width from the anchor; our 0-width box wrapped it
         // into a 4-line sliver).
         anchorZeroSizeText(div, layer, d.text, d.verticalAlignment, doc, d.geometry.naturalSize);
+        // The shape is content-sized, and Keynote paints its fill and
+        // stroke on that box: classe.cornell c5b5d668 stores 27 orange,
+        // green and blue label boxes as 0x0 shapes with a unit-square path
+        // and no natural size, and its export draws each as a filled box
+        // around the text (insets included). The 0x0 <svg> painted nothing,
+        // so the box takes the fill as its background and the stroke as
+        // its border, like a filled textbox does.
+        const bg = fillToCss(c.style?.fill);
+        if (bg) { div.style.background = bg; div.style.boxSizing = "border-box"; }
+        applyBoxStroke(div, c.style?.stroke);
+        if (bg || c.style?.stroke) svg.remove();
       } else if (effH === 0) {
         // 0-height shape carrying text (RIPE ea785d2e subtitle): the box is
         // an anchor, not a clip — let the text flow down from it.
