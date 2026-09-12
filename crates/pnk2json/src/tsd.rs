@@ -70,27 +70,32 @@ fn editable_bezier(m: &Msg, natural: Option<Size>) -> ShapeGeometry {
             }
             let Some(next) = pts.get(i + 1) else { continue };
             let next_pt = [next.0, next.1];
-            let node_type = node.varint(4).unwrap_or(1);
-            let out = node
-                .msg(3)
-                .and_then(|m| Some((m.f32v(1)? as f64, m.f32v(2)? as f64)));
-            let next_in = nodes[i + 1]
-                .msg(1)
-                .and_then(|m| Some((m.f32v(1)? as f64, m.f32v(2)? as f64)));
-            match (node_type, out, next_in) {
-                // Sharp nodes carry no real curvature: straight line.
-                (1, _, _) => elements.push(CurveElement::Line {
+            // The node type (sharp / bezier / smooth) says how the editor
+            // constrains the two handles, not whether the segment curves:
+            // a sharp corner node can still carry a real out-handle, and the
+            // segment is a cubic whenever either handle leaves its node.
+            // matija.pretnar.info 6dbe87e0's arcs (slides 3, 4) start on a
+            // sharp node whose out-handle sits 17pt away and were drawn as
+            // straight legs; Keynote's export draws the curve. A handle ON
+            // its node contributes no curvature (24_Briefing's tick marks:
+            // both handles coincide with the nodes, still a line).
+            let handle = |m: Option<Msg>, at: &(f64, f64)| {
+                m.and_then(|m| Some((m.f32v(1)? as f64, m.f32v(2)? as f64)))
+                    .filter(|h| (h.0 - at.0).abs() > 1e-6 || (h.1 - at.1).abs() > 1e-6)
+            };
+            let out = handle(node.msg(3), cur);
+            let next_in = handle(nodes[i + 1].msg(1), next);
+            match (out, next_in) {
+                (None, None) => elements.push(CurveElement::Line {
                     points: next_pt.to_vec(),
                 }),
-                (_, Some(o), Some(nin)) => elements.push(CurveElement::Cubic {
-                    points: vec![o.0, o.1, nin.0, nin.1, next_pt[0], next_pt[1]],
-                }),
-                (_, Some(o), None) => elements.push(CurveElement::Quad {
-                    points: vec![o.0, o.1, next_pt[0], next_pt[1]],
-                }),
-                _ => elements.push(CurveElement::Line {
-                    points: next_pt.to_vec(),
-                }),
+                (o, nin) => {
+                    let o = o.unwrap_or(*cur);
+                    let nin = nin.unwrap_or(*next);
+                    elements.push(CurveElement::Cubic {
+                        points: vec![o.0, o.1, nin.0, nin.1, next_pt[0], next_pt[1]],
+                    })
+                }
             }
         }
         if closed {
