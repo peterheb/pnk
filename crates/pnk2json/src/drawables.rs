@@ -1283,6 +1283,27 @@ fn anchor_shape(ctx: &mut Ctx, aid: u64) -> Option<Anchor> {
                             });
                         }
                     }
+                    // No natural size either (classe.cornell c5b5d668: 27
+                    // filled label boxes stored 0x0 with a unit-square path,
+                    // saved by Keynote 6.5): the laid-out box is the text
+                    // plus the insets, which the archive does not store.
+                    // Estimate it from the text so the line follows the
+                    // box's current centre and stops near its edge; the
+                    // stored endpoints are stale by 160pt on that deck
+                    // (every line converged on one point). Average advance
+                    // 0.55 em, line 1.2 em. [inferred estimate]
+                    if let Some(est) = shape.and_then(|sh| estimated_text_box(ctx, sh, info)) {
+                        let shape = shape?;
+                        let (ax, ay) = zero_box_anchor_fractions(ctx, shape, info);
+                        return Some(Anchor {
+                            position: Point {
+                                x: x - est.width * ax,
+                                y: y - est.height * ay,
+                            },
+                            size: est,
+                            outline: None,
+                        });
+                    }
                 }
                 let outline = geo.and_then(|geo| outline_polygon(&geo, &position, &size));
                 return Some(Anchor {
@@ -1296,6 +1317,71 @@ fn anchor_shape(ctx: &mut Ctx, aid: u64) -> Option<Anchor> {
         cur = cur.msg(1)?.clone();
     }
     None
+}
+
+/// Rough laid-out size of a content-sized text shape from its storage: the
+/// widest paragraph at 0.55 em per character, 1.2 em per paragraph, plus
+/// the resolved insets (4pt a side when unresolved, Keynote's default).
+/// None without visible text.
+fn estimated_text_box(ctx: &mut Ctx, shape: &Msg, info: Option<&Msg>) -> Option<Size> {
+    let storage_id = info.and_then(|i| {
+        i.reference(4)
+            .or_else(|| {
+                i.reference(3)
+                    .and_then(|f| ctx.loaded.msg(f))
+                    .and_then(|f| f.reference(1))
+            })
+            .or_else(|| i.reference(2))
+    })?;
+    let extracted = crate::text::extract(ctx, storage_id)?;
+    let mut widest = 0.0_f64;
+    let mut height = 0.0_f64;
+    let mut last_size = 0.0_f64;
+    for p in &extracted.text.paragraphs {
+        let mut chars = 0usize;
+        let mut size_pt = 0.0_f64;
+        for item in &p.items {
+            match item {
+                ParagraphItem::Plain(t) => chars += t.chars().count(),
+                ParagraphItem::Text { text, c_style, .. } => {
+                    chars += text.chars().count();
+                    if let Some(cs) = c_style.and_then(|i| ctx.char_pool.items.get(i as usize)) {
+                        if let Some(sz) = cs.font_size_pt {
+                            size_pt = size_pt.max(sz);
+                        }
+                    }
+                }
+                _ => chars += 1,
+            }
+        }
+        if chars == 0 {
+            continue;
+        }
+        // an unsized run keeps the previous paragraph's size (classe's
+        // "GeoPIXE, MATLAB, FEpX" line is 14pt under two 30pt lines)
+        if size_pt <= 0.0 {
+            size_pt = last_size;
+        }
+        last_size = size_pt;
+        height += 1.2 * size_pt;
+        widest = widest.max(chars as f64 * 0.55 * size_pt);
+    }
+    if height <= 0.0 || widest <= 0.0 {
+        return None;
+    }
+    let ins = shape_text_frame_props(ctx, shape)
+        .padding
+        .flatten()
+        .unwrap_or(TextInsets {
+            top: Some(4.0),
+            left: Some(4.0),
+            bottom: Some(4.0),
+            right: Some(4.0),
+        });
+    Some(Size {
+        width: widest + ins.left.unwrap_or(0.0) + ins.right.unwrap_or(0.0),
+        height: height + ins.top.unwrap_or(0.0) + ins.bottom.unwrap_or(0.0),
+    })
 }
 
 /// Where a content-sized (0x0) text box hangs from its anchor point, as
@@ -1529,7 +1615,85 @@ fn connection_line_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
         }
     }
 
-    // Orthogonal routing (and anything unexpected): REBAKE from the live
+    // Orthogonal routing (Keynote's "straight" connection with a bend): the
+    // stored path is move + line + line like the quadratic one, but Keynote
+    // draws an ELBOW through the middle point, not a bent polyline: it leaves
+    // the from-shape perpendicular to the facing edge, runs a bus segment
+    // through the middle point's coordinate on that axis, and enters the
+    // to-shape perpendicular to its edge. highfivecreate eba343cf's site
+    // map stores (179.2, 184.1) -> (199.1, 217.7) -> (203.8, 255.0) for a
+    // 180x100 box above a 90x116 one; the export draws a stem down from the
+    // top box's centre (x=162) to y=216, a horizontal run to the lower box's
+    // centre (x=222), and a drop to its top edge. The stored endpoints sit
+    // on the shapes' edges when the path is fresh; a stale one (the shapes
+    // moved after baking) is mapped onto the live centres first.
+    if !quadratic && !stored.elements.is_empty() {
+        if let (Some(fa), Some(ta)) = (from_geo_anchor, to_geo_anchor) {
+            let origin = common.position.unwrap_or(Point { x: 0.0, y: 0.0 });
+            let mut pts: Vec<(f64, f64)> = Vec::new();
+            for e in &stored.elements {
+                let p = match e {
+                    CurveElement::Move { points } | CurveElement::Line { points } => points,
+                    _ => continue,
+                };
+                if p.len() >= 2 {
+                    pts.push((p[0] + origin.x, p[1] + origin.y));
+                }
+            }
+            if pts.len() == 2 || pts.len() == 3 {
+                let c1 = fa.center();
+                let c2 = ta.center();
+                let s0 = pts[0];
+                let s2 = pts[pts.len() - 1];
+                let sm = if pts.len() == 3 {
+                    pts[1]
+                } else {
+                    ((s0.0 + s2.0) / 2.0, (s0.1 + s2.1) / 2.0)
+                };
+                let near = |a: &Anchor, p: (f64, f64)| {
+                    p.0 >= a.position.x - 10.0
+                        && p.0 <= a.position.x + a.size.width + 10.0
+                        && p.1 >= a.position.y - 10.0
+                        && p.1 <= a.position.y + a.size.height + 10.0
+                };
+                // A fresh path keeps its middle point; one stale at one end
+                // (highfive's line to its seventh child stores that child
+                // 170pt from where it now sits) moves it with the end that
+                // still matches, so the bus keeps its coordinate.
+                let mid = if near(fa, s0) {
+                    (sm.0 + c1.0 - s0.0, sm.1 + c1.1 - s0.1)
+                } else if near(ta, s2) {
+                    (sm.0 + c2.0 - s2.0, sm.1 + c2.1 - s2.1)
+                } else {
+                    similarity_map(sm, s0, s2, c1, c2)
+                };
+                if let Some((path, bb_min, bb_max)) =
+                    orthogonal_route(c1, c2, mid, (fa, outset_from), (ta, outset_to))
+                {
+                    let mut path = path;
+                    offset_curve_path(&mut path, -bb_min.0, -bb_min.1);
+                    common.position = Some(Point {
+                        x: bb_min.0,
+                        y: bb_min.1,
+                    });
+                    common.size = Some(Size {
+                        width: bb_max.0 - bb_min.0,
+                        height: bb_max.1 - bb_min.1,
+                    });
+                    common.angle_deg = None;
+                    return Drawable::ConnectionLine {
+                        common,
+                        path,
+                        from,
+                        to,
+                    };
+                }
+            }
+        }
+    }
+
+    // Orthogonal routing without two sized anchors (and anything unexpected):
+    // REBAKE from the live
     // anchors. The stored baked path goes stale when the connected shapes are
     // moved after baking (fixture-verified: kcsrk deck slide 22 stores
     // fork-line endpoints (126.7, 39.0)pt away from where Apple's own PDF
@@ -1573,6 +1737,89 @@ fn connection_line_drawable(ctx: &mut Ctx, m: &Msg) -> Drawable {
         from,
         to,
     }
+}
+
+/// The elbow c1 -> bend -> bend -> c2 through `mid`, vertical-first when the
+/// two shapes are stacked (the bus runs horizontally at mid.y), horizontal-
+/// first when they sit side by side (the bus is vertical at mid.x), the
+/// larger centre distance deciding when neither or both hold. Each end is
+/// cut back to where its segment leaves the shape, plus the outset. None
+/// when a shape swallows its whole segment.
+fn orthogonal_route(
+    c1: (f64, f64),
+    c2: (f64, f64),
+    mid: (f64, f64),
+    from: (&Anchor, f64),
+    to: (&Anchor, f64),
+) -> Option<(CurvePath, (f64, f64), (f64, f64))> {
+    let (fa, _) = from;
+    let (ta, _) = to;
+    // The gap between the two frames on each axis, when there is one.
+    let gap = |a0: f64, a1: f64, b0: f64, b1: f64| -> Option<(f64, f64)> {
+        if a1 <= b0 {
+            Some((a1, b0))
+        } else if b1 <= a0 {
+            Some((b1, a0))
+        } else {
+            None
+        }
+    };
+    let vgap = gap(fa.position.y, fa.position.y + fa.size.height, ta.position.y, ta.position.y + ta.size.height);
+    let hgap = gap(fa.position.x, fa.position.x + fa.size.width, ta.position.x, ta.position.x + ta.size.width);
+    // The bus runs through the middle point, so the axis whose gap holds it
+    // is the one it crosses (a box down and to the right of a wide one has
+    // both gaps; highfive's stored bus at y=216.8 sits in the 185..250
+    // vertical gap and would cut into the target box if run vertically at
+    // its x). Without a gap holding the point, the gap that exists decides,
+    // then the larger centre distance.
+    let in_v = vgap.is_some_and(|(a, b)| mid.1 >= a && mid.1 <= b);
+    let in_h = hgap.is_some_and(|(a, b)| mid.0 >= a && mid.0 <= b);
+    // Keynote bends halfway across the gap it crosses, so when the point
+    // sits in both gaps the one it centres in is the crossed one
+    // (highfive's seventh child: the bus is 0.7pt off the vertical gap's
+    // centre and 70pt off the horizontal one's).
+    let off = |g: Option<(f64, f64)>, v: f64| {
+        g.map(|(a, b)| ((v - (a + b) / 2.0) / (b - a).max(1e-6)).abs())
+            .unwrap_or(f64::INFINITY)
+    };
+    let vertical_first = match (in_v, in_h) {
+        (true, false) => true,
+        (false, true) => false,
+        (true, true) => off(vgap, mid.1) <= off(hgap, mid.0),
+        (false, false) => match (vgap.is_some(), hgap.is_some()) {
+            (true, false) => true,
+            (false, true) => false,
+            _ => (c2.1 - c1.1).abs() >= (c2.0 - c1.0).abs(),
+        },
+    };
+    let (b1, b2) = if vertical_first {
+        ((c1.0, mid.1), (c2.0, mid.1))
+    } else {
+        ((mid.0, c1.1), (mid.0, c2.1))
+    };
+    // Where the segment a -> b leaves `anchor`, then `outset` further along.
+    let exit = |a: (f64, f64), b: (f64, f64), anchor: &Anchor, outset: f64| -> Option<(f64, f64)> {
+        const N: usize = 512;
+        let at = |t: f64| (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t);
+        let len = ((b.0 - a.0).powi(2) + (b.1 - a.1).powi(2)).sqrt();
+        let i = (0..=N).position(|i| !anchor.contains(at(i as f64 / N as f64)))?;
+        let t = (i as f64 / N as f64 + if len > 0.0 { outset / len } else { 0.0 }).min(1.0);
+        Some(at(t))
+    };
+    let start = exit(c1, b1, from.0, from.1)?;
+    let end = exit(c2, b2, to.0, to.1)?;
+    let pts = [start, b1, b2, end];
+    let mut elements = vec![CurveElement::Move {
+        points: vec![start.0, start.1],
+    }];
+    for p in &pts[1..] {
+        elements.push(CurveElement::Line {
+            points: vec![p.0, p.1],
+        });
+    }
+    let path = CurvePath { elements };
+    let (bb_min, bb_max) = curve_path_bounds(&path)?;
+    Some((path, bb_min, bb_max))
 }
 
 /// Map point `p` by the 2D similarity (rotate + uniform scale + translate)
