@@ -2412,6 +2412,23 @@ fn pick_format(
     (custom, false)
 }
 
+/// The display-semantic markers the v5 path emits for formats that persist
+/// no pattern: auto scientific (type 259) and fractions (262, accuracy in
+/// f11: a small value is an exact denominator, the 0xFFFFFFxx sentinels
+/// mean up-to-N digits). Pre-BNC storage keeps the same FormatStructArchive
+/// (2c11610b44c5's pipe sizes: type 262, f11 = 0xFFFFFFFF, printed "2 1/2"
+/// and "3 1/2" in Numbers' export where the number path printed 2.5).
+fn display_marker(f: &Msg) -> Option<String> {
+    match f.varint(1) {
+        Some(259) => Some("scientific".to_string()),
+        Some(262) => Some(match f.varint(11) {
+            Some(acc) if (2..=100).contains(&acc) => format!("fraction-{acc}"),
+            _ => "fraction".to_string(),
+        }),
+        _ => None,
+    }
+}
+
 /// iWork '13-era (storage_version 3) cell block decoder — fixture-verified
 /// against two 2014-saved Pages docs (LED price list 6478639…, HEE appendix
 /// b31db82…; corpus census class 1). Layout [inferred, all cells in both docs
@@ -2606,6 +2623,11 @@ fn decode_cell_v3(
     }
 
     // The single v3 format key routes through the same FORMAT list as v5.
+    if std::env::var("PNK_DEBUG_V3").is_ok() {
+        if let Some(f) = format_id.and_then(|k| format_table.entries.get(&k)).and_then(|e| e.format.as_ref()) {
+            eprintln!("v3fmt r{row}c{col} key={format_id:?} {f:?}");
+        }
+    }
     let format = format_id.and_then(|id| {
         format_table.entries.get(&id).and_then(|e| {
             e.format.as_ref().map(|f| CellFormat {
@@ -2623,7 +2645,8 @@ fn decode_cell_v3(
                 accounting: f.boolean(6).filter(|b| *b),
                 format_string: f
                     .string(18)
-                    .or_else(|| f.string(14).filter(|s| !s.is_empty())),
+                    .or_else(|| f.string(14).filter(|s| !s.is_empty()))
+                    .or_else(|| display_marker(f)),
                 name: None,
             })
         })
@@ -3058,7 +3081,8 @@ fn decode_cell_v4(
                             f.boolean(43)
                                 .unwrap_or(false)
                                 .then(|| "sign-plus".to_string())
-                        }),
+                        })
+                        .or_else(|| display_marker(&f)),
                     name: None,
                 })
             })
