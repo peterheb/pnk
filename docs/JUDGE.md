@@ -1807,7 +1807,7 @@ What remains, in the order the judge names it:
    domimplant) draws regular in Keynote and bold here (round 3's note).
 4. Hand-drawn strokes (brush parameters), unchanged.
 
-### Keynote, round 5 (2026-09-12, GLM thinking off, four slides per deck)
+### Keynote, round 5 (2026-09-12, GLM and qwen-or thinking off, four slides per deck)
 
 Twelve decks from twelve origin hosts no earlier run had judged, chosen
 from a feature survey of the 104 unjudged hosts under 40 MB (one deck per
@@ -1816,9 +1816,10 @@ unfamiliar templates are). The survey counted tables, charts, groups,
 connection lines, masks, reflections, list levels, slide-number fields,
 non-Latin text, gradients, shadows and builds per deck. All twelve were
 exported from Keynote once; the same exports are on both sides of every
-score; the judge scored the first four slides of each (38 pairs). The
-judge today is GLM-5.3-Flash, not the Qwen of rounds 1-4, so the means
-are not comparable with theirs.
+score; two judges scored the first four slides of each (38 pairs):
+GLM-5.3-Flash-EXL3 on the LAN, and qwen/qwen3.8-flash through OpenRouter
+under the judge name qwen-or (not the Qwen3.8-Flash-Next checkpoint of
+rounds 1-4, so the means are not comparable with theirs).
 
 | doc | host | slides | why |
 | --- | --- | ---: | --- |
@@ -1845,35 +1846,44 @@ are not comparable with theirs.
 | orthogonal connectors drawn as a fan of bent lines (highfive slide 1) | highfive | the stored path is move + line + line through a middle point; the converter rebaked it as a polyline. Keynote draws an elbow: perpendicular out of the from-shape, a bus through the middle point on the crossed axis, perpendicular into the to-shape | converter routes the elbow; the crossed axis is the gap the middle point sits in (the one it centres in when both hold it); a stale end moves the middle point with the end that still matches |
 | arcs drawn as chevrons (pretnar slides 3, 4) | pretnar | editable-bezier "sharp" nodes were emitted as straight segments; the arcs start on a sharp node whose out-handle is 17pt away | a segment is a cubic whenever either handle leaves its node (G2's zigzag gains a cubic whose handles lie on the chord; re-synced) |
 
-GLM's mean over the 38 pages, before and after, same exports. The
-before column doubles as the ranking of where to look next.
+Both judges' means over the 38 pages, before and after, same exports.
+The GLM before column doubles as the ranking of where to look next.
 
-| doc | host | pages | before | after |
-| --- | --- | ---: | ---: | ---: |
-| c5b5d668d69a | wiki.classe.cornell.edu | 1 | 3.00 | 9.00 |
-| eba343cf501f | highfivecreate.com | 1 | 6.00 | 9.00 |
-| 6dbe87e0ee22 | matija.pretnar.info | 4 | 7.00 | 7.50 |
-| 2406adf5cf99 | indico.cmb-s4.org | 4 | 8.50 | 9.25 |
-| 5f81854f90cf | senseiichiba.com | 3 | 8.67 | 8.67 |
-| 6ee4ea590b7f | media.ncd.life | 4 | 8.75 | 8.75 |
-| 441130d2a359 | archive.jonbell.net | 4 | 9.00 | 9.00 |
-| 4f9c2bbd0349 | stween.co.uk | 4 | 9.00 | 9.00 |
-| 5de28ef46913 | www.bibelportal.de | 1 | 9.00 | 9.00 |
-| 79b11d2dd8d2 | www.starlingx.io | 4 | 9.00 | 9.00 |
-| 157b84e8e0c3 | anyoneteach.com | 4 | 9.50 | 9.50 |
-| 6d0a262a9ad4 | tpc.ispras.ru | 4 | 9.50 | 9.25 |
-| all | | 38 | 8.55 | 8.89 |
+| doc | host | pages | GLM before | GLM after | qwen-or before | qwen-or after |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| c5b5d668d69a | wiki.classe.cornell.edu | 1 | 3.00 | 9.00 | 4.00 | 9.00 |
+| eba343cf501f | highfivecreate.com | 1 | 6.00 | 9.00 | 6.00 | 9.00 |
+| 6dbe87e0ee22 | matija.pretnar.info | 4 | 7.00 | 7.50 | 6.75 | 8.00 |
+| 2406adf5cf99 | indico.cmb-s4.org | 4 | 8.50 | 9.25 | 8.50 | 9.00 |
+| 5f81854f90cf | senseiichiba.com | 3 | 8.67 | 8.67 | 8.67 | 8.67 |
+| 6ee4ea590b7f | media.ncd.life | 4 | 8.75 | 8.75 | 8.50 | 8.50 |
+| 441130d2a359 | archive.jonbell.net | 4 | 9.00 | 9.00 | 9.00 | 9.00 |
+| 4f9c2bbd0349 | stween.co.uk | 4 | 9.00 | 9.00 | 8.75 | 8.75 |
+| 5de28ef46913 | www.bibelportal.de | 1 | 9.00 | 9.00 | 9.00 | 9.00 |
+| 79b11d2dd8d2 | www.starlingx.io | 4 | 9.00 | 9.00 | 9.00 | 9.00 |
+| 157b84e8e0c3 | anyoneteach.com | 4 | 9.50 | 9.50 | 9.75 | 9.75 |
+| 6d0a262a9ad4 | tpc.ispras.ru | 4 | 9.50 | 9.25 | 9.25 | 9.00 |
+| all | | 38 | 8.55 | 8.89 | 8.50 | 8.87 |
 
-Pages that moved by two points or more:
+Pages that moved by two points or more (GLM; qwen-or in the last column):
 
-| slide | before | after | what changed |
-| --- | ---: | ---: | --- |
-| wiki.classe.cornell.edu 1 | 3 | 9 | filled label boxes; connection lines to the boxes' current centres |
-| highfivecreate.com 1 | 6 | 9 | orthogonal connectors as elbows |
-| matija.pretnar.info 4 | 6 | 9 | arcs as curves |
-| indico.cmb-s4.org 1 | 8 | 10 | tracking as em: the title wraps where the export does |
+| slide | before | after | what changed | qwen-or |
+| --- | ---: | ---: | --- | --- |
+| wiki.classe.cornell.edu 1 | 3 | 9 | filled label boxes; connection lines to the boxes' current centres | 4 to 9 |
+| highfivecreate.com 1 | 6 | 9 | orthogonal connectors as elbows | 6 to 9 |
+| matija.pretnar.info 4 | 6 | 9 | arcs as curves | 7 to 9 |
+| indico.cmb-s4.org 1 | 8 | 10 | tracking as em: the title wraps where the export does | 8 to 9 |
+| matija.pretnar.info 3 | 4 | 3 | arcs as curves; the scatter curve is still missing | 2 to 5 |
 
-Pages at 9 or more went from 30 to 35 of 38. Two pages dropped one point:
+Agreement between the two judges over the 76 scored pairs: 97% within
+one point, mean absolute difference 0.25, qwen-or 0.04 below GLM. No
+pair differs by three or more; the largest gap is pretnar 3 after (GLM
+3, qwen-or 5), where both name the same thing, the scatter chart's
+curve drawn as a flat line with a stray legend, and differ only on how
+much the fixed arcs earn back. By eye the slide has every stroke of the
+export except that curve, so 5 is the fairer score. Under GLM, pages
+at 9 or more went from 30 to 35 of 38 (qwen-or: 28 to 33). Two pages
+dropped one point under GLM:
 tpc.ispras 4 (10 to 9, "sub-pixel shifts" on an unchanged render) and
 pretnar 3 (4 to 3: the arcs are now right and the judge names what is
 left, the scatter chart's curve drawn as a flat line with a legend the
