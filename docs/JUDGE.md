@@ -2100,11 +2100,167 @@ What remains, in the order the judge names it:
    unchanged since round 3).
 5. Numeric alignment in Keynote tables (Numbers lane).
 
+### Pages, round 4 (2026-09-12, GLM thinking off and qwen/qwen3.8-flash via OpenRouter, up to 3 pages per document)
+
+Nine documents from hosts no earlier round had judged, picked from a
+pnk2json feature survey of all 183 candidates (none of the 183 carries a
+footnote or a multi-column section; the survey found no such document to
+fill those slots). Two judges scored the same pairs: GLM-5.3-Flash on the
+LAN (the judge of the earlier rounds' comparison table, not the Qwen
+checkpoint rounds 1-3 used) and qwen/qwen3.8-flash through OpenRouter
+(judge name qwen-or, a hosted model, not the Qwen3.8-Flash-Next
+checkpoint). Up to three pages per document, page N against page N,
+21 pairs.
+
+| document | host | pages (Pages / ours) | why |
+| --- | --- | ---: | --- |
+| 4d268c4161c1 | metodistkirken-odense.dk | 13 / 13 | multi-page Calibri text with a page-number footer |
+| fe2facece68e | sarahpetrich.com | 3 / 3 | newsletter: dated header, five floating photos with wrap, lists |
+| 8e92cf882b53 | astrid-lindgren-schule-ulm.de | 5 / 5 | form of 14 tables with 16 merges, tabbed header, Wingdings boxes |
+| bbb758110464 | yskick.com | 2 / 2 | Japanese text set in Times-Roman (the glyphs come from a fallback face) |
+| 54119baf383d | australianlaceguild.com.au | 7 / 7 | lists and five inline images |
+| 4ccaddd3f0b5 | internetgeography.net | 2 / 2 | worksheet of 15 anchored text boxes, groups and an image, 18pt margins |
+| 1d3f1667cd27 | feature3.net | 29 / 29 | 7,100-word document, pagination drift check |
+| f2a516705f13 | theo.ac.cy | 1 / 1 | page-layout poster in polytonic Greek |
+| 4ecab480ce51 | blog.kakaocdn.net | 1 / 1 | Korean one-page form table (the smoke-test lead) |
+
+Defects fixed, with cause and fix:
+
+| defect | documents | cause | fix |
+| --- | --- | --- | --- |
+| body text ran under floating photos narrower than 60% of the column (two anatomy figures on page 1, two photos on page 2) | fe2facece68e; 48f5f124 checked | `pageExclusion` made a band only for wide objects and let the text run under narrow ones | viewer (pages.ts): each narrow wrapping object excludes its own side — the side with more room, whatever the wrap kind (48f5f124's logos store type 4 at the right margin and Pages sets the title to their left) — as a staircase `shape-outside` polygon on a left or right float per vertical cluster; boxes as wide as their widest step so list rows land beside the object; a gutter under a quarter of the column still makes a band |
+| a label shape Pages keeps off the page (x = -101) came on-page beside a photo | fe2facece68e page 2 | the exclusion float's box pushed the later zero-width anchor float to its right and the drawables moved with it | viewer: `fixAnchorDrift` repins anchor floats sideways as it does vertically |
+| the body started at the top margin under an empty header: every box 26pt high on 4ccaddd, the title and logos 64pt high on 7edb1b23 (round 3b item 4) | 4ccaddd3f0b5, 7edb1b23ebd6 | (1) `hfPushForPage` measured only templates with header text; (2) the push was a band float, which moves line boxes but not the box of a paragraph holding only anchored objects, so the objects stayed at the margin | viewer: empty header paragraphs count (their `<br>` gives them a line), each column measured at the full text width; the push is the page container's top padding. 4ccaddd's body now sits at 32pt against Pages' 44, 7edb1b23's at 138 against 135.6 |
+| header "…Unterstützungsbedarfs   Stand: 09.2021" collapsed its 40 spaces and centred | 8e92cf882b53 | headers are outside `.pages-print`, whose `pre-wrap` rule keeps spaces | styles.css: `.pages-hf p` keeps spaces and tabs |
+| "Diese Meldung geht direkt…" and "☐ Mutter ☐ Vater" bold in a bold-styled cell | 8e92cf882b53 | `applyCharStyle` set the weight only for `bold: true`; a run resolved to `bold: false` inherited the cell's 700 | viewer (text.ts): explicit false sets 400 / normal, unless the face name carries its own weight or slant |
+| table rows 3pt taller than Pages' (33.0 against 30.3 per row; page 2 started two rows early) | 8e92cf882b53; 5c07d836 checked | cells used the unrounded natural height with the gap on every line; the face never matched because Chrome serializes plain family names unquoted | viewer (tables.ts): Pages cells take the rounded single-spaced rule (text.ts FONT_METRICS) with the gap dropped after the paragraph's last line: 31.0 now; 5c07d836's TOC rows stay at 20.6 |
+| Japanese text 14pt per line where Pages lays out 17 (12pt Times-Roman): page 1 held 8 more lines and page 2 different content | bbb758110464; 9cd3036a checked (16 for 11pt) | the line height came from Times-Roman; Pages takes the glyphs from Songti SC and the line from it | viewer (text.ts): the largest rounded ascent, descent and gap over the faces on the line, including the fallback: serif faces + CJK text = Songti SC (1.06/0.34/0, hhea), geometric-shape symbols = Hiragino Mincho (its 0.5 gap: the "●" lines at 23) |
+| banding missing: header and footer rows white where Pages fills #efefef | 4ecab480ce51 | the round-3b rule cleared banding for any cell style with fill "none"; here the body style is fill-less too, so the value is inherited | viewer (tables.ts): the cell's "none" turns banding off only over a filled section default (0839b6d2 checked: still white) |
+| leading spaces of cell text collapsed ("연락처(핸드폰) :" at the left instead of centred by 36 spaces) | 4ecab480ce51 | plain-text cells had `white-space: normal` | viewer (tables.ts): pre-wrap / pre when the text has leading or repeated spaces |
+| a four-line paragraph moved whole to the next page where Pages keeps two lines; 30 pages against 29 | 1d3f1667cd27 | `splitOverflow` returned null when the largest fitting prefix left one line behind | viewer: the cut moves up to the last line that leaves two |
+
+Scores on the same exports, before and after the fixes, both judges
+(GLM: mean 6.90 to 8.15 over 20 pairs, one verdict unparsed on each
+side; qwen-or: 6.48 to 8.24 over 21). Score counts, GLM before: 3 ×5,
+6 ×4, 7 ×1, 8 ×1, 9 ×6, 10 ×3; after: 4 ×1, 5 ×2, 8 ×5, 9 ×11, 10 ×1.
+qwen-or before: 2 ×1, 4 ×7, 5 ×2, 6 ×1, 8 ×1, 9 ×8, 10 ×1; after: 4 ×1,
+6 ×3, 7 ×1, 8 ×1, 9 ×14, 10 ×1.
+
+| document | host | judged | GLM before | GLM after | qwen-or before | qwen-or after |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| bbb758110464 | yskick.com | 2 | 4.5 | 8.5 | 3.0 | 7.0 |
+| fe2facece68e | sarahpetrich.com | 3 | 3.0 | 7.3 | 4.0 | 7.3 |
+| 8e92cf882b53 | astrid-lindgren-schule-ulm.de | 3 | 4.0 | 8.0 | 4.3 | 8.0 |
+| 4ccaddd3f0b5 | internetgeography.net | 2 | 6.0 | 4.5 | 5.0 | 6.5 |
+| 4d268c4161c1 | metodistkirken-odense.dk | 3 | 8.7 | 9.0 | 7.7 | 9.0 |
+| 4ecab480ce51 | blog.kakaocdn.net | 1 | 7.0 | 9.0 | 8.0 | 9.0 |
+| 54119baf383d | australianlaceguild.com.au | 3 | 9.7 | 9.0 | 9.0 | 9.0 |
+| f2a516705f13 | theo.ac.cy | 1 | 9.0 | 9.0 | 9.0 | 9.0 |
+| 1d3f1667cd27 | feature3.net | 3 | 9.3 | 9.3 | 9.3 | 9.3 |
+| all | 9 documents | 21 | 6.90 | 8.15 | 6.48 | 8.24 |
+
+Pages that moved by two points or more under both judges: fe2facece68e
+1 and 3 (GLM 3 to 9 and 3 to 8; qwen-or 4 to 9 both — the side wraps),
+8e92cf882b53 1, 2, 3 (GLM 6/3/3 to 8/8/8, qwen-or 5/4/4 to 9/6/9 —
+header spaces, bold, row heights), bbb758110464 1 and 2 (GLM 6/3 to
+8/9, qwen-or 4/2 to 8/6 — the CJK line height). Under one judge:
+4ecab480 (GLM 7 to 9, the banding), 4d268c4161c1 page 3 (qwen-or 5 to
+9, the widow rule) and 4ccaddd3f0b5 page 1 (qwen-or 4 to 6, the header
+push). The one drop is 4ccaddd3f0b5 page 2 under GLM (6 to 4): the
+anchored boxes moved 14pt down toward Pages' position while the
+page-relative title stayed, so the overlap between them grew (item 1
+below); qwen-or scored the same page 6 to 7.
+
+Pages where the judges differ by three or more, read by eye: 4d268c4161c1
+page 3 before (GLM 8, qwen-or 5) is missing its last six-line paragraph,
+a third of the page's text, so 5 is the right score; 4ccaddd3f0b5 page 2
+after (GLM 4, qwen-or 7) has every box and its text with the title over
+the first line of two boxes, a 6; bbb758110464 page 2 after (GLM 9,
+qwen-or 6) is the same content with one line moved to page 1 and slightly
+different spacing, an 8. qwen-or is not the checkpoint earlier rounds
+used; its before mean (6.48) sits 0.42 under GLM's on the same pairs.
+
+What remains, in the order the judges name it after the fixes:
+
+1. Anchored objects whose offset is page-relative (`v_offset_type` 1):
+   4ccaddd3f0b5's title box prints over the top boxes on both pages
+   (qwen-or 6 and 7, GLM see table); the proposal below.
+2. Text in a text box does not wrap around a floating image over it
+   (4ccaddd's map: the question runs under the map).
+3. fe2facece68e page 2 (4 both judges): the column beside the two photos
+   is narrower here than in Pages, which wraps to the photos' opaque
+   contour (`textWrap.fit` absent = alpha) rather than their frame, so
+   "Technique #2" lands lower and one line spills to page 3. The alpha
+   contour is round 2's unimplemented proposal.
+4. bbb758110464 page 2 (6): the "○" lines (U+25CB, HiraMin in Pages)
+   and the form's underlined blanks differ in pitch; sans faces with CJK
+   text get no fallback height at all (PingFang's metrics are not on
+   disk).
+5. 8e92cf882b53 page 2 (6): the second page starts one row earlier than
+   Pages' — the remaining 0.7pt per row is the 1px border CSS draws for a
+   0.5pt stroke, 16 rows a page.
+6. The gap Pages leaves under a header: 4ccaddd's body is 12pt high.
+7. Helvetica line breaks (1d3f1667cd27: Arimo stands in, a few lines
+   break differently; the page count matches now).
+
+#### Schema and converter findings
+
+- Wrap type 4 (`textWrap.kind: "right"`, 139 images and 104 text boxes
+  in the corpus) does not name the text's side: 48f5f124 stores it on
+  logos at the right margin and Pages sets the cover title to their
+  left. The viewer takes the side with more room for every kind; the
+  proto's names for 3/4 stay unverified.
+- `TSWP.DrawableAttachmentArchive` fields 2/4 (`h_offset_type`,
+  `v_offset_type`) decide what the offset is measured from, and the
+  converter drops them. 4ccaddd3f0b5 proves one value: its title box
+  stores v type 1 and offset 17.75, and Pages draws it at page y 17.75
+  (baseline 70.45 = 17.75 + 4 inset + 48 ascent) while its type-0
+  siblings sit at the paragraph top (44pt) + offset. The logo group
+  stores type 1 too. This viewer draws type-1 objects at paragraph top +
+  offset, 26pt low here.
+- Empty header storages: the archive stores one empty paragraph per
+  column (StorageArchive with no text, 4ccaddd), and Pages still lays the
+  header out at the paragraph's line height. What Pages adds under the
+  header is not known: with the header height alone the body lands 12pt
+  high on 4ccaddd (32 vs 44), 2pt low on 7edb1b23 (138 vs 135.6), and on
+  5c07d836's page 2 at Pages' 68.6.
+- CJK fallback faces: Pages' export names them (STSongti-SC for Latin
+  serif runs in bbb758 and 9cd3036a, HiraMinProN for "●", PingFangSC for
+  a Courier title's ideographic space); the archive stores only the run's
+  font. Metrics from the fonts' hhea tables (Songti SC 1.06/0.34/0,
+  Hiragino 0.88/0.12/0.5); PingFang's are not on disk, so sans faces get
+  no fallback height.
+- Pages cell rows (8e92cf882b53, gridlines from the export's drawing
+  list): a row is padding + Σ lines, each line = rounded ascent +
+  rounded descent (times the multiple: the two-line Calibri 8 cell at
+  1.079× has a 10.65 pitch; the single-line Arial-Bold 12 row at the
+  same multiple measures 14, so which rows take it is not settled), with
+  the gap between the lines of a paragraph and none after its last line
+  (Calibri 10's en-space line is 11, not 13). The viewer applies the
+  single rule with the gap dropped.
+- Cell fill "none" is emitted for both an own and an inherited none
+  (`TableCellStyle.fill: null`); the viewer tells them apart by the
+  section default's fill (4ecab480 vs 0839b6d2). A converter flag would
+  be cleaner but the same rule works.
+
+Proposals not implemented:
+
+- `InlineObjectRun.offsetOrigin?: { h?: "paragraph" | "page" | "margin"; v?: … }`
+  from `h_offset_type` / `v_offset_type` (round 3a's proposal, now with a
+  proof: 4ccaddd3f0b5's title box, v type 1 = page top; 7edb1b23 and
+  cf4b76a store 2). The viewer would place type-1 objects at the page
+  origin + offset.
+- Text inside a text box does not wrap around a floating image over it
+  (4ccaddd's map inside the "With the help of the diagram" box; Pages
+  runs the question to the right of the map). No model change; the
+  canvas would need an exclusion per overlapping wrapping object
+  (drawables.ts, Keynote's file).
+
 ### Next
 
 Numbers: b191fa6fd022's row-12 header (bold and centred in the export, no text-style key in the v4 cell); hairline weight on 0.35pt gridlines (ee805c92fc38); two-axis charts (type 11, 666 in 0ab5dd52841e); auto-fit row leading per face (17891b89da2f 14 vs 16pt rows); the a720beed1ab2 header row the export prints blank; pie labels inside the slices (6914f46e51ab). The unjudged Numbers hosts are used up; the next round re-scores earlier documents or the other files of judged hosts.
 Keynote: CJK text in a Latin face (senseiichiba 5f81854f: Keynote pitches the lines with PingFang/Hiragino's metrics, 1.432 em on slide 2); charts on slides in the Numbers lane (pretnar 6dbe87e0's scatter curve and hidden legend; tpc.ispras 6d0a262a's numeric cells left-aligned); the font list naming the bold cut a run's flag asks for (proposal in round 5); faces the Mac lacks (policy, docs/fonts.md); hand-drawn brush parameters; then 20 more decks from unjudged hosts.
-Pages: Arabic documents in a face Pages substitutes per script (ae1cc13b, 77890685; the archive does not store the fallback face); the residual pagination drift on long documents (eb2a7cde 63 pages against 61, cf4b76a half a page behind by page 20); rotated wrapping objects (10a06959, 25 documents); b31db822's cover shape lines cut at the left (drawables.ts); `h_offset_type`/`v_offset_type` and `widow_control` unmodelled (proposals in round 3a); reconciling Numbers' row-leading measurements with the round-3a line rule; 4047e81b page 4; then the unexamined verdicts in round 3b's list.
+Pages: page-relative anchored objects (`v_offset_type` 1: 4ccaddd3f0b5, proposal in round 4); text-box text wrapping around floating images over it (4ccaddd, drawables.ts); the alpha wrap contour (fe2facece68e page 2, round 2 proposal); sans faces with CJK text (PingFang metrics unknown) and Arabic documents in a face Pages substitutes (ae1cc13b, 77890685); the gap Pages leaves under a header (4ccaddd 12pt); 1px borders for 0.5pt cell strokes (8e92cf882b53, 0.7pt a row); rotated wrapping objects (10a06959, 25 documents); b31db822's cover shape lines cut at the left (drawables.ts); `h_offset_type`/`widow_control` unmodelled; reconciling Numbers' row-leading measurements with the round-3a line rule; 4047e81b page 4; then the unexamined verdicts in round 3b's list.
 Score more of the corpus, one or two pages per document, with Qwen; use
 the ranked list to choose fidelity work; add a reference re-run with
 Claude when the prompt changes again.

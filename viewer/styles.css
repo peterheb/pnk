@@ -584,3 +584,8 @@ table.sheet-table .cell-clip { overflow-x: visible; overflow-y: clip; box-sizing
 
 /* ---- Keynote agent, 2026-09-06: text insets are padding on the text layer ---- */
 .canvas-drawable > .drawable-text { box-sizing: border-box; }
+
+/* === pages/text (agent P, 2026-09-12, round 4) === */
+/* Headers and footers keep runs of spaces and tabs like the body: 8e92cf882b53
+   pushes "Stand: 09.2021" to the right margin with 40 spaces. */
+.pages-hf p { white-space: pre-wrap; tab-size: 36px; }
