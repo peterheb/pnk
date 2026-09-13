@@ -131,7 +131,14 @@ export function applyCharStyle(el: HTMLElement, cs: CharStyle | undefined): void
   }
   if (cs.fontSizePt) s.fontSize = `${cs.fontSizePt}px`;
   if (cs.bold) s.fontWeight = "700";
+  // A resolved `bold: false` / `italic: false` is a statement too: a run
+  // inside a bold table cell (8e92cf882b53's "Diese Meldung geht direkt",
+  // ArialMT with bold false under an Arial-BoldMT cell style) inherited
+  // the cell's weight when only `true` was applied. A weight-named face
+  // keeps its own weight; an italic-named one keeps its slant.
+  else if (cs.bold === false && !s.fontWeight) s.fontWeight = "400";
   if (cs.italic) s.fontStyle = "italic";
+  else if (cs.italic === false && !(cs.fontName && /italic|oblique/i.test(cs.fontName))) s.fontStyle = "normal";
   if (cs.underline && cs.underline !== "none") s.textDecorationLine = "underline";
   if (cs.strikethrough && cs.strikethrough !== "none") {
     s.textDecorationLine = `${s.textDecorationLine === "underline" ? "underline " : ""}line-through`;
@@ -238,6 +245,40 @@ function faceMetrics(fontName: string | undefined): FaceMetrics | undefined {
   return FONT_METRICS.find(([re]) => re.test(flat))?.[1];
 }
 
+/**
+ * Faces Pages substitutes for glyphs a Latin font lacks, and their CoreText
+ * metrics (hhea, fontTools on macOS 26.6). The line takes the largest
+ * ascent, the largest descent and the largest gap over every face on it,
+ * each rounded: bbb758110464 (Times-Roman 12pt, Japanese) lays out at 17pt
+ * per line — Songti SC's 13 + 4 — and at 23 on the lines whose "●" comes
+ * from Hiragino Mincho (its gap, 6); 9cd3036a0fdc (Times-Roman 11pt) at
+ * 16 = 12 + 4 [measured on the two exports]. Serif faces fall back to
+ * Songti SC in both; what a sans face falls back to (PingFang, whose
+ * metrics are not on disk) is not modelled.
+ */
+const FB_SONGTI: FaceMetrics = { a: 1.06, d: 0.34, g: 0 };
+const FB_HIRAGINO: FaceMetrics = { a: 0.88, d: 0.12, g: 0.5 };
+const SERIF_FACE = /^(times|georgia|palatino|baskerville|garamond|cambria|hoefler|didot|charter|bodoni|century|minion|caslon|constantia|cochin|athelas|iowan|superclarendon|newyork|bookantiqua|bookman|cormorant|libre|merriweather|lora|playfair|ptserif|notoserif|sourceserif|crimson|ebgaramond)/;
+const CJK_FACE = /^(hira|yu|songti|stsong|pingfang|osaka|apple(sd)?gothic|applemyungjo|noto(sans|serif)(cjk|jp|sc|tc|kr)|msmincho|msgothic|msp|meiryo|simsun|simhei|malgun|nanum|batang|gulim|dotum|kaiti|fangsong|heiti|lantinghei|wenquanyi|sourcehan)/;
+const CJK_TEXT = /[\u3000-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef\uac00-\ud7af]/;
+const CJK_SYMBOL = /[\u25a0-\u25ff\u26aa\u26ab]/;
+function fallbackMetrics(text: string | undefined, fontName: string | undefined): FaceMetrics[] {
+  if (!text) return [];
+  const flat = (fontName ?? "").replace(/[\s-]+/g, "").toLowerCase();
+  if (CJK_FACE.test(flat)) return [];
+  const out: FaceMetrics[] = [];
+  if (CJK_TEXT.test(text) && SERIF_FACE.test(flat)) out.push(FB_SONGTI);
+  if (CJK_SYMBOL.test(text) && faceMetrics(fontName)) out.push(FB_HIRAGINO);
+  return out;
+}
+
+/** The rounded line gap Pages adds under a line of `fontName` (0 for the
+ *  Type 1-era faces and unknown ones). */
+export function lineGapPx(fontName: string | undefined, sizePx: number): number {
+  const m = faceMetrics(fontName);
+  return m && !m.sum ? Math.round(m.g * sizePx) : 0;
+}
+
 /** Natural (single-spaced) line height per em, unrounded: ascent + descent
  *  + gap (1.2 for the `sum` faces and for unknown ones). */
 export function naturalLineHeight(fontName: string | undefined): number {
@@ -252,15 +293,23 @@ export function naturalLineHeight(fontName: string | undefined): number {
  * times the multiple, plus the rounded line gap (see FONT_METRICS). An
  * unknown face gets 1.2 × size × multiple.
  */
-export function lineHeightPx(fontName: string | undefined, sizePx: number, multiple = 1): number {
+export function lineHeightPx(fontName: string | undefined, sizePx: number, multiple = 1, text?: string): number {
   const m = faceMetrics(fontName);
-  if (!m) return 1.2 * sizePx * multiple;
-  const gap = Math.round(m.g * sizePx);
-  const body = m.sum ? Math.round(1.2 * sizePx) : Math.round(m.a * sizePx) + Math.round(m.d * sizePx);
+  const fb = fallbackMetrics(text, fontName);
+  if (!m && !fb.length) return 1.2 * sizePx * multiple;
+  let gap = m ? Math.round(m.g * sizePx) : 0;
+  let body = !m ? 0 : m.sum ? Math.round(1.2 * sizePx) : Math.round(m.a * sizePx) + Math.round(m.d * sizePx);
+  if (fb.length) {
+    // the largest ascent, descent and gap over the faces on the line
+    const a = Math.max(...fb.map((f) => Math.round(f.a * sizePx)));
+    const d = Math.max(...fb.map((f) => Math.round(f.d * sizePx)));
+    body = !m || m.sum ? Math.max(body, a + d) : Math.max(Math.round(m.a * sizePx), a) + Math.max(Math.round(m.d * sizePx), d);
+    gap = Math.max(gap, ...fb.map((f) => Math.round(f.g * sizePx)));
+  }
   return body * multiple + gap;
 }
 
-export function applyParaStyle(el: HTMLElement, ps: ParaStyle, fontName?: string, fontSizePx?: number): void {
+export function applyParaStyle(el: HTMLElement, ps: ParaStyle, fontName?: string, fontSizePx?: number, text?: string): void {
   const s = el.style;
   const align = ps.horizontalAlignment;
   if (align === "center" || align === "right" || align === "justify") s.textAlign = align;
@@ -278,10 +327,10 @@ export function applyParaStyle(el: HTMLElement, ps: ParaStyle, fontName?: string
   if (ps.spaceAfterPt) s.marginBottom = `${ps.spaceAfterPt}px`;
   // Pages' rounded line height (FONT_METRICS), emitted UNITLESS so a run
   // of another size inside the paragraph scales its own line box.
-  const known = !!faceMetrics(fontName) && !!fontSizePx;
+  const known = (!!faceMetrics(fontName) || fallbackMetrics(text, fontName).length > 0) && !!fontSizePx;
   if (ps.lineSpacingMultiple) {
     s.lineHeight = known
-      ? (lineHeightPx(fontName, fontSizePx!, ps.lineSpacingMultiple) / fontSizePx!).toFixed(4)
+      ? (lineHeightPx(fontName, fontSizePx!, ps.lineSpacingMultiple, text) / fontSizePx!).toFixed(4)
       : (ps.lineSpacingMultiple * naturalLineHeight(fontName)).toFixed(3);
   } else if (ps.lineSpacingExactPt) {
     // "min"/"max" bound the NATURAL line height rather than replace it
@@ -291,7 +340,7 @@ export function applyParaStyle(el: HTMLElement, ps: ParaStyle, fontName?: string
     // (mode 4) adds the amount to the natural height. Without a known
     // paragraph size the bound falls back to exact. [inferred from the
     // export; mode semantics per the proto's enum names]
-    const natural = fontSizePx ? lineHeightPx(fontName, fontSizePx) : undefined;
+    const natural = fontSizePx ? lineHeightPx(fontName, fontSizePx, 1, text) : undefined;
     const mode = ps.lineSpacingMode;
     let lh = ps.lineSpacingExactPt;
     if (natural !== undefined) {
@@ -303,7 +352,7 @@ export function applyParaStyle(el: HTMLElement, ps: ParaStyle, fontName?: string
   } else if (known) {
     // single spacing is the rounded natural height too (Arial 11pt: 12pt,
     // where the browser's `normal` gives 12.65)
-    s.lineHeight = (lineHeightPx(fontName, fontSizePx!) / fontSizePx!).toFixed(4);
+    s.lineHeight = (lineHeightPx(fontName, fontSizePx!, 1, text) / fontSizePx!).toFixed(4);
   }
   if (ps.backgroundColor) s.backgroundColor = ps.backgroundColor;
   if (ps.border) {
@@ -505,11 +554,13 @@ export function renderParagraph(
     .find((n): n is string => !!n);
 
   const paraSizePx = runSizes.length ? Math.max(...runSizes) : undefined;
+  // the glyphs on the line decide which fallback faces join the line height
+  const paraText = p.items.map((it) => (typeof it === "string" ? it : "text" in it ? it.text : "")).join("");
   // the block's face sets the line strut (see fontStack)
   if (paraFont) el.style.fontFamily = fontStack(paraFont);
   if (!hasMarker) {
     listState.lastKey = null;
-    if (style) applyParaStyle(el, style, paraFont, paraSizePx);
+    if (style) applyParaStyle(el, style, paraFont, paraSizePx, paraText);
   } else {
     // numbering: the stored restart flag (surfaced as list.start on the
     // paragraph's pooled style) resets the counter; otherwise numbering
@@ -539,7 +590,7 @@ export function renderParagraph(
     wrap.className = "list-item";
     if (dir) wrap.dir = dir; // the marker hangs on the paragraph's start side
     if (style) {
-      applyParaStyle(wrap, style, paraFont, paraSizePx);
+      applyParaStyle(wrap, style, paraFont, paraSizePx, paraText);
       el.style.marginTop = "0";
       el.style.marginBottom = "0";
       el.style.marginLeft = "0";
