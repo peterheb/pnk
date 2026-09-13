@@ -1807,6 +1807,299 @@ What remains, in the order the judge names it:
    domimplant) draws regular in Keynote and bold here (round 3's note).
 4. Hand-drawn strokes (brush parameters), unchanged.
 
+### Numbers, round 6 (2026-09-12, GLM thinking off, up to 3 pages per document)
+
+Fourteen Numbers origin hosts were still unjudged. www.simplicityhub.co.uk
+is the template family covered in earlier rounds and was skipped. The
+eleven files from static.uahirise.org and the one from fs-fussballtalente.de
+are Keynote decks (`kind: keynote`, `.key` in the origin URL) that the crawl
+index labelled `.numbers`; they belong to the Keynote rounds.
+www.cambridgecitywide.org's file is a 28,881 × 59 property database whose
+one table is 575,596pt tall, over the page limit. www.homeworkforyou.com's
+three plain tables were left out. That leaves eight usable hosts, all
+surveyed, plus the www.2bobradio.org.au playlist that served as the
+harness smoke test on the same build (its export was reused). No candidate
+contains a chart, so the chart items under "### Next" were not exercised.
+Two judges scored every page (14 pages, up to 3 per document):
+GLM-5.3-Flash-EXL3 on the LAN server ("glm", thinking off) and
+qwen/qwen3.8-flash through OpenRouter ("qwen-or", four requests in
+parallel, 1-9 s per pair). Neither is the Qwen3.8-Flash-Next checkpoint
+rounds 1-5 used, so the means are not comparable with theirs. The
+fidelity work was done on the GLM scores; the qwen-or pass was added
+after the round ended.
+
+| document | host | pages | why |
+| --- | --- | ---: | --- |
+| e886b6eec13a | media.voog.com | 3 | three sheets, 27 merges, three pop-up controls, conditional formatting, rich-text cells; a v4.0 sibling of the eb299192a219 calculator from rounds 3-5 |
+| bd3a64fbd954 | www.delpupitrealasestrellas.com | 1 | banded rows, header row, image-fill cells (emoji), boolean cells, percent format, a pre-BNC file (Numbers 2.3.4) |
+| 2c11610b44c5 | densoaustralia.com.au | 2 | 80 × 22 table, 20 merges, 42 wrap styles, formula cells, an image on each sheet, a Numbers 1.5 file (storage version 3) |
+| ee805c92fc38 | mariusebertsblog.com | 2 | date cells, header row and column, a merged footer cell, wrapped header text, an empty default table on sheet 2 |
+| b191fa6fd022 | www.liceoartisticoenzorossi.edu.it | 1 | 30 × 12 form with 7 merges, 2pt block borders, wrapped header cells |
+| d7dfa8a4b67b | www.swanseavirtualschool.org | 1 | image-fill cells (musical symbols), wrapped body cells with no cell style, header row and column |
+| 1132f0aa39be | clemens-august-schule-bonn.de | 1 | eight images and a 0 × 0 text box on a sheet with no table (13 MB) |
+| 1066e1585031 | oddio.space | 2 | two sheets, header column with fills, image-fill cells in the last rows (10 MB) |
+| efbed96fa653 | www.2bobradio.org.au | 1 | duration format, a merged title row, bold column; the smoke-test document |
+
+Every defect was traced to the JSON before the viewer was touched.
+
+| defect | documents | cause | fix |
+| --- | --- | --- | --- |
+| 166 cells missing: the yellow input cells, both FALSE columns, the "0" totals and the numeric formula results | 2c11610b44c5 | The storage-version-3 decoder refused flag bit 3 as unknown and dropped the cell. Bit 3 is the formula key, stored between the format and string keys as in v4: type-8 cells `[cs][ts][fmt][formula][trailing]` at flags 0x8e (no cached value), type-6 cells `[cs][ts][fmt][formula][f64]` at 0xae with 0.0 = FALSE, type-3 cells at 0x9e whose string is the cached "0", type-2 cells at 0xae caching their f64. A corpus census (`PNK_DEBUG_V3`) finds v3 cells in four files and no other types | tables.rs consumes the key, emits types 6 and 8, and carries the formula ref (decoded by formulas.rs: `SUM(D11÷12)×3.141×B11÷$D$37`) |
+| Checkbox cells print "false" | bd3a64fbd954 (12 cells) | v4 storage has no control-spec list (the v5 flag 0x400); the bool cell's leading format key names a format of TSK type 263 (CHECKBOX in numbers-parser's `FormatType`) and nothing else, which the decoder read as an unknown number format | tables.rs pools a checkbox control per table for a type-6 cell whose lead format is 263; the viewer already draws ☐/☑ for a checkbox control |
+| "2.5" and "3.5" where the export prints "2 1/2" and "3 1/2" | 2c11610b44c5 (pipe sizes) | the v3 and v4 format mappings folded a fraction format (type 262, accuracy 0xFFFFFFFF in f11) into a plain number; the v5 path marks it "fraction" | tables.rs emits the same `fraction`/`fraction-N` and `scientific` markers on the pre-BNC paths; the viewer's fraction renderer prints "2 1/2" |
+| Boolean cells print "false" where the export prints "FALSE" | 2c11610b44c5 (every unchecked column; round 3 named the same on 5a89929253a1) | lowercase constant in `valueToText` | tables.ts prints TRUE/FALSE |
+| Gray behind the emoji header cells where the export is white | bd3a64fbd954 | an image fill set `background-image` and left the section's `#bec0bf` `background-color` under the PNG | tables.ts clears the colour under an image fill |
+| Checkbox rows white where the export bands them | bd3a64fbd954 | the body style and every cell style store `fill: null`, and renderTable cleared the banded fill for a cell style with an explicit null. Numbers alternates body rows whose cells have no fill of their own, and null is the stock body style's state. Measured on the export: three bands of (239,239,239), 42px at 150dpi = 20pt each; the after-render has the same three at #efefef, 20pt; the before-render none | tables.ts repaints the band when the cell's own fill is null (0839b6d2, the document behind the clear, stores solid fills today and is unaffected) |
+| Third-column cells on one line where the export wraps them over two and three lines | d7dfa8a4b67b ("4 crotchet beats in a bar", "Bb (flat) 1st finger ...") | the cells store no cell style over a wrapping body style; `applyCellStyle` runs twice per cell and the second pass, with `style` undefined, took the else-branch and reset the cell to nowrap | tables.ts leaves the section's wrap in place when the cell has no style of its own |
+| Title "Gummitwist fangen" wrapped into two lines over the first photo | 1132f0aa39be | the 0 × 0 text box stores a natural size of 156 × 19.7pt for 40pt text: a cache from before the text was resized. The Numbers branch of `anchorZeroSizeText` wraps a 0 × 0 box between its natural width and 355pt | drawables.ts (Numbers-only branch) keeps the nowrap path when the natural height cannot hold one line of the box's own text; 6914f46e51ab's five boxes, the case behind the 355pt cap, store 21-36pt for 13-22pt text and still wrap |
+
+Scores on the same exports, before and after, both judges:
+
+| document | page | glm before | glm after | qwen-or before | qwen-or after | what the judges still name |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| 1066e1585031 | 1 | 9 | 9 | 9 | 9 | scaled larger, tighter margins |
+| 1066e1585031 | 2 | 3 | 4 | 5 | 6 | the three cell images the export lacks (see findings) |
+| 1132f0aa39be | 1 | 6 | 8 | 6 | 8 | photo crops (Haba, Zuck); images scaled up |
+| 2c11610b44c5 | 1 | 6 | 8 | 6 | 9 | header text line breaks; "Total Qty." cut to "Total" in the export |
+| 2c11610b44c5 | 2 | 9 | 9 | 9 | 9 | logo slightly higher and further left |
+| b191fa6fd022 | 1 | 8 | 8 | 9 | 9 | the second block's header row left-aligned, not centred; rows compressed |
+| bd3a64fbd954 | 1 | 7 | 9 | 6 | 8 | checkbox glyphs small squares, not filled rounded rectangles; wrapping in the description cells |
+| d7dfa8a4b67b | 1 | 8 | 9 | 8 | 9 | "Bb (flat) ..." wraps to four lines, three in the export; the title at the top edge |
+| e886b6eec13a | 1 | 9 | 9 | 9 | 9 | decimal comma (the locale setting) |
+| e886b6eec13a | 2 | 8 | 8 | 8 | 8 | decimal comma |
+| e886b6eec13a | 3 | 7 | 7 | 7 | 8 | sheet gridlines and cell borders where the export prints a clean bordered box; decimal comma |
+| ee805c92fc38 | 1 | 9 | 9 | 9 | 9 | decimal comma |
+| ee805c92fc38 | 2 | 8 | 8 | 9 | 8 | scaled larger and shifted to the top-left of the page |
+| efbed96fa653 | 1 | 9 | 9 | 9 | 9 | table fills the page width instead of sitting inside the margins |
+
+Mean over the 14 pages: glm 7.57 before, 8.14 after; qwen-or 7.79
+before, 8.43 after. Both judges move the same three pages up by two or
+more: 1132f0aa39be (the title on one line), 2c11610b44c5 page 1 (the 166
+cells, the fractions: glm +2, qwen-or +3), bd3a64fbd954 (checkboxes,
+banding, white behind the emoji). d7dfa8a4b67b and 1066e1585031 page 2
+move up by one under both; the second names the same export-side omission
+before and after. No page goes down under glm; qwen-or drops
+ee805c92fc38 page 2 by one (the empty table; its remark is the page
+position both times). The two judges never differ by three or more on a
+page; the widest gap is two, on 1066e1585031 page 2 (glm 3/4, qwen-or
+5/6), where both name the images the export lacks, so neither is wrong
+about the page. The 2c11610b44c5 page was re-judged by glm once more
+after the fraction fix (8 both times; the first remark moved from the
+fractions to header line breaks).
+
+#### Schema and converter findings
+
+- Storage version 3 (Numbers 1.5-era) cell layout, now in the decoder's
+  doc comment: `[03][00][type][?]` + u64 flags + keys in the order cell
+  style (bit 1), text style (bit 7), format (bit 2), formula (bit 3),
+  string (bit 4), f64 (bit 5), rich text (bit 9). Types seen in the corpus:
+  0, 2, 3, 6, 8, 9. Dates and durations (5, 7) do not occur in v3 storage
+  in the corpus and stay unhandled with a warning.
+- v4 checkbox: format type 263 on a bool cell. numbers-parser's
+  `FormatType` also names RATING = 267; 264-266 are not in its enum and no
+  v4 file in the corpus stores them, so only the checkbox is mapped.
+- `TableCellStyle.fill: null` means "no fill of its own" and does not
+  suppress the table style's banding. No model change; the rule is in
+  tables.ts.
+- Cell image fills: the image is the whole fill. No model change.
+- b191fa6fd022's second block header ("COGNOME E NOME", row 12) prints
+  bold and centred in the export but its cells store no text-style key
+  (flags 0x16 = cell style, format, string) where the identical rows 6, 18
+  and 25 store one (0x96, text style 4, bold and centred). The cell style
+  archive (2568) carries only its parent, name and cell_properties. Where
+  Numbers gets the look from is not in the fields read; left open.
+- 1066e1585031 sheet 2: Numbers' PDF export prints the three tall rows
+  without their cell images (CoreGraphics logged a PDF error during the
+  export); the viewer draws them. The judge scores the page 3 for the
+  images the export lacks. Not a viewer defect.
+- No model or main.ts change was needed; no proposals.
+
+#### What remains (ranked)
+
+1. b191fa6fd022's row-12 header look (above): a v4 question about where a
+   cell without a text-style key takes bold and centre from.
+2. Export scale: e886b6eec13a's Revision Log (a 782pt-wide table on a
+   595pt A4 portrait page) and 2c11610b44c5's 1624pt-wide sheet are
+   printed fitted to the page width, although both store
+   `print.contentScale` 1.0, so the export page shows the sheet smaller
+   than the viewer's 1:1 render and the judge names "scaled larger" on
+   those pages (the other seven documents store 0.61-0.73 or -1). Harness
+   pairing, not rendering.
+3. Hairline weight: ee805c92fc38 sheet 2's 0.35pt black gridlines print
+   lighter in the export than the rgba(0,0,0,0.35) 1px line here.
+4. d7dfa8a4b67b: "Bb (flat) 1st finger right back and 2nd finger instead
+   of 3rd" wraps to four lines here and three in the export (the
+   substitute face runs wider in a 90pt column).
+5. Unchanged from round 5: two-axis charts (type 11), auto-fit row
+   leading per face, a720beed1ab2's header row, pie labels inside the
+   slices. No document in this round has a chart.
+
+### Keynote, round 5 (2026-09-12, GLM and qwen-or thinking off, four slides per deck)
+
+Twelve decks from twelve origin hosts no earlier run had judged, chosen
+from a feature survey of the 104 unjudged hosts under 40 MB (one deck per
+host; hosts with a single deck preferred, since that is where the
+unfamiliar templates are). The survey counted tables, charts, groups,
+connection lines, masks, reflections, list levels, slide-number fields,
+non-Latin text, gradients, shadows and builds per deck. All twelve were
+exported from Keynote once; the same exports are on both sides of every
+score; two judges scored the first four slides of each (38 pairs):
+GLM-5.3-Flash-EXL3 on the LAN, and qwen/qwen3.8-flash through OpenRouter
+under the judge name qwen-or (not the Qwen3.8-Flash-Next checkpoint of
+rounds 1-4, so the means are not comparable with theirs).
+
+| doc | host | slides | why |
+| --- | --- | ---: | --- |
+| 6d0a262a9ad4 | tpc.ispras.ru | 50 | Cyrillic throughout, four tables, 57 groups, image fills, gradients, Wingdings markers, 4:3 |
+| 6dbe87e0ee22 | matija.pretnar.info | 77 | 63 charts on slides (column, scatter), equations, hand-drawn strokes, gradients |
+| 5de28ef46913 | www.bibelportal.de | 1 | three tables with merged cells, 154 rows, a 2970x2100 slide |
+| c5b5d668d69a | wiki.classe.cornell.edu | 1 | 17 connection lines, 27 content-sized shapes, saved by Keynote 6.5 |
+| eba343cf501f | highfivecreate.com | 1 | Japanese text, 11 orthogonal connection lines |
+| 157b84e8e0c3 | anyoneteach.com | 23 | lists nested to level 3, 161 shadows, masks, portrait 540x720 |
+| 441130d2a359 | archive.jonbell.net | 44 | 55 image fills, 70 groups, 59 shadows, slide numbers on 43 slides, a table |
+| 6ee4ea590b7f | media.ncd.life | 27 | 331 builds, 60 groups, a reflection, 23 masks, 117 rotated objects, eight faces |
+| 79b11d2dd8d2 | www.starlingx.io | 15 | pie and stacked-bar charts, masks, opacity |
+| 5f81854f90cf | senseiichiba.com | 3 | Japanese text in a Latin face, three Instant Alpha images, masks, builds |
+| 4f9c2bbd0349 | stween.co.uk | 39 | gradient backgrounds, 35 masks, 34 shadows, slide numbers on 32 slides, hand-drawn strokes |
+| 2406adf5cf99 | indico.cmb-s4.org | 17 | connection lines, equations, slide numbers, a table, Futura, notes |
+
+| defect | decks | cause | fix |
+| --- | --- | --- | --- |
+| bold runs drawn regular in a substitute face (tpc.ispras slide 1 subtitle, ncd.life slide 1 title) | tpc.ispras, ncd.life, and every PowerPoint-import deck with a Google-substituted face | the font list names faces, not runs: "Calibri" with `bold: true` on the run never names "Calibri-Bold", so Carlito was requested at weight 400 only and Chromium drew the 700 run in the 400 face without emboldening it | webfonts.ts requests the bold counterpart of every regular face the substitute ships |
+| a title's last word wrapped (cmb-s4 slide 1) | cmb-s4, and every run with tracking | `trackingPt` was applied as points; the export's 116pt Futura line is 1752pt wide, which the browser reproduces at -0.02em (1750) and not at -0.02px (1833) | text.ts applies tracking as em (shared file; proposal below) |
+| a two-paragraph 0x0 box wrapped its second line at a stale width (cmb-s4 slide 2) | cmb-s4 | the "taller than one line" wrap rule compared the natural height with one line; two single-line paragraphs are two lines tall | the threshold counts the paragraphs |
+| 27 label boxes with no fill, stroke or background (classe slide 1) | classe | Keynote 6.5 stores content-sized shapes as 0x0 with a unit-square path and no natural size; the 0x0 SVG painted nothing | a 0x0 shape with text takes its fill as background and its stroke as border on the content-sized box |
+| connection lines converging on one point (classe slide 1) | classe | the 0x0 anchors had no laid-out box, so the lines kept stored endpoints 160pt stale | the converter estimates the laid-out box from the text (0.55 em per character, 1.2 em per paragraph, plus insets; marked inferred) and routes to its centre, trimmed at its edge |
+| orthogonal connectors drawn as a fan of bent lines (highfive slide 1) | highfive | the stored path is move + line + line through a middle point; the converter rebaked it as a polyline. Keynote draws an elbow: perpendicular out of the from-shape, a bus through the middle point on the crossed axis, perpendicular into the to-shape | converter routes the elbow; the crossed axis is the gap the middle point sits in (the one it centres in when both hold it); a stale end moves the middle point with the end that still matches |
+| arcs drawn as chevrons (pretnar slides 3, 4) | pretnar | editable-bezier "sharp" nodes were emitted as straight segments; the arcs start on a sharp node whose out-handle is 17pt away | a segment is a cubic whenever either handle leaves its node (G2's zigzag gains a cubic whose handles lie on the chord; re-synced) |
+
+Both judges' means over the 38 pages, before and after, same exports.
+The GLM before column doubles as the ranking of where to look next.
+
+| doc | host | pages | GLM before | GLM after | qwen-or before | qwen-or after |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| c5b5d668d69a | wiki.classe.cornell.edu | 1 | 3.00 | 9.00 | 4.00 | 9.00 |
+| eba343cf501f | highfivecreate.com | 1 | 6.00 | 9.00 | 6.00 | 9.00 |
+| 6dbe87e0ee22 | matija.pretnar.info | 4 | 7.00 | 7.50 | 6.75 | 8.00 |
+| 2406adf5cf99 | indico.cmb-s4.org | 4 | 8.50 | 9.25 | 8.50 | 9.00 |
+| 5f81854f90cf | senseiichiba.com | 3 | 8.67 | 8.67 | 8.67 | 8.67 |
+| 6ee4ea590b7f | media.ncd.life | 4 | 8.75 | 8.75 | 8.50 | 8.50 |
+| 441130d2a359 | archive.jonbell.net | 4 | 9.00 | 9.00 | 9.00 | 9.00 |
+| 4f9c2bbd0349 | stween.co.uk | 4 | 9.00 | 9.00 | 8.75 | 8.75 |
+| 5de28ef46913 | www.bibelportal.de | 1 | 9.00 | 9.00 | 9.00 | 9.00 |
+| 79b11d2dd8d2 | www.starlingx.io | 4 | 9.00 | 9.00 | 9.00 | 9.00 |
+| 157b84e8e0c3 | anyoneteach.com | 4 | 9.50 | 9.50 | 9.75 | 9.75 |
+| 6d0a262a9ad4 | tpc.ispras.ru | 4 | 9.50 | 9.25 | 9.25 | 9.00 |
+| all | | 38 | 8.55 | 8.89 | 8.50 | 8.87 |
+
+Pages that moved by two points or more (GLM; qwen-or in the last column):
+
+| slide | before | after | what changed | qwen-or |
+| --- | ---: | ---: | --- | --- |
+| wiki.classe.cornell.edu 1 | 3 | 9 | filled label boxes; connection lines to the boxes' current centres | 4 to 9 |
+| highfivecreate.com 1 | 6 | 9 | orthogonal connectors as elbows | 6 to 9 |
+| matija.pretnar.info 4 | 6 | 9 | arcs as curves | 7 to 9 |
+| indico.cmb-s4.org 1 | 8 | 10 | tracking as em: the title wraps where the export does | 8 to 9 |
+| matija.pretnar.info 3 | 4 | 3 | arcs as curves; the scatter curve is still missing | 2 to 5 |
+
+Agreement between the two judges over the 76 scored pairs: 97% within
+one point, mean absolute difference 0.25, qwen-or 0.04 below GLM. No
+pair differs by three or more; the largest gap is pretnar 3 after (GLM
+3, qwen-or 5), where both name the same thing, the scatter chart's
+curve drawn as a flat line with a stray legend, and differ only on how
+much the fixed arcs earn back. By eye the slide has every stroke of the
+export except that curve, so 5 is the fairer score. Under GLM, pages
+at 9 or more went from 30 to 35 of 38 (qwen-or: 28 to 33). Two pages
+dropped one point under GLM:
+tpc.ispras 4 (10 to 9, "sub-pixel shifts" on an unchanged render) and
+pretnar 3 (4 to 3: the arcs are now right and the judge names what is
+left, the scatter chart's curve drawn as a flat line with a legend the
+export omits; Numbers lane, below). The bold subtitle on tpc.ispras 1 and
+the unwrapped bold line on cmb-s4 2 are fixed on renders the judge
+already scored 9 and 8; ncd.life 1's title is Mulish 700 from Google
+Fonts here and Helvetica-Bold in the export (Keynote lacks Mulish), the
+substitution policy of docs/fonts.md and not a defect.
+
+Confirmed against the exports by measurement, not by eye: cmb-s4's
+title line at 1750.1pt in the browser under -0.02em against the export's
+1752.2pt (1832.9 under -0.02px); its bold line at 1606pt on both sides
+once unwrapped; highfive's bus at y=216.8 from the stored middle point
+against the export's 216; the elbow's stem at the top box's centre
+(x=162) and its drop at each child's centre; classe's label boxes
+centred on their stored anchors in the export (A1 spans 29-72pt for a
+stored x of 50); pretnar's arc nodes read from the archive with
+iwadump (node 1 at (13.0, 0) with its out-handle at (-4.3, 17.1)).
+
+#### Schema and converter findings
+
+- **Tracking is a fraction of the font size.** `CharStyle.trackingPt`
+  carries `TSWP.CharacterStyle.tracking` unchanged, and the value is a
+  fraction of the em (Apple's inspector shows it as a percentage; the
+  measurement above). The viewer now applies it as em. Proposal, not
+  implemented (model file): rename to `tracking` with the unit in its
+  doc comment, or document `trackingPt` as em with a deprecation note;
+  the converter's value does not change either way.
+- **Orthogonal connection lines** (`ConnectionLinePathSourceArchive.type`
+  1) now route as elbows at emission; the path carries the result, as the
+  quadratic case did in round 2. Documented in docs/format/drawables.md
+  as inferred from one export.
+- **Content-sized shapes without a natural size.** Keynote 6.5 (classe,
+  `M6.5.3`) stores a text shape as 0x0 with a unit-square path and no
+  `naturalSize` where later versions store the laid-out size. The model
+  has no field for the laid-out box, and the archive does not carry it;
+  the converter's estimate lives only in the connection-line anchor
+  walk. A `laidOutSize` on the shape would let the viewer and the dumpers
+  share one estimate; not proposed, since the viewer measures the real
+  text and only the converter needs a number.
+- **Editable-bezier node types** do not decide straightness: a sharp node
+  can carry handles. Corrected in tsd.rs; docs/format/drawables.md
+  updated.
+- **Font list versus run flags.** The envelope's `fonts` names faces as
+  stored; PowerPoint-import decks store family names with bold and italic
+  flags on the runs. A consumer that loads substitutes needs the flags,
+  which the list does not carry. The viewer now over-requests (the bold
+  counterpart of every regular face). Proposal: the converter adds the
+  weight-named cut ("Calibri-Bold") to `fonts` when a run sets `bold` on
+  a family name, so the list names what the runs need; lives in ctx.rs
+  and styles.rs.
+- **Numeric table cells left-aligned in a Keynote table** (tpc.ispras
+  slide 8): the table's body cell style says left, the numeric cells'
+  own style carries no alignment, and Keynote's export right-aligns the
+  numbers; "0.125" is stored as a text cell and the export right-aligns
+  it too. Numbers-owned (tables.rs, tables.ts); not touched. Noted for
+  the Numbers lane.
+- **Scatter chart on a slide drawn as a flat line** (pretnar slide 3):
+  `scatterFormat: "shared-x"` with the x values in the second series;
+  and a legend the export omits (`legendVisible: false` is stored and the
+  viewer still prints "Region 1 Untitled 107"). charts.ts, Numbers-owned;
+  not touched.
+- **CJK text in a Latin face** (senseiichiba slides 1, 2: Druk-Medium
+  runs of Japanese). The export sets the kanji in PingFang SC and the
+  kana in Hiragino Sans (Keynote's per-script fallback), and the
+  paragraph's 0.8 line-spacing multiple gives 214.8pt between two 150pt
+  lines on slide 2 (1.432 em) and 188pt between two 236pt lines shrunk
+  to 167.6pt on slide 1; the viewer pitches with Helvetica's numbers
+  (the face this Mac lacks) and draws the lines 30% closer. The rule is
+  not derived yet; noted.
+- **Checked and present:** builds, transitions, notes, slide-number
+  fields, masks with angles, Instant Alpha paths, image fills, group
+  nesting, hand-drawn stroke names, table merges on all twelve decks.
+
+What remains, in the order the judge names it:
+
+1. Faces this Mac lacks and the wrap differences they cause (cmb-s4's
+   Futura is present, so its wraps are fixed; Calibri, Druk, Mulish,
+   FreightSans are not). Policy (docs/fonts.md).
+2. CJK text in a Latin face: the line pitch of the fallback faces
+   (above).
+3. Charts on slides in the Numbers lane: pretnar's scatter charts and
+   hidden legends; starlingx's pie and stacked bar were not in the
+   judged four slides.
+4. Hand-drawn strokes: ncd.life slide 4's arrows are thin wobbly Pen
+   strokes in the export and plain 6pt strokes here (brush parameters,
+   unchanged since round 3).
+5. Numeric alignment in Keynote tables (Numbers lane).
+
 ### Pages, round 4 (2026-09-12, GLM thinking off and qwen/qwen3.8-flash via OpenRouter, up to 3 pages per document)
 
 Nine documents from hosts no earlier round had judged, picked from a
@@ -1965,8 +2258,8 @@ Proposals not implemented:
 
 ### Next
 
-Numbers: two-axis charts (type 11, 666 in 0ab5dd52841e); auto-fit row leading per face (17891b89da2f 14 vs 16pt rows); the a720beed1ab2 header row the export prints blank; pie labels inside the slices (6914f46e51ab).
-Keynote: faces the Mac lacks (Keynote draws Helvetica, the viewer a substitute; a policy question, docs/fonts.md), 1-3pt drift on substituted faces, weight-named cuts with `bold: false`, empty paragraphs without a size (proposal), hand-drawn brush parameters; then 20 more decks from unjudged hosts.
+Numbers: b191fa6fd022's row-12 header (bold and centred in the export, no text-style key in the v4 cell); hairline weight on 0.35pt gridlines (ee805c92fc38); two-axis charts (type 11, 666 in 0ab5dd52841e); auto-fit row leading per face (17891b89da2f 14 vs 16pt rows); the a720beed1ab2 header row the export prints blank; pie labels inside the slices (6914f46e51ab). The unjudged Numbers hosts are used up; the next round re-scores earlier documents or the other files of judged hosts.
+Keynote: CJK text in a Latin face (senseiichiba 5f81854f: Keynote pitches the lines with PingFang/Hiragino's metrics, 1.432 em on slide 2); charts on slides in the Numbers lane (pretnar 6dbe87e0's scatter curve and hidden legend; tpc.ispras 6d0a262a's numeric cells left-aligned); the font list naming the bold cut a run's flag asks for (proposal in round 5); faces the Mac lacks (policy, docs/fonts.md); hand-drawn brush parameters; then 20 more decks from unjudged hosts.
 Pages: page-relative anchored objects (`v_offset_type` 1: 4ccaddd3f0b5, proposal in round 4); text-box text wrapping around floating images over it (4ccaddd, drawables.ts); the alpha wrap contour (fe2facece68e page 2, round 2 proposal); sans faces with CJK text (PingFang metrics unknown) and Arabic documents in a face Pages substitutes (ae1cc13b, 77890685); the gap Pages leaves under a header (4ccaddd 12pt); 1px borders for 0.5pt cell strokes (8e92cf882b53, 0.7pt a row); rotated wrapping objects (10a06959, 25 documents); b31db822's cover shape lines cut at the left (drawables.ts); `h_offset_type`/`widow_control` unmodelled; reconciling Numbers' row-leading measurements with the round-3a line rule; 4047e81b page 4; then the unexamined verdicts in round 3b's list.
 Score more of the corpus, one or two pages per document, with Qwen; use
 the ranked list to choose fidelity work; add a reference re-run with

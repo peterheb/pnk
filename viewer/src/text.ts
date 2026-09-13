@@ -159,7 +159,12 @@ export function applyCharStyle(el: HTMLElement, cs: CharStyle | undefined): void
   // 40px-exact rows to 41.7px — visibly loose over 8 rows). line-height: 0
   // removes the shifted inline box from line-height calculation.
   if (cs.baseline === "superscript" || cs.baseline === "subscript" || cs.baselineShiftPt) s.lineHeight = "0";
-  if (cs.trackingPt) s.letterSpacing = `${cs.trackingPt}px`;
+  // Tracking is a fraction of the font size, not points: cmb-s4 2406adf5's
+  // 116pt Futura title stores -0.02 and its export line is 1752pt wide,
+  // which the browser reproduces at -0.02em (1750) and not at -0.02px
+  // (1833, where the last word wrapped). Apple's inspector shows the same
+  // number as a percentage.
+  if (cs.trackingPt) s.letterSpacing = `${cs.trackingPt}em`;
   if (cs.fontColor) s.color = cs.fontColor;
   if (cs.backgroundColor) s.backgroundColor = cs.backgroundColor;
 }

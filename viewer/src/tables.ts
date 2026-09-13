@@ -402,7 +402,10 @@ function valueToText(cell: TableCell, format: CellFormat | undefined): string {
         ? format.decimals : undefined;
       return formatNumber(n, decimals, exact, format?.grouping);
     }
-    case "bool": return typeof v === "boolean" ? (v ? "true" : "false") : String(v);
+    // Numbers prints a boolean cell in capitals (2c11610b44c5's export:
+    // "FALSE" in every unchecked column; round 3's judge named 'TRUE' in
+    // 5a89929253a1's export against our lowercase).
+    case "bool": return typeof v === "boolean" ? (v ? "TRUE" : "FALSE") : String(v);
     case "date": {
       // date/custom formats carry an ICU-ish pattern in formatString
       // ("d" for calendar day numbers, "M/d/yy", ...)
@@ -476,6 +479,10 @@ function applyCellStyle(td: HTMLTableCellElement, style: TableCellStyle | undefi
       // tint or a neutral tone stands in.
       const url = ctx?.url(style.fill.image.dataId);
       if (url) {
+        // The image IS the fill: nothing paints under it. Numbers' export
+        // of bd3a64fbd954's emoji header row is white around each PNG
+        // where the section's gray (#bec0bf) showed through here.
+        s.backgroundColor = "transparent";
         s.backgroundImage = `url("${url}")`;
         s.backgroundPosition = "center";
         const t = style.fill.technique;
@@ -567,11 +574,16 @@ function applyCellStyle(td: HTMLTableCellElement, style: TableCellStyle | undefi
   // `.cell-nowrap .styled-text { white-space: pre }` rule then clipped
   // eb299192a219's rich-text "Total Charge (minimum charge is 4kg)" to one
   // line (and spillUnwrappedCells treated it as unwrapped).
+  // A cell with NO style of its own keeps the section's wrap: d7dfa8a4b67b's
+  // third column ("4 crotchet beats in a bar", "Bb (flat) 1st finger ...")
+  // stores no cell style over a wrapping body style, and the second pass
+  // (style undefined) reset every one of them to nowrap; Numbers' export
+  // wraps them over two and three lines.
   if (style?.textWrap) {
     s.whiteSpace = "normal";
     td.classList.remove("cell-nowrap");
     td.classList.add("cell-wrap");
-  } else {
+  } else if (style !== undefined) {
     s.whiteSpace = "nowrap";
     td.classList.remove("cell-wrap");
     td.classList.add("cell-nowrap");
@@ -1004,13 +1016,15 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedD
       // parent chain, not the table's section default or banding: 0839b6d2
       // (docx import) stores fill-less cell styles over a blue-banded table
       // style and Pages paints white cells.
-      // The section default decides whether that "none" is the cell's own
-      // or inherited: 4ecab480's Korean form stores fill-less cell styles
-      // over a body style that is itself fill-less, and Pages bands its
-      // rows #efefef; the same stored value over 0839b6d2's filled body
-      // style turns the banding off. [Pages P, 2026-09-12, two exports]
-      if (style && style.fill === null && section?.fill !== null && section?.fill !== undefined) {
-        td.style.backgroundColor = "";
+      // Which "none" it is depends on the section default (two exports,
+      // 2026-09-12): over a body style that is itself fill-less the cell
+      // inherits nothing and the banded fill stays (bd3a64fbd954's checkbox
+      // rows and 4ecab480's Korean form both band #efefef in the export);
+      // over a filled body style the stored "none" is the cell's own and
+      // turns both the section fill and the banding off (0839b6d2).
+      if (style && style.fill === null) {
+        const sectionFilled = section?.fill !== null && section?.fill !== undefined;
+        td.style.backgroundColor = !sectionFilled && banded !== undefined && !header && !footer && bodyOrdinal % 2 === 1 ? banded : "";
         td.style.backgroundImage = "";
       }
       applyCellStyle(td, style, header, footer, ctx);
