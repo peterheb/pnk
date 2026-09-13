@@ -1820,12 +1820,13 @@ three plain tables were left out. That leaves eight usable hosts, all
 surveyed, plus the www.2bobradio.org.au playlist that served as the
 harness smoke test on the same build (its export was reused). No candidate
 contains a chart, so the chart items under "### Next" were not exercised.
-The judge is GLM-5.3-Flash-EXL3 on the LAN server (thinking off), scoring
-every page (14 pages, up to 3 per document); it is a different judge from
-the Qwen of rounds 1-5, so the means are not comparable with theirs. The
-OpenRouter key for a second judge (qwen/qwen3.8-flash as "qwen-or") did
-not exist on the machine when the round ended, so the GLM numbers stand
-alone.
+Two judges scored every page (14 pages, up to 3 per document):
+GLM-5.3-Flash-EXL3 on the LAN server ("glm", thinking off) and
+qwen/qwen3.8-flash through OpenRouter ("qwen-or", four requests in
+parallel, 1-9 s per pair). Neither is the Qwen3.8-Flash-Next checkpoint
+rounds 1-5 used, so the means are not comparable with theirs. The
+fidelity work was done on the GLM scores; the qwen-or pass was added
+after the round ended.
 
 | document | host | pages | why |
 | --- | --- | ---: | --- |
@@ -1852,32 +1853,38 @@ Every defect was traced to the JSON before the viewer was touched.
 | Third-column cells on one line where the export wraps them over two and three lines | d7dfa8a4b67b ("4 crotchet beats in a bar", "Bb (flat) 1st finger ...") | the cells store no cell style over a wrapping body style; `applyCellStyle` runs twice per cell and the second pass, with `style` undefined, took the else-branch and reset the cell to nowrap | tables.ts leaves the section's wrap in place when the cell has no style of its own |
 | Title "Gummitwist fangen" wrapped into two lines over the first photo | 1132f0aa39be | the 0 × 0 text box stores a natural size of 156 × 19.7pt for 40pt text: a cache from before the text was resized. The Numbers branch of `anchorZeroSizeText` wraps a 0 × 0 box between its natural width and 355pt | drawables.ts (Numbers-only branch) keeps the nowrap path when the natural height cannot hold one line of the box's own text; 6914f46e51ab's five boxes, the case behind the 355pt cap, store 21-36pt for 13-22pt text and still wrap |
 
-GLM scores on the same exports, before and after:
+Scores on the same exports, before and after, both judges:
 
-| document | page | before | after | what the judge still names |
-| --- | ---: | ---: | ---: | --- |
-| 1066e1585031 | 1 | 9 | 9 | scaled larger, tighter margins |
-| 1066e1585031 | 2 | 3 | 4 | the three cell images the export lacks (see findings) |
-| 1132f0aa39be | 1 | 6 | 8 | photo crops (Haba, Zuck) |
-| 2c11610b44c5 | 1 | 6 | 8 | header text line breaks ("Recommended Tape Width Needed Per Pipe Size*") |
-| 2c11610b44c5 | 2 | 9 | 9 | logo slightly higher and further left |
-| b191fa6fd022 | 1 | 8 | 8 | the second block's header row left-aligned, not centred |
-| bd3a64fbd954 | 1 | 7 | 9 | checkbox glyphs small squares, not filled rounded rectangles |
-| d7dfa8a4b67b | 1 | 8 | 9 | "Bb (flat) ..." wraps to four lines, three in the export |
-| e886b6eec13a | 1 | 9 | 9 | decimal comma (the locale setting) |
-| e886b6eec13a | 2 | 8 | 8 | decimal comma |
-| e886b6eec13a | 3 | 7 | 7 | sheet gridlines and cell borders where the export prints a clean bordered box |
-| ee805c92fc38 | 1 | 9 | 9 | decimal comma |
-| ee805c92fc38 | 2 | 8 | 8 | scaled larger and shifted to the top-left of the page |
-| efbed96fa653 | 1 | 9 | 9 | table fills the page width instead of sitting inside the margins |
+| document | page | glm before | glm after | qwen-or before | qwen-or after | what the judges still name |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| 1066e1585031 | 1 | 9 | 9 | 9 | 9 | scaled larger, tighter margins |
+| 1066e1585031 | 2 | 3 | 4 | 5 | 6 | the three cell images the export lacks (see findings) |
+| 1132f0aa39be | 1 | 6 | 8 | 6 | 8 | photo crops (Haba, Zuck); images scaled up |
+| 2c11610b44c5 | 1 | 6 | 8 | 6 | 9 | header text line breaks; "Total Qty." cut to "Total" in the export |
+| 2c11610b44c5 | 2 | 9 | 9 | 9 | 9 | logo slightly higher and further left |
+| b191fa6fd022 | 1 | 8 | 8 | 9 | 9 | the second block's header row left-aligned, not centred; rows compressed |
+| bd3a64fbd954 | 1 | 7 | 9 | 6 | 8 | checkbox glyphs small squares, not filled rounded rectangles; wrapping in the description cells |
+| d7dfa8a4b67b | 1 | 8 | 9 | 8 | 9 | "Bb (flat) ..." wraps to four lines, three in the export; the title at the top edge |
+| e886b6eec13a | 1 | 9 | 9 | 9 | 9 | decimal comma (the locale setting) |
+| e886b6eec13a | 2 | 8 | 8 | 8 | 8 | decimal comma |
+| e886b6eec13a | 3 | 7 | 7 | 7 | 8 | sheet gridlines and cell borders where the export prints a clean bordered box; decimal comma |
+| ee805c92fc38 | 1 | 9 | 9 | 9 | 9 | decimal comma |
+| ee805c92fc38 | 2 | 8 | 8 | 9 | 8 | scaled larger and shifted to the top-left of the page |
+| efbed96fa653 | 1 | 9 | 9 | 9 | 9 | table fills the page width instead of sitting inside the margins |
 
-Mean over the 14 pages: 7.57 before, 8.14 after. Three pages moved by two
-or more, all up: 1132f0aa39be (the title on one line), 2c11610b44c5 page 1
-(the 166 cells, the fractions), bd3a64fbd954 (checkboxes, banding, white
-behind the emoji). d7dfa8a4b67b and 1066e1585031 page 2 moved up by one;
-the second names the same export-side omission before and after. No page
-went down. The 2c11610b44c5 page was re-judged once more after the
-fraction fix (8 both times; the judge's first remark moved from the
+Mean over the 14 pages: glm 7.57 before, 8.14 after; qwen-or 7.79
+before, 8.43 after. Both judges move the same three pages up by two or
+more: 1132f0aa39be (the title on one line), 2c11610b44c5 page 1 (the 166
+cells, the fractions: glm +2, qwen-or +3), bd3a64fbd954 (checkboxes,
+banding, white behind the emoji). d7dfa8a4b67b and 1066e1585031 page 2
+move up by one under both; the second names the same export-side omission
+before and after. No page goes down under glm; qwen-or drops
+ee805c92fc38 page 2 by one (the empty table; its remark is the page
+position both times). The two judges never differ by three or more on a
+page; the widest gap is two, on 1066e1585031 page 2 (glm 3/4, qwen-or
+5/6), where both name the images the export lacks, so neither is wrong
+about the page. The 2c11610b44c5 page was re-judged by glm once more
+after the fraction fix (8 both times; the first remark moved from the
 fractions to header line breaks).
 
 #### Schema and converter findings
