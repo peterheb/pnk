@@ -14,7 +14,7 @@ import type {
   TableGroup,
 } from "../../model/src/shared";
 import { fillToCss } from "./drawables";
-import { applyCharStyle, naturalLineHeight, renderStyledText } from "./text";
+import { applyCharStyle, lineGapPx, lineHeightPx, naturalLineHeight, renderStyledText } from "./text";
 import type { HydratedDoc } from "./hydrate";
 import { cellStyleOf } from "./hydrate";
 import type { ViewerCtx } from "./ctx";
@@ -1004,7 +1004,12 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedD
       // parent chain, not the table's section default or banding: 0839b6d2
       // (docx import) stores fill-less cell styles over a blue-banded table
       // style and Pages paints white cells.
-      if (style && style.fill === null) {
+      // The section default decides whether that "none" is the cell's own
+      // or inherited: 4ecab480's Korean form stores fill-less cell styles
+      // over a body style that is itself fill-less, and Pages bands its
+      // rows #efefef; the same stored value over 0839b6d2's filled body
+      // style turns the banding off. [Pages P, 2026-09-12, two exports]
+      if (style && style.fill === null && section?.fill !== null && section?.fill !== undefined) {
         td.style.backgroundColor = "";
         td.style.backgroundImage = "";
       }
@@ -1044,13 +1049,30 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedD
           // lines run 13.0pt apart under a 1.15x style; cf4b76a's first row
           // (8pt after, 1.079x) is 25.9pt like the rows without them.
           // [Pages A, 2026-09-06, measured on the exports]
+          // In a Pages document the line is the rounded single-spaced rule
+          // (ascent + descent rounded, plus the gap; text.ts FONT_METRICS),
+          // and the gap is not drawn after the paragraph's last line:
+          // 8e92cf882b53's rows hold an Arial 10 line and a Calibri 10 line
+          // of en-spaces and measure 30.3pt = 4 + 11 + 11 + 4 (Calibri's
+          // 13 less its gap of 2); 5c07d836's TOC rows (Arial 11 at 1.5x)
+          // 20.64 = 4 + 12 + 4 + the stroke. The natural (unrounded, gap on
+          // every line) height ran 8e92's rows 3pt tall each.
+          // [Pages P, 2026-09-12, measured on the exports]
+          const isPages = (hdoc as unknown as { kind?: string }).kind === "pages";
           for (const blk of Array.from(el.children) as HTMLElement[]) {
             const para = blk.classList.contains("list-item") ? blk.querySelector<HTMLElement>(":scope > p") : blk;
             if (!para) continue;
             para.style.marginTop = "0";
             para.style.marginBottom = "0";
-            const face = /^"([^"]+)"/.exec(para.style.fontFamily)?.[1];
-            para.style.lineHeight = String(naturalLineHeight(face));
+            // the first family of the stack; Chrome serializes it without
+            // quotes when the name is a plain identifier (ArialMT)
+            const face = para.style.fontFamily.split(",")[0].trim().replace(/^"|"$/g, "") || undefined;
+            const sizePx = parseFloat(para.style.fontSize) || 0;
+            if (isPages && sizePx) {
+              para.style.lineHeight = (lineHeightPx(face, sizePx, 1, para.textContent ?? "") / sizePx).toFixed(4);
+              const gap = lineGapPx(face, sizePx);
+              if (gap) para.style.marginBottom = `${-gap}px`;
+            } else para.style.lineHeight = String(naturalLineHeight(face));
           }
           // Numbers sizes each line by its own runs; a CSS block's strut
           // makes every line at least the paragraph's size (eb299192a219's
@@ -1087,6 +1109,10 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedD
           // multi-paragraph cell text (rich-text cells join with \n) keeps
           // its line structure like Apple
           if (text.includes("\n")) td.style.whiteSpace = "pre-line";
+          // Leading spaces and runs of spaces are kept too: 4ecab480's form
+          // indents "선택한 글 혹은 영상의 제목 :" with five spaces and
+          // centres "연락처(핸드폰) :" with 36, and Pages draws every one.
+          if (/^[ \t]|[ \t]{2,}/.test(text)) td.style.whiteSpace = td.classList.contains("cell-wrap") ? "pre-wrap" : "pre";
         }
       }
       // Stored row heights are exact in Numbers' export (181f2b199bd3:
