@@ -1588,6 +1588,15 @@ function anchorZeroSizeText(
   layer.style.width = "max-content"; // percentage of an auto box is meaningless
   layer.style.height = "auto";
   let multiLine = false;
+  const first = text?.paragraphs.find((p) => p.items.length > 0);
+  let sizePt = 0;
+  let font: string | undefined;
+  for (const it of first?.items ?? []) {
+    if (typeof it === "string" || "type" in it) continue;
+    const cs = charStyleOf(doc, (it as { cStyle?: number }).cStyle);
+    if (cs?.fontSizePt && cs.fontSizePt > sizePt) { sizePt = cs.fontSizePt; font = cs.fontName; }
+  }
+  const lineH = sizePt ? sizePt * naturalLineHeight(font) : 0;
   if (naturalSize && naturalSize.width > 0 && (doc as { kind?: string }).kind === "numbers") {
     // Numbers content-sized box (stored 0×0, path natural size present):
     // the box is at least its natural width and grows with its text, but
@@ -1597,9 +1606,17 @@ function anchorZeroSizeText(
     // Keynote decks store hundreds of 0×0 labels with natural sizes and
     // render correctly on the nowrap path above, so this is Numbers-only.
     // [inferred from one document]
-    layer.style.minWidth = `${naturalSize.width}px`;
-    layer.style.maxWidth = `${Math.max(naturalSize.width, 355)}px`;
-    layer.style.whiteSpace = "normal";
+    // A natural size that cannot hold ONE line of the box's own text is a
+    // stale cache from before the text was resized (1132f0aa39be's
+    // "Gummitwist fangen" is 40pt in a stored 156×19.7 box; the export
+    // prints one line where the min/max width wrapped it into two over
+    // the first photo). Such a box keeps the nowrap path.
+    // [Numbers round 6, 2026-09-12]
+    if (!(sizePt && naturalSize.height > 0 && naturalSize.height < sizePt)) {
+      layer.style.minWidth = `${naturalSize.width}px`;
+      layer.style.maxWidth = `${Math.max(naturalSize.width, 355)}px`;
+      layer.style.whiteSpace = "normal";
+    }
   } else if (naturalSize && naturalSize.width > 0 && naturalSize.height > 0) {
     // Keynote 0×0 box whose natural size is TALLER than one line: the text
     // was laid out wrapped at that width (pre-trib.org's 124pt cover title
@@ -1607,15 +1624,6 @@ function anchorZeroSizeText(
     // the nowrap path it ran off both slide edges. Single-line labels keep
     // nowrap — the natural width is Apple's metrics and would re-wrap a
     // label whose browser face runs a few px wider.
-    const first = text?.paragraphs.find((p) => p.items.length > 0);
-    let sizePt = 0;
-    let font: string | undefined;
-    for (const it of first?.items ?? []) {
-      if (typeof it === "string" || "type" in it) continue;
-      const cs = charStyleOf(doc, (it as { cStyle?: number }).cStyle);
-      if (cs?.fontSizePt && cs.fontSizePt > sizePt) { sizePt = cs.fontSizePt; font = cs.fontName; }
-    }
-    const lineH = sizePt ? sizePt * naturalLineHeight(font) : 0;
     const paraCount = text?.paragraphs.filter((p) => p.items.length > 0).length ?? 1;
     const leading = paraStyleOf(doc, typeof first === "string" ? undefined : first?.pStyle)?.lineSpacingMultiple ?? 1;
     // "Taller than one line" is per paragraph: a box of N single-line
