@@ -1016,13 +1016,15 @@ export function renderTable(model: TableModel, ctx?: ViewerCtx, hdoc?: HydratedD
       // parent chain, not the table's section default or banding: 0839b6d2
       // (docx import) stores fill-less cell styles over a blue-banded table
       // style and Pages paints white cells.
-      // The banded fill stays: Numbers alternates the BODY rows whose cells
-      // have no fill of their own, and "no fill" is the stock body style's
-      // state (bd3a64fbd954: body and cell styles all store fill: null and
-      // the export bands the checkbox rows #efefef; our clear left them
-      // white).
+      // Which "none" it is depends on the section default (two exports,
+      // 2026-09-12): over a body style that is itself fill-less the cell
+      // inherits nothing and the banded fill stays (bd3a64fbd954's checkbox
+      // rows and 4ecab480's Korean form both band #efefef in the export);
+      // over a filled body style the stored "none" is the cell's own and
+      // turns both the section fill and the banding off (0839b6d2).
       if (style && style.fill === null) {
-        td.style.backgroundColor = banded !== undefined && !header && !footer && bodyOrdinal % 2 === 1 ? banded : "";
+        const sectionFilled = section?.fill !== null && section?.fill !== undefined;
+        td.style.backgroundColor = !sectionFilled && banded !== undefined && !header && !footer && bodyOrdinal % 2 === 1 ? banded : "";
         td.style.backgroundImage = "";
       }
       applyCellStyle(td, style, header, footer, ctx);
