@@ -303,8 +303,7 @@ function collapseFloat(fl: HTMLElement): void {
  * its own side only — the text flows beside it, as Pages does with
  * fe2facece68e's anatomy figures (191pt wide in a 468pt column, wrap
  * "around": the body runs in the 215pt to their right; this viewer used
- * to run the text under them). Which side: wrap "right" keeps the text on
- * the right, "left" on the left, the others take the side with more room.
+ * to run the text under them). The text takes the side with more room.
  * A gutter narrower than a quarter of the column is not used (6d4f8527,
  * see floatGeometry): the object becomes a band.
  *
@@ -355,9 +354,11 @@ function pageExclusion(drawables: Drawable[], g: PageGeom, pageIdx = -1): { fls:
     const top = Math.max(0, c.position.y - g.top - padTop - m);
     const bottom = Math.min(H, c.position.y - g.top - padTop + c.size.height + m);
     if (bottom - top < 1 || x1 - x0 < 1) continue;
+    // The side is the one with more room whatever the kind: 48f5f124's
+    // cover stores type 4 ("right") on logos at the right margin and Pages
+    // sets the title to their left, so 3/4 do not name the text's side.
     const kind = c.textWrap.kind;
-    let side: "left" | "right" = kind === "right" ? "left" : kind === "left" ? "right"
-      : (x0 + x1) / 2 < W / 2 ? "left" : "right";
+    let side: "left" | "right" = (x0 + x1) / 2 < W / 2 ? "left" : "right";
     let band = kind === "above-below" || x1 - x0 >= W * 0.6;
     const room = side === "left" ? W - x1 : x0;
     if (room < W * 0.25) band = true;
@@ -810,6 +811,23 @@ function splitOverflow(
     else hi = mid - 1;
   }
   if (lo <= 0 || lo >= total) return null;
+  // Widow control moves the cut UP, not the paragraph: when the largest
+  // fitting prefix would leave fewer than minLines behind, the cut goes
+  // to the last line that leaves them (1d3f1667cd27 page 15: a four-line
+  // paragraph with three fitting lines used to move whole, and every
+  // later page of the 29 lagged Pages' by two lines more).
+  const maxKeep = lineTotal - minLines;
+  if (linesAt(lo) > maxKeep) {
+    let a = 0;
+    let b = lo;
+    while (a < b) {
+      const mid = Math.ceil((a + b) / 2);
+      if (linesAt(mid) <= maxKeep) a = mid;
+      else b = mid - 1;
+    }
+    lo = a;
+    if (lo <= 0) return null;
+  }
   // back up to a word boundary so no word straddles the page break
   let cut = -1;
   for (let i = lo; i > 0 && lo - i < 400; i--) {
