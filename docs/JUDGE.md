@@ -1807,10 +1807,166 @@ What remains, in the order the judge names it:
    domimplant) draws regular in Keynote and bold here (round 3's note).
 4. Hand-drawn strokes (brush parameters), unchanged.
 
+### Keynote, round 5 (2026-09-12, GLM thinking off, four slides per deck)
+
+Twelve decks from twelve origin hosts no earlier run had judged, chosen
+from a feature survey of the 104 unjudged hosts under 40 MB (one deck per
+host; hosts with a single deck preferred, since that is where the
+unfamiliar templates are). The survey counted tables, charts, groups,
+connection lines, masks, reflections, list levels, slide-number fields,
+non-Latin text, gradients, shadows and builds per deck. All twelve were
+exported from Keynote once; the same exports are on both sides of every
+score; the judge scored the first four slides of each (38 pairs). The
+judge today is GLM-5.3-Flash, not the Qwen of rounds 1-4, so the means
+are not comparable with theirs.
+
+| doc | host | slides | why |
+| --- | --- | ---: | --- |
+| 6d0a262a9ad4 | tpc.ispras.ru | 50 | Cyrillic throughout, four tables, 57 groups, image fills, gradients, Wingdings markers, 4:3 |
+| 6dbe87e0ee22 | matija.pretnar.info | 77 | 63 charts on slides (column, scatter), equations, hand-drawn strokes, gradients |
+| 5de28ef46913 | www.bibelportal.de | 1 | three tables with merged cells, 154 rows, a 2970x2100 slide |
+| c5b5d668d69a | wiki.classe.cornell.edu | 1 | 17 connection lines, 27 content-sized shapes, saved by Keynote 6.5 |
+| eba343cf501f | highfivecreate.com | 1 | Japanese text, 11 orthogonal connection lines |
+| 157b84e8e0c3 | anyoneteach.com | 23 | lists nested to level 3, 161 shadows, masks, portrait 540x720 |
+| 441130d2a359 | archive.jonbell.net | 44 | 55 image fills, 70 groups, 59 shadows, slide numbers on 43 slides, a table |
+| 6ee4ea590b7f | media.ncd.life | 27 | 331 builds, 60 groups, a reflection, 23 masks, 117 rotated objects, eight faces |
+| 79b11d2dd8d2 | www.starlingx.io | 15 | pie and stacked-bar charts, masks, opacity |
+| 5f81854f90cf | senseiichiba.com | 3 | Japanese text in a Latin face, three Instant Alpha images, masks, builds |
+| 4f9c2bbd0349 | stween.co.uk | 39 | gradient backgrounds, 35 masks, 34 shadows, slide numbers on 32 slides, hand-drawn strokes |
+| 2406adf5cf99 | indico.cmb-s4.org | 17 | connection lines, equations, slide numbers, a table, Futura, notes |
+
+| defect | decks | cause | fix |
+| --- | --- | --- | --- |
+| bold runs drawn regular in a substitute face (tpc.ispras slide 1 subtitle, ncd.life slide 1 title) | tpc.ispras, ncd.life, and every PowerPoint-import deck with a Google-substituted face | the font list names faces, not runs: "Calibri" with `bold: true` on the run never names "Calibri-Bold", so Carlito was requested at weight 400 only and Chromium drew the 700 run in the 400 face without emboldening it | webfonts.ts requests the bold counterpart of every regular face the substitute ships |
+| a title's last word wrapped (cmb-s4 slide 1) | cmb-s4, and every run with tracking | `trackingPt` was applied as points; the export's 116pt Futura line is 1752pt wide, which the browser reproduces at -0.02em (1750) and not at -0.02px (1833) | text.ts applies tracking as em (shared file; proposal below) |
+| a two-paragraph 0x0 box wrapped its second line at a stale width (cmb-s4 slide 2) | cmb-s4 | the "taller than one line" wrap rule compared the natural height with one line; two single-line paragraphs are two lines tall | the threshold counts the paragraphs |
+| 27 label boxes with no fill, stroke or background (classe slide 1) | classe | Keynote 6.5 stores content-sized shapes as 0x0 with a unit-square path and no natural size; the 0x0 SVG painted nothing | a 0x0 shape with text takes its fill as background and its stroke as border on the content-sized box |
+| connection lines converging on one point (classe slide 1) | classe | the 0x0 anchors had no laid-out box, so the lines kept stored endpoints 160pt stale | the converter estimates the laid-out box from the text (0.55 em per character, 1.2 em per paragraph, plus insets; marked inferred) and routes to its centre, trimmed at its edge |
+| orthogonal connectors drawn as a fan of bent lines (highfive slide 1) | highfive | the stored path is move + line + line through a middle point; the converter rebaked it as a polyline. Keynote draws an elbow: perpendicular out of the from-shape, a bus through the middle point on the crossed axis, perpendicular into the to-shape | converter routes the elbow; the crossed axis is the gap the middle point sits in (the one it centres in when both hold it); a stale end moves the middle point with the end that still matches |
+| arcs drawn as chevrons (pretnar slides 3, 4) | pretnar | editable-bezier "sharp" nodes were emitted as straight segments; the arcs start on a sharp node whose out-handle is 17pt away | a segment is a cubic whenever either handle leaves its node (G2's zigzag gains a cubic whose handles lie on the chord; re-synced) |
+
+GLM's mean over the 38 pages, before and after, same exports. The
+before column doubles as the ranking of where to look next.
+
+| doc | host | pages | before | after |
+| --- | --- | ---: | ---: | ---: |
+| c5b5d668d69a | wiki.classe.cornell.edu | 1 | 3.00 | 9.00 |
+| eba343cf501f | highfivecreate.com | 1 | 6.00 | 9.00 |
+| 6dbe87e0ee22 | matija.pretnar.info | 4 | 7.00 | 7.50 |
+| 2406adf5cf99 | indico.cmb-s4.org | 4 | 8.50 | 9.25 |
+| 5f81854f90cf | senseiichiba.com | 3 | 8.67 | 8.67 |
+| 6ee4ea590b7f | media.ncd.life | 4 | 8.75 | 8.75 |
+| 441130d2a359 | archive.jonbell.net | 4 | 9.00 | 9.00 |
+| 4f9c2bbd0349 | stween.co.uk | 4 | 9.00 | 9.00 |
+| 5de28ef46913 | www.bibelportal.de | 1 | 9.00 | 9.00 |
+| 79b11d2dd8d2 | www.starlingx.io | 4 | 9.00 | 9.00 |
+| 157b84e8e0c3 | anyoneteach.com | 4 | 9.50 | 9.50 |
+| 6d0a262a9ad4 | tpc.ispras.ru | 4 | 9.50 | 9.25 |
+| all | | 38 | 8.55 | 8.89 |
+
+Pages that moved by two points or more:
+
+| slide | before | after | what changed |
+| --- | ---: | ---: | --- |
+| wiki.classe.cornell.edu 1 | 3 | 9 | filled label boxes; connection lines to the boxes' current centres |
+| highfivecreate.com 1 | 6 | 9 | orthogonal connectors as elbows |
+| matija.pretnar.info 4 | 6 | 9 | arcs as curves |
+| indico.cmb-s4.org 1 | 8 | 10 | tracking as em: the title wraps where the export does |
+
+Pages at 9 or more went from 30 to 35 of 38. Two pages dropped one point:
+tpc.ispras 4 (10 to 9, "sub-pixel shifts" on an unchanged render) and
+pretnar 3 (4 to 3: the arcs are now right and the judge names what is
+left, the scatter chart's curve drawn as a flat line with a legend the
+export omits; Numbers lane, below). The bold subtitle on tpc.ispras 1 and
+the unwrapped bold line on cmb-s4 2 are fixed on renders the judge
+already scored 9 and 8; ncd.life 1's title is Mulish 700 from Google
+Fonts here and Helvetica-Bold in the export (Keynote lacks Mulish), the
+substitution policy of docs/fonts.md and not a defect.
+
+Confirmed against the exports by measurement, not by eye: cmb-s4's
+title line at 1750.1pt in the browser under -0.02em against the export's
+1752.2pt (1832.9 under -0.02px); its bold line at 1606pt on both sides
+once unwrapped; highfive's bus at y=216.8 from the stored middle point
+against the export's 216; the elbow's stem at the top box's centre
+(x=162) and its drop at each child's centre; classe's label boxes
+centred on their stored anchors in the export (A1 spans 29-72pt for a
+stored x of 50); pretnar's arc nodes read from the archive with
+iwadump (node 1 at (13.0, 0) with its out-handle at (-4.3, 17.1)).
+
+#### Schema and converter findings
+
+- **Tracking is a fraction of the font size.** `CharStyle.trackingPt`
+  carries `TSWP.CharacterStyle.tracking` unchanged, and the value is a
+  fraction of the em (Apple's inspector shows it as a percentage; the
+  measurement above). The viewer now applies it as em. Proposal, not
+  implemented (model file): rename to `tracking` with the unit in its
+  doc comment, or document `trackingPt` as em with a deprecation note;
+  the converter's value does not change either way.
+- **Orthogonal connection lines** (`ConnectionLinePathSourceArchive.type`
+  1) now route as elbows at emission; the path carries the result, as the
+  quadratic case did in round 2. Documented in docs/format/drawables.md
+  as inferred from one export.
+- **Content-sized shapes without a natural size.** Keynote 6.5 (classe,
+  `M6.5.3`) stores a text shape as 0x0 with a unit-square path and no
+  `naturalSize` where later versions store the laid-out size. The model
+  has no field for the laid-out box, and the archive does not carry it;
+  the converter's estimate lives only in the connection-line anchor
+  walk. A `laidOutSize` on the shape would let the viewer and the dumpers
+  share one estimate; not proposed, since the viewer measures the real
+  text and only the converter needs a number.
+- **Editable-bezier node types** do not decide straightness: a sharp node
+  can carry handles. Corrected in tsd.rs; docs/format/drawables.md
+  updated.
+- **Font list versus run flags.** The envelope's `fonts` names faces as
+  stored; PowerPoint-import decks store family names with bold and italic
+  flags on the runs. A consumer that loads substitutes needs the flags,
+  which the list does not carry. The viewer now over-requests (the bold
+  counterpart of every regular face). Proposal: the converter adds the
+  weight-named cut ("Calibri-Bold") to `fonts` when a run sets `bold` on
+  a family name, so the list names what the runs need; lives in ctx.rs
+  and styles.rs.
+- **Numeric table cells left-aligned in a Keynote table** (tpc.ispras
+  slide 8): the table's body cell style says left, the numeric cells'
+  own style carries no alignment, and Keynote's export right-aligns the
+  numbers; "0.125" is stored as a text cell and the export right-aligns
+  it too. Numbers-owned (tables.rs, tables.ts); not touched. Noted for
+  the Numbers lane.
+- **Scatter chart on a slide drawn as a flat line** (pretnar slide 3):
+  `scatterFormat: "shared-x"` with the x values in the second series;
+  and a legend the export omits (`legendVisible: false` is stored and the
+  viewer still prints "Region 1 Untitled 107"). charts.ts, Numbers-owned;
+  not touched.
+- **CJK text in a Latin face** (senseiichiba slides 1, 2: Druk-Medium
+  runs of Japanese). The export sets the kanji in PingFang SC and the
+  kana in Hiragino Sans (Keynote's per-script fallback), and the
+  paragraph's 0.8 line-spacing multiple gives 214.8pt between two 150pt
+  lines on slide 2 (1.432 em) and 188pt between two 236pt lines shrunk
+  to 167.6pt on slide 1; the viewer pitches with Helvetica's numbers
+  (the face this Mac lacks) and draws the lines 30% closer. The rule is
+  not derived yet; noted.
+- **Checked and present:** builds, transitions, notes, slide-number
+  fields, masks with angles, Instant Alpha paths, image fills, group
+  nesting, hand-drawn stroke names, table merges on all twelve decks.
+
+What remains, in the order the judge names it:
+
+1. Faces this Mac lacks and the wrap differences they cause (cmb-s4's
+   Futura is present, so its wraps are fixed; Calibri, Druk, Mulish,
+   FreightSans are not). Policy (docs/fonts.md).
+2. CJK text in a Latin face: the line pitch of the fallback faces
+   (above).
+3. Charts on slides in the Numbers lane: pretnar's scatter charts and
+   hidden legends; starlingx's pie and stacked bar were not in the
+   judged four slides.
+4. Hand-drawn strokes: ncd.life slide 4's arrows are thin wobbly Pen
+   strokes in the export and plain 6pt strokes here (brush parameters,
+   unchanged since round 3).
+5. Numeric alignment in Keynote tables (Numbers lane).
+
 ### Next
 
 Numbers: two-axis charts (type 11, 666 in 0ab5dd52841e); auto-fit row leading per face (17891b89da2f 14 vs 16pt rows); the a720beed1ab2 header row the export prints blank; pie labels inside the slices (6914f46e51ab).
-Keynote: faces the Mac lacks (Keynote draws Helvetica, the viewer a substitute; a policy question, docs/fonts.md), 1-3pt drift on substituted faces, weight-named cuts with `bold: false`, empty paragraphs without a size (proposal), hand-drawn brush parameters; then 20 more decks from unjudged hosts.
+Keynote: CJK text in a Latin face (senseiichiba 5f81854f: Keynote pitches the lines with PingFang/Hiragino's metrics, 1.432 em on slide 2); charts on slides in the Numbers lane (pretnar 6dbe87e0's scatter curve and hidden legend; tpc.ispras 6d0a262a's numeric cells left-aligned); the font list naming the bold cut a run's flag asks for (proposal in round 5); faces the Mac lacks (policy, docs/fonts.md); hand-drawn brush parameters; then 20 more decks from unjudged hosts.
 Pages: Arabic documents in a face Pages substitutes per script (ae1cc13b, 77890685; the archive does not store the fallback face); the residual pagination drift on long documents (eb2a7cde 63 pages against 61, cf4b76a half a page behind by page 20); rotated wrapping objects (10a06959, 25 documents); b31db822's cover shape lines cut at the left (drawables.ts); `h_offset_type`/`v_offset_type` and `widow_control` unmodelled (proposals in round 3a); reconciling Numbers' row-leading measurements with the round-3a line rule; 4047e81b page 4; then the unexamined verdicts in round 3b's list.
 Score more of the corpus, one or two pages per document, with Qwen; use
 the ranked list to choose fidelity work; add a reference re-run with
