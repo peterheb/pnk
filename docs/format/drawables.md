@@ -132,6 +132,13 @@ code picks the first present]:
   (lines 78-96): user-editable node list — repeated `Subpath { nodes = 1,
   closed = 2 }`, each `Node` carrying `inControlPoint`, `nodePoint`,
   `outControlPoint`, and `NodeType` (sharp = 1, bezier = 2, smooth = 3). [proto]
+  The node type says how the editor constrains the handles, not whether the
+  segment curves: a sharp node can carry a real out-handle, and the segment
+  to the next node is a cubic whenever either handle leaves its node (a
+  handle on its node contributes no curvature). [fixture-verified: matija
+  .pretnar.info 6dbe87e0's arcs start on a sharp node whose out-handle sits
+  17pt away and Keynote's export draws the curve; 24_Briefing's tick marks
+  keep both handles on their nodes and stay straight]
 - `horizontalFlip = 1` / `verticalFlip = 2` flip the source; `localizationKey = 9`
   and `userDefinedName = 10` label preset shapes. [proto]
 
@@ -373,6 +380,20 @@ shape's outline. [inferred; measured on the export: line 2892641 stores
 which are the centres of the two 71.56pt-wide boxes; the exported curve
 peaks at y ≈ 335 and meets the boxes at y ≈ 351, which only a curve through
 the middle point produces]
+
+Orthogonal type: the stored `TSP.Path` is also moveTo + lineTo + lineTo,
+centre to centre with a middle point, but Keynote draws an elbow through it,
+not a bent polyline: the line leaves the from-shape perpendicular to the
+facing edge, runs a bus segment through the middle point's coordinate on the
+axis it crosses, and enters the to-shape perpendicular to its edge. The
+crossed axis is the one whose gap between the two frames holds the middle
+point (the gap it centres in when both do). A stale end (the shape moved
+after baking) keeps the bus where the stored middle point put it relative to
+the end that still matches. [inferred; measured on one export: highfivecreate
+eba343cf stores (162, 135) -> (211, 217) -> (222, 308) for a 180x100 box
+above a 90x116 one, and the export draws a stem from the top box's centre
+down to y = 216, a run to the lower box's centre x, and a drop to its top
+edge; a seventh child stored 170pt from its current place gets the same bus]
 
 Stroke dash units: `TSD.StrokePatternArchive.pattern` (repeated float,
 padded to six entries, `count = 3` real ones) is in multiples of the stroke
