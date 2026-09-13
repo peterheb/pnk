@@ -94,7 +94,15 @@ function hfPushForPage(pageIdx: number): HfPush {
   const { doc, hdoc, ctx } = hfPushCtx;
   const ps = doc.pageSize;
   if (!ps || !doc.sections.length) return none;
-  const t = hfTemplateFor(doc, 0, pageIdx);
+  // An EMPTY header pushes too: its paragraphs keep their line height.
+  // 4ccaddd3f0b5 (18pt top and header margins, one empty HelveticaNeue
+  // 12pt header paragraph) anchors its body at 44pt in Pages' export,
+  // 7edb1b23ebd6 (35.4pt header margin, seven empty Calibri paragraphs)
+  // at 135.6; this viewer had them at the top margin. Measured this way
+  // the two come out 12pt short and 2pt long: Pages' exact rule for the
+  // gap under the header is not known.
+  const cands = templateCandidates(doc, doc.sections[0], pageIdx);
+  const t = hfTemplateFor(doc, 0, pageIdx) ?? ((pageIdx === 0 && cands[0]?.hideHeadersFooters) ? undefined : cands[0]);
   if (!t) return none;
   const cached = hfPushCache.get(t);
   if (cached) return cached;
@@ -108,13 +116,17 @@ function hfPushForPage(pageIdx: number): HfPush {
   const heights = { header: 0, footer: 0 };
   document.body.appendChild(meas);
   for (const [cols, kind] of [[t.headers, "header"], [t.footers, "footer"]] as const) {
-    if (!cols.some(hasText)) continue;
-    const row = hfRow(cols, hdoc, ctx, kind === "header" ? "pages-header" : "pages-footer");
-    row.style.position = "static";
-    row.style.width = `${contentW}px`;
-    meas.appendChild(row);
-    heights[kind] = row.offsetHeight;
-    row.remove();
+    // one column at a time, each at the full text width: the three
+    // regions overlay the whole row (hfRow), and a third of the width
+    // wrapped 5c07d836's tabbed header line onto more lines
+    for (const col of cols.slice(0, 3)) {
+      const row = hfRow([col], hdoc, ctx, kind === "header" ? "pages-header" : "pages-footer", true);
+      row.style.position = "static";
+      row.style.width = `${contentW}px`;
+      meas.appendChild(row);
+      heights[kind] = Math.max(heights[kind], row.offsetHeight);
+      row.remove();
+    }
   }
   meas.remove();
   const push: HfPush = {
@@ -285,43 +297,74 @@ function collapseFloat(fl: HTMLElement): void {
 
 /**
  * A page's floating objects that wrap the body (TP.FloatingDrawablesArchive
- * objects with an exterior wrap) as full-width exclusion bands at the top of
- * the printable area, in content coordinates. Only WIDE objects (at least
- * 60% of the text width) make a band: Pages flows text beside a narrower
- * object, and this viewer lets the text run under it, as before, rather
- * than modelling one CSS float per object (48f5f124's cover has six
- * half-width note shapes; a single union box pushed the title under them).
- * Overlapping bands merge; each band is a float placed below the previous
- * one with a shape-outside inset keeping the gap above it open. The
- * drawables themselves paint in the page frame, not here. A cover image
- * that covers the whole printable area leaves the page without body text:
- * eb2a7cde's cover photo and the full-page text box on its page 2 push
- * "About PA-ADOPT" to page 3, where Pages prints it.
+ * objects with an exterior wrap) as exclusions in the printable area, in
+ * content coordinates. A WIDE object (at least 60% of the text width) is a
+ * full-width band: Pages puts the text below it. A narrower one excludes
+ * its own side only — the text flows beside it, as Pages does with
+ * fe2facece68e's anatomy figures (191pt wide in a 468pt column, wrap
+ * "around": the body runs in the 215pt to their right; this viewer used
+ * to run the text under them). Which side: wrap "right" keeps the text on
+ * the right, "left" on the left, the others take the side with more room.
+ * A gutter narrower than a quarter of the column is not used (6d4f8527,
+ * see floatGeometry): the object becomes a band.
+ *
+ * Rendering: the rectangles are clustered by vertical overlap; each
+ * cluster is one left float (its left-side rectangles and bands as a
+ * staircase polygon in shape-outside) and, when there are right-side
+ * rectangles, one right float beside it. A cluster's first float clears
+ * the earlier ones, so every float's top is the previous cluster's bottom
+ * and the polygon's y coordinates count from there. The float's box is
+ * only as wide as its widest step: a block that avoids floats as a whole
+ * (a list row, a table — CSS keeps those clear of the margin box, not the
+ * shape) then lands beside the object instead of in a zero-width column
+ * at the far edge. A cluster whose two sides overlap horizontally (an
+ * image over a text box) is all bands.
+ * The drawables themselves paint in the page frame, not here. A cover
+ * image that covers the whole printable area leaves the page without body
+ * text: eb2a7cde's cover photo and the full-page text box on its page 2
+ * push "About PA-ADOPT" to page 3, where Pages prints it.
  */
-function pageExclusion(drawables: Drawable[], g: PageGeom, pageIdx = -1): { fls: HTMLElement[]; full: boolean } | null {
-  const bands: { top: number; bottom: number }[] = [];
+interface ExclRect {
+  top: number;
+  bottom: number;
+  x0: number;
+  x1: number;
+  side: "left" | "right";
+  band: boolean;
+}
+function pageExclusion(drawables: Drawable[], g: PageGeom, pageIdx = -1): { fls: HTMLElement[]; full: boolean; padTop: number } | null {
+  const W = g.contentW;
+  const rects: ExclRect[] = [];
+  // A header taller than its margin gap (hfPushForPage) moves the body
+  // down. It used to be a band float here, which only pushes LINE boxes:
+  // a paragraph that holds nothing but anchored objects kept its box at
+  // the top and its objects with it (4ccaddd3f0b5, 7edb1b23ebd6). The
+  // push is the page container's top padding now, so blocks and anchor
+  // floats move with the text; the object rectangles below are in the
+  // padded coordinates. The footer push is not applied.
+  const push = pageIdx >= 0 ? hfPushForPage(pageIdx) : { top: 0, bottom: 0 };
+  const padTop = Math.min(g.contentH, push.top);
+  const H = g.contentH - padTop;
   for (const d of drawables) {
     if (d.type === "unknown" || !d.common) continue;
     const c = d.common;
     if (!c.textWrap || c.textWrap.kind === "none" || !c.position || !c.size) continue;
     const m = Math.max(0, c.textWrap.marginPt ?? 0);
     const x0 = Math.max(0, c.position.x - g.left - m);
-    const x1 = Math.min(g.contentW, c.position.x - g.left + c.size.width + m);
-    if (x1 - x0 < g.contentW * 0.6) continue;
-    const top = Math.max(0, c.position.y - g.top - m);
-    const bottom = Math.min(g.contentH, c.position.y - g.top + c.size.height + m);
-    if (bottom - top < 1) continue;
-    bands.push({ top, bottom });
+    const x1 = Math.min(W, c.position.x - g.left + c.size.width + m);
+    const top = Math.max(0, c.position.y - g.top - padTop - m);
+    const bottom = Math.min(H, c.position.y - g.top - padTop + c.size.height + m);
+    if (bottom - top < 1 || x1 - x0 < 1) continue;
+    const kind = c.textWrap.kind;
+    let side: "left" | "right" = kind === "right" ? "left" : kind === "left" ? "right"
+      : (x0 + x1) / 2 < W / 2 ? "left" : "right";
+    let band = kind === "above-below" || x1 - x0 >= W * 0.6;
+    const room = side === "left" ? W - x1 : x0;
+    if (room < W * 0.25) band = true;
+    if (band) side = "left";
+    rects.push({ top, bottom, x0: band ? 0 : x0, x1: band ? W : x1, side, band });
   }
-  // a header or footer taller than its margin gap (hfPushForPage) takes a
-  // band at the top or bottom of the printable area; it never fills a page
-  const push = pageIdx >= 0 ? hfPushForPage(pageIdx) : { top: 0, bottom: 0 };
-  const objectBands = bands.length;
-  // The footer push is not applied: its band would be a float reaching
-  // the page bottom, under which every later anchor float lands (the
-  // "floats never overlap" rule), and anchored paragraphs stop fitting.
-  if (push.top > 0) bands.push({ top: 0, bottom: Math.min(g.contentH, push.top) });
-  if (!bands.length) return null;
+  if (!rects.length) return padTop > 0 ? { fls: [], full: false, padTop } : null;
   const mergeBands = (list: { top: number; bottom: number }[]) => {
     const out: { top: number; bottom: number }[] = [];
     for (const b of [...list].sort((a, c) => a.top - c.top)) {
@@ -331,25 +374,81 @@ function pageExclusion(drawables: Drawable[], g: PageGeom, pageIdx = -1): { fls:
     }
     return out;
   };
-  const merged = mergeBands(bands);
-  const objectsOnly = mergeBands(bands.slice(0, objectBands));
+  // clusters of vertically overlapping rectangles, in reading order
+  rects.sort((a, b) => a.top - b.top);
+  const clusters: ExclRect[][] = [];
+  for (const r of rects) {
+    const last = clusters[clusters.length - 1];
+    if (last && r.top <= Math.max(...last.map((q) => q.bottom)) + 1) last.push(r);
+    else clusters.push([r]);
+  }
+  // the staircase polygon of a set of same-side rectangles, in the float's
+  // own coordinates: `edge(y)` is the exclusion's inner edge over each
+  // vertical interval, `outer` the float's outer edge (0 for a left float,
+  // its width for a right one)
+  const staircase = (list: ExclRect[], top0: number, offsetX: number, outer: number, left: boolean): string => {
+    const ys = Array.from(new Set(list.flatMap((r) => [r.top, r.bottom]))).sort((a, b) => a - b);
+    const pts: string[] = [];
+    const pt = (x: number, y: number) => `${x.toFixed(2)}px ${(y - top0).toFixed(2)}px`;
+    pts.push(pt(outer, ys[0]));
+    for (let i = 0; i + 1 < ys.length; i++) {
+      const y0 = ys[i], y1 = ys[i + 1];
+      const covering = list.filter((r) => r.top <= y0 + 0.01 && r.bottom >= y1 - 0.01);
+      const edge = !covering.length ? outer
+        : left ? Math.max(...covering.map((r) => r.x1)) - offsetX
+          : Math.max(0, Math.min(...covering.map((r) => r.x0)) - offsetX);
+      pts.push(pt(edge, y0), pt(edge, y1));
+    }
+    pts.push(pt(outer, ys[ys.length - 1]));
+    return `polygon(${pts.join(", ")})`;
+  };
   const fls: HTMLElement[] = [];
   let prevBottom = 0;
-  for (const b of merged) {
-    const fl = document.createElement("div");
-    fl.className = "pages-exclusion";
-    fl.style.cssFloat = "left";
-    fl.style.width = `${g.contentW.toFixed(2)}px`;
-    fl.style.height = `${(b.bottom - prevBottom).toFixed(2)}px`;
-    const inset = b.top - prevBottom;
-    if (inset > 0) fl.style.shapeOutside = `inset(${inset.toFixed(2)}px 0 0 0)`;
-    fls.push(fl);
-    prevBottom = b.bottom;
+  for (const cl of clusters) {
+    const bottom = Math.max(...cl.map((r) => r.bottom));
+    const lefts = cl.filter((r) => r.side === "left");
+    const rights = cl.filter((r) => r.side === "right");
+    let leftW = lefts.length ? Math.max(...lefts.map((r) => r.x1)) : 0;
+    let rightX0 = rights.length ? Math.min(...rights.map((r) => r.x0)) : W;
+    if (lefts.length && rights.length && leftW > rightX0) {
+      // The two sides overlap (fe2facece68e page 2: two photos whose
+      // 12pt wrap margins cross by 10pt over a 9pt band of rows). The
+      // column is split between them so the pair still fits side by side:
+      // rows both cover are excluded entirely, rows one side covers lose
+      // the sliver beyond the split.
+      const split = (leftW + rightX0) / 2;
+      leftW = split;
+      rightX0 = split;
+    }
+    if (lefts.length) {
+      const fl = document.createElement("div");
+      fl.className = "pages-exclusion";
+      fl.style.cssFloat = "left";
+      fl.style.clear = "both";
+      const w = leftW;
+      fl.style.width = `${w.toFixed(2)}px`;
+      fl.style.height = `${(bottom - prevBottom).toFixed(2)}px`;
+      fl.style.shapeOutside = staircase(lefts, prevBottom, 0, 0, true);
+      fls.push(fl);
+    }
+    if (rights.length) {
+      const fl = document.createElement("div");
+      fl.className = "pages-exclusion";
+      fl.style.cssFloat = "right";
+      if (!lefts.length) fl.style.clear = "both";
+      const w = W - rightX0;
+      fl.style.width = `${w.toFixed(2)}px`;
+      fl.style.height = `${(bottom - prevBottom).toFixed(2)}px`;
+      fl.style.shapeOutside = staircase(rights, prevBottom, rightX0, w, false);
+      fls.push(fl);
+    }
+    prevBottom = bottom;
   }
   // no room for even one line above, between or below the OBJECT bands: the page is full
-  let full = objectsOnly.length > 0 && objectsOnly[0].top < 14 && objectsOnly[objectsOnly.length - 1].bottom > g.contentH - 14;
+  const objectsOnly = mergeBands(rects.filter((r) => r.band));
+  let full = objectsOnly.length > 0 && objectsOnly[0].top < 14 && objectsOnly[objectsOnly.length - 1].bottom > H - 14;
   for (let i = 1; i < objectsOnly.length && full; i++) if (objectsOnly[i].top - objectsOnly[i - 1].bottom >= 14) full = false;
-  return { fls, full };
+  return { fls, full, padTop };
 }
 
 /**
@@ -389,6 +488,18 @@ function fixAnchorDrift(root: HTMLElement): void {
       const current = parseFloat(fl.style.marginTop || "0") || 0;
       fl.style.marginTop = `${(current - drift).toFixed(2)}px`;
     }
+    // The same sideways: a page exclusion float's BOX (pageExclusion, as
+    // wide as its widest step and as tall as its cluster) pushes a later
+    // left float to its right, and the drawables inside would move with
+    // it (fe2facece68e page 2: a label shape Pages keeps off the page at
+    // x = -101 came on-page at +100 beside the photo's exclusion).
+    const contentW = parseFloat(fl.dataset.contentW ?? "0") || 0;
+    const wantLeft = fl.dataset.side === "right" ? contentW - fl.offsetWidth : 0;
+    const xDrift = fl.offsetLeft - wantLeft;
+    if (Math.abs(xDrift) >= 0.5) {
+      const current = parseFloat(fl.style.marginLeft || "0") || 0;
+      fl.style.marginLeft = `${(current - xDrift).toFixed(2)}px`;
+    }
     // placed after: the margin box already sits at the paragraph's bottom, so
     // the inset only has to cover an object that starts lower still.
     // Placed first: the box IS the paragraph's top and the inset is the
@@ -420,6 +531,7 @@ function hfRow(
   hdoc: HydratedDoc,
   ctx: ViewerCtx,
   cssClass: string,
+  withEmpty = false,
 ): HTMLElement {
   const row = document.createElement("div");
   row.className = `pages-hf ${cssClass}`;
@@ -432,10 +544,12 @@ function hfRow(
   // left/centre/right; giving the only non-empty one the whole row is the
   // same thing whenever the others are blank, which is the usual case.
   cols.slice(0, 3).forEach((t, i) => {
-    if (!hasText(t)) return;
+    if (!hasText(t) && !withEmpty) return;
     const col = document.createElement("div");
     col.className = "pages-hf-col";
     col.style.textAlign = aligns[i] ?? "left";
+    // measuring: an empty paragraph still takes its line (renderParagraph
+    // gives it a <br>, so it has a line box at its own size and leading)
     col.appendChild(renderStyledText(t, hdoc, ctx));
     row.appendChild(col);
   });
@@ -1090,6 +1204,11 @@ function paginatedBody(
         }
         const container = newPageContent();
         const ex = exclusionOf(pages.length - 1);
+        if (ex?.padTop) {
+          // the header push: padding keeps the printable box the same size
+          container.style.paddingTop = `${ex.padTop.toFixed(2)}px`;
+          container.style.height = `${(g.contentH - ex.padTop).toFixed(2)}px`;
+        }
         if (ex) for (const fl of ex.fls) container.appendChild(fl);
         meas.appendChild(container);
         const b: PageBlock = { cols: null, heightPx: g.contentH, els: [], paras: [], container };
